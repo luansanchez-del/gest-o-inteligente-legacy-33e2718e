@@ -7,6 +7,7 @@ export interface CarteiraFiltros {
   busca?: string;
   situacao?: "TODOS" | "VINCULADO" | "NAO_VINCULADO";
   status?: string;
+  regime?: string;
 }
 
 export interface CarteiraLinha {
