@@ -1,118 +1,194 @@
 import { audit } from "../../lib/audit";
 import { assertCanWrite, type AppContext } from "../../lib/context";
 import { AppError } from "../../lib/errors";
+import { resolverTipoSolicitacao, type TipoFechamento } from "./escopo.service";
 
 export interface EscopoFiltro {
   competencia: string;
-  tipo: "CONTABIL" | "FISCAL" | "OUTRO";
+  tipo: TipoFechamento;
+  /** ID externo do departamento no PIER. Vazio = todos os departamentos. */
+  departamentoId?: string | null;
+  /** ID externo do usuário responsável no PIER. Vazio = todos do departamento. */
+  responsavelId?: string | null;
+  /** Seleção manual de empresas internas (reservado para etapas futuras). */
   empresaIds?: string[];
-  responsavel?: string | null;
-  incluirSemResponsavel?: boolean;
+}
+
+export interface EscopoLinha {
+  solicitacaoId: string;
+  numero: string | null;
+  clienteNome: string;
+  documento: string | null;
+  regime: string | null;
+  departamentoId: string | null;
+  departamentoNome: string | null;
+  responsavelId: string | null;
+  responsavelNome: string | null;
+  empresaId: string | null;
+  vinculada: boolean;
+  statusSolicitacao: string | null;
+  jaAberta: boolean;
 }
 
 export interface EscopoPreview {
   competencia: string;
   tipo: string;
+  departamento: { id: string | null; nome: string };
+  responsavel: { id: string | null; nome: string };
   totalEmpresas: number;
   totalComVinculo: number;
   totalSemVinculo: number;
   totalSemResponsavel: number;
   competenciasExistentes: number;
   competenciasNovas: number;
-  responsaveis: { nome: string; total: number }[];
-  empresas: {
-    id: string;
-    nome: string;
-    documento: string | null;
-    vinculada: boolean;
-    responsavel: string | null;
-    jaAberta: boolean;
-  }[];
+  solicitacoesEmCache: number;
+  responsaveis: { id: string | null; nome: string; total: number }[];
+  empresas: EscopoLinha[];
 }
 
-async function carregarEmpresasDoEscopo(ctx: AppContext, filtro: EscopoFiltro) {
-  const { data: empresas, error } = await ctx.db
-    .from("company")
-    .select("id, name, document, active")
+function normalizarDocumento(value: string | null | undefined) {
+  return (value ?? "").replace(/\D/g, "");
+}
+
+async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
+  const typeExternalId = await resolverTipoSolicitacao(ctx, filtro.tipo);
+
+  const { data: solicitacoes, error } = await ctx.db
+    .from("request")
+    .select(
+      "id, external_id, number, description, status, client_name, client_document, company_id, responsible_external_id, responsible_name, department_external_id",
+    )
     .eq("organization_id", ctx.organizationId)
-    .eq("active", true)
-    .order("name");
+    .eq("reference_month", filtro.competencia)
+    .eq("type_external_id", typeExternalId);
 
   if (error)
     throw new AppError("INESPERADO", "Não foi possível montar o escopo.", error.message);
 
-  const { data: vinculos } = await ctx.db
-    .from("company_pier_link")
-    .select("company_id, pier_client:pier_client_id(responsible_name)")
-    .eq("organization_id", ctx.organizationId);
+  const [{ data: usuarios }, { data: departamentos }, { data: clientes }, { data: aberturas }] =
+    await Promise.all([
+      ctx.db
+        .from("pier_user")
+        .select("external_id, name, status, department_external_id")
+        .eq("organization_id", ctx.organizationId),
+      ctx.db
+        .from("pier_department")
+        .select("external_id, name")
+        .eq("organization_id", ctx.organizationId),
+      ctx.db
+        .from("pier_client")
+        .select("document, tax_regime")
+        .eq("organization_id", ctx.organizationId),
+      ctx.db
+        .from("closing_period")
+        .select("company_id")
+        .eq("organization_id", ctx.organizationId)
+        .eq("reference_month", filtro.competencia)
+        .eq("type", filtro.tipo),
+    ]);
 
-  const mapaVinculo = new Map(
-    (vinculos ?? []).map((v) => [
-      v.company_id,
-      (v.pier_client as unknown as { responsible_name: string | null } | null)?.responsible_name ??
-        null,
-    ]),
+  const usuarioPorId = new Map((usuarios ?? []).map((u) => [u.external_id, u]));
+  const deptoNome = new Map((departamentos ?? []).map((d) => [d.external_id, d.name]));
+  const regimePorDoc = new Map(
+    (clientes ?? []).map((c) => [normalizarDocumento(c.document), c.tax_regime]),
   );
+  const abertas = new Set((aberturas ?? []).map((a) => a.company_id));
 
-  const { data: existentes } = await ctx.db
-    .from("closing_period")
-    .select("id, company_id")
-    .eq("organization_id", ctx.organizationId)
-    .eq("reference_month", filtro.competencia)
-    .eq("type", filtro.tipo);
+  let linhas: EscopoLinha[] = (solicitacoes ?? []).map((s) => {
+    const usuario = s.responsible_external_id
+      ? (usuarioPorId.get(s.responsible_external_id) ?? null)
+      : null;
+    const departamentoId = s.department_external_id ?? usuario?.department_external_id ?? null;
+    return {
+      solicitacaoId: s.external_id,
+      numero: s.number,
+      clienteNome: s.client_name ?? "—",
+      documento: s.client_document,
+      regime: regimePorDoc.get(normalizarDocumento(s.client_document)) ?? null,
+      departamentoId,
+      departamentoNome: departamentoId ? (deptoNome.get(departamentoId) ?? null) : null,
+      responsavelId: s.responsible_external_id,
+      responsavelNome: s.responsible_name ?? usuario?.name ?? null,
+      empresaId: s.company_id,
+      vinculada: Boolean(s.company_id),
+      statusSolicitacao: s.status,
+      jaAberta: Boolean(s.company_id && abertas.has(s.company_id)),
+    };
+  });
 
-  const abertos = new Map((existentes ?? []).map((e) => [e.company_id, e.id]));
-
-  let lista = (empresas ?? []).map((e) => ({
-    id: e.id,
-    nome: e.name,
-    documento: e.document,
-    vinculada: mapaVinculo.has(e.id),
-    responsavel: mapaVinculo.get(e.id) ?? null,
-    jaAberta: abertos.has(e.id),
-    competenciaId: abertos.get(e.id) ?? null,
-  }));
+  if (filtro.responsavelId) {
+    const usuario = usuarioPorId.get(filtro.responsavelId);
+    if (
+      filtro.departamentoId &&
+      usuario &&
+      usuario.department_external_id !== filtro.departamentoId
+    )
+      throw new AppError(
+        "VALIDACAO",
+        "O responsável selecionado não pertence ao departamento escolhido.",
+      );
+    linhas = linhas.filter((l) => l.responsavelId === filtro.responsavelId);
+  } else if (filtro.departamentoId) {
+    linhas = linhas.filter((l) => l.departamentoId === filtro.departamentoId);
+  }
 
   if (filtro.empresaIds?.length) {
     const set = new Set(filtro.empresaIds);
-    lista = lista.filter((e) => set.has(e.id));
-  }
-  if (filtro.responsavel) {
-    lista = lista.filter(
-      (e) =>
-        e.responsavel === filtro.responsavel ||
-        (filtro.incluirSemResponsavel && e.responsavel === null),
-    );
+    linhas = linhas.filter((l) => l.empresaId && set.has(l.empresaId));
   }
 
-  return lista;
+  linhas.sort((a, b) => a.clienteNome.localeCompare(b.clienteNome, "pt-BR"));
+
+  const departamentoNome = filtro.departamentoId
+    ? (deptoNome.get(filtro.departamentoId) ?? `Departamento ${filtro.departamentoId}`)
+    : "Todos os departamentos";
+  const responsavelNome = filtro.responsavelId
+    ? (usuarioPorId.get(filtro.responsavelId)?.name ?? filtro.responsavelId)
+    : "Todos do departamento";
+
+  return {
+    linhas,
+    departamentoNome,
+    responsavelNome,
+    totalSolicitacoes: (solicitacoes ?? []).length,
+  };
 }
 
 export async function montarPreview(
   ctx: AppContext,
   filtro: EscopoFiltro,
 ): Promise<EscopoPreview> {
-  const lista = await carregarEmpresasDoEscopo(ctx, filtro);
+  const { linhas, departamentoNome, responsavelNome, totalSolicitacoes } = await carregarEscopo(
+    ctx,
+    filtro,
+  );
 
-  const responsaveisMap = new Map<string, number>();
-  for (const empresa of lista) {
-    const chave = empresa.responsavel ?? "Sem responsável";
-    responsaveisMap.set(chave, (responsaveisMap.get(chave) ?? 0) + 1);
+  const porResponsavel = new Map<string, { id: string | null; nome: string; total: number }>();
+  for (const linha of linhas) {
+    const chave = linha.responsavelId ?? "sem-responsavel";
+    const atual = porResponsavel.get(chave) ?? {
+      id: linha.responsavelId,
+      nome: linha.responsavelNome ?? "Sem responsável",
+      total: 0,
+    };
+    atual.total += 1;
+    porResponsavel.set(chave, atual);
   }
 
   return {
     competencia: filtro.competencia,
     tipo: filtro.tipo,
-    totalEmpresas: lista.length,
-    totalComVinculo: lista.filter((e) => e.vinculada).length,
-    totalSemVinculo: lista.filter((e) => !e.vinculada).length,
-    totalSemResponsavel: lista.filter((e) => !e.responsavel).length,
-    competenciasExistentes: lista.filter((e) => e.jaAberta).length,
-    competenciasNovas: lista.filter((e) => !e.jaAberta).length,
-    responsaveis: [...responsaveisMap.entries()]
-      .map(([nome, total]) => ({ nome, total }))
-      .sort((a, b) => b.total - a.total),
-    empresas: lista.map(({ competenciaId: _ignored, ...rest }) => rest),
+    departamento: { id: filtro.departamentoId ?? null, nome: departamentoNome },
+    responsavel: { id: filtro.responsavelId ?? null, nome: responsavelNome },
+    totalEmpresas: linhas.length,
+    totalComVinculo: linhas.filter((l) => l.vinculada).length,
+    totalSemVinculo: linhas.filter((l) => !l.vinculada).length,
+    totalSemResponsavel: linhas.filter((l) => !l.responsavelId).length,
+    competenciasExistentes: linhas.filter((l) => l.jaAberta).length,
+    competenciasNovas: linhas.filter((l) => !l.jaAberta).length,
+    solicitacoesEmCache: totalSolicitacoes,
+    responsaveis: [...porResponsavel.values()].sort((a, b) => b.total - a.total),
+    empresas: linhas,
   };
 }
 
@@ -121,8 +197,8 @@ export async function iniciarGestao(
   filtro: EscopoFiltro & { idempotencyKey: string },
 ) {
   assertCanWrite(ctx);
-  const lista = await carregarEmpresasDoEscopo(ctx, filtro);
-  if (!lista.length)
+  const { linhas, departamentoNome, responsavelNome } = await carregarEscopo(ctx, filtro);
+  if (!linhas.length)
     throw new AppError("REGRA_NEGOCIO", "Nenhuma empresa entra neste escopo. Ajuste os filtros.");
 
   const { data: existente } = await ctx.db
@@ -140,11 +216,14 @@ export async function iniciarGestao(
       reference_month: filtro.competencia,
       scope: {
         tipo: filtro.tipo,
-        empresas: lista.length,
-        responsavel: filtro.responsavel ?? null,
+        empresas: linhas.length,
+        departamentoId: filtro.departamentoId ?? null,
+        departamentoNome,
+        responsavelId: filtro.responsavelId ?? null,
+        responsavelNome,
       } as never,
       status: "RUNNING",
-      total_items: lista.length,
+      total_items: linhas.length,
       idempotency_key: filtro.idempotencyKey,
       started_by: ctx.userId,
       started_at: new Date().toISOString(),
@@ -158,27 +237,42 @@ export async function iniciarGestao(
   let concluidos = 0;
   let alertas = 0;
   let erros = 0;
+  let ignorados = 0;
 
-  for (const empresa of lista) {
+  for (const linha of linhas) {
+    if (!linha.empresaId) {
+      ignorados += 1;
+      await ctx.db.from("batch_item").insert({
+        organization_id: ctx.organizationId,
+        batch_execution_id: execucao.id,
+        company_id: null,
+        status: "SKIPPED",
+        attempts: 1,
+        message: `${linha.clienteNome}: cliente do PIER ainda sem vínculo com empresa interna.`,
+      });
+      continue;
+    }
+
     const { data: periodo, error: periodoError } = await ctx.db
       .from("closing_period")
       .upsert(
         {
           organization_id: ctx.organizationId,
-          company_id: empresa.id,
+          company_id: linha.empresaId,
           reference_month: filtro.competencia,
           type: filtro.tipo,
-          responsible_name: empresa.responsavel,
+          responsible_name: linha.responsavelNome,
+          responsible_external_id: linha.responsavelId,
         },
         { onConflict: "company_id,reference_month,type" },
       )
       .select("id")
       .single();
 
-    const semVinculo = !empresa.vinculada;
-    const status = periodoError ? "ERROR" : semVinculo ? "WARNING" : "COMPLETED";
+    const semResponsavel = !linha.responsavelId;
+    const status = periodoError ? "ERROR" : semResponsavel ? "WARNING" : "COMPLETED";
     if (periodoError) erros += 1;
-    else if (semVinculo) alertas += 1;
+    else if (semResponsavel) alertas += 1;
     else concluidos += 1;
 
     await ctx.db.from("batch_item").upsert(
@@ -186,17 +280,25 @@ export async function iniciarGestao(
         organization_id: ctx.organizationId,
         batch_execution_id: execucao.id,
         closing_period_id: periodo?.id ?? null,
-        company_id: empresa.id,
+        company_id: linha.empresaId,
         status,
         attempts: 1,
         message: periodoError
           ? periodoError.message
-          : semVinculo
-            ? "Empresa sem vínculo com a carteira: acompanhamento sem origem de evidências."
+          : semResponsavel
+            ? "Solicitação sem responsável definido no PIER."
             : null,
       },
       { onConflict: "batch_execution_id,closing_period_id" },
     );
+
+    if (periodo?.id) {
+      await ctx.db
+        .from("request")
+        .update({ closing_period_id: periodo.id })
+        .eq("organization_id", ctx.organizationId)
+        .eq("external_id", linha.solicitacaoId);
+    }
   }
 
   await ctx.db
@@ -206,6 +308,7 @@ export async function iniciarGestao(
       completed_items: concluidos,
       warning_items: alertas,
       error_items: erros,
+      skipped_items: ignorados,
       finished_at: new Date().toISOString(),
     })
     .eq("id", execucao.id);
@@ -214,7 +317,15 @@ export async function iniciarGestao(
     action: "INICIAR_GESTAO",
     entity: "batch_execution",
     entityId: execucao.id,
-    after: { competencia: filtro.competencia, empresas: lista.length, alertas, erros },
+    after: {
+      competencia: filtro.competencia,
+      departamentoId: filtro.departamentoId ?? null,
+      responsavelId: filtro.responsavelId ?? null,
+      empresas: linhas.length,
+      alertas,
+      erros,
+      ignorados,
+    },
   });
 
   return { execucaoId: execucao.id, reaproveitada: false };
@@ -236,7 +347,12 @@ export async function listarExecucoes(ctx: AppContext) {
   return (data ?? []).map((e) => ({
     id: e.id,
     competencia: e.reference_month,
-    escopo: (e.scope ?? {}) as { tipo?: string; empresas?: number; responsavel?: string | null },
+    escopo: (e.scope ?? {}) as {
+      tipo?: string;
+      empresas?: number;
+      departamentoNome?: string;
+      responsavelNome?: string;
+    },
     status: e.status,
     total: e.total_items,
     concluidos: e.completed_items,
