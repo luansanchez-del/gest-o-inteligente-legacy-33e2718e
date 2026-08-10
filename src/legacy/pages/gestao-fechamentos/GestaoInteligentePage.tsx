@@ -4,6 +4,7 @@ import { api } from "../../api/client";
 import type { DeliverySituation, ManagementDashboard, PierUsuario } from "../../api/types";
 import { useDepartmentNames } from "../../lib/useDepartmentNames";
 import { DepartmentNameField } from "../../components/DepartmentNameField";
+import { describeApiError } from "@/lib/api-config";
 
 const labels: Record<DeliverySituation, string> = {
   DELIVERED_ON_TIME: "Entregue no prazo",
@@ -26,6 +27,8 @@ export function GestaoInteligentePage() {
   const [pierTypes, setPierTypes] = useState<Array<{ id: number; descricao: string | null }>>([]);
   const [data, setData] = useState<ManagementDashboard | null>(null);
   const [error, setError] = useState("");
+  const [catalogError, setCatalogError] = useState("");
+  const [dashboardFailed, setDashboardFailed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const { nameFor, rename, unnamed } = useDepartmentNames(pierUsers);
@@ -35,6 +38,7 @@ export function GestaoInteligentePage() {
     if (rangeInvalid) return;
     setLoading(true);
     setError("");
+    setDashboardFailed(false);
     api.gestaoFechamentos.management
       .dashboard({
         competenciaInicio,
@@ -43,8 +47,15 @@ export function GestaoInteligentePage() {
         responsibleExternalId: responsibleId,
         typeExternalId: typeId,
       })
-      .then(setData)
-      .catch((e) => setError(e instanceof Error ? e.message : "Falha ao carregar"))
+      .then((result) => {
+        setData(result);
+        setDashboardFailed(false);
+      })
+      .catch((e) => {
+        setData(null);
+        setDashboardFailed(true);
+        setError(describeApiError(e));
+      })
       .finally(() => setLoading(false));
   }, [competenciaInicio, competenciaFim, teamId, responsibleId, typeId, rangeInvalid]);
   useEffect(() => {
@@ -52,10 +63,12 @@ export function GestaoInteligentePage() {
       api.gestaoFechamentos.pier.listUsuarios({ status: "Todos" }),
       api.gestaoFechamentos.pier.listTiposSolicitacao(),
     ]).then(([users, types]) => {
+      const messages: string[] = [];
       if (users.status === "fulfilled") setPierUsers(users.value);
-      else setError("Não foi possível ler os responsáveis do PIER.");
+      else messages.push(describeApiError(users.reason));
       if (types.status === "fulfilled") setPierTypes(types.value);
-      else setError((current) => `${current} Não foi possível ler os tipos de solicitação.`.trim());
+      else messages.push(describeApiError(types.reason));
+      setCatalogError([...new Set(messages)].join(" "));
     });
   }, []);
   async function startManagement() {
@@ -173,15 +186,21 @@ export function GestaoInteligentePage() {
         </div>
         <button
           className="mg-start"
-          disabled={starting || !data?.companyIds.length}
+          disabled={starting || dashboardFailed || Boolean(catalogError) || !data?.companyIds.length}
           onClick={startManagement}
         >
           {starting ? "Iniciando…" : `Iniciar gestão (${data?.companyIds.length ?? 0} empresas)`}
         </button>
       </section>
       <div className="mg-source">
-        Catálogo lido do PIER: <strong>{pierUsers.length} responsáveis/BPOs</strong> e{" "}
-        <strong>{pierTypes.length} tipos de solicitação</strong>.
+        {catalogError ? (
+          <>Catálogo do PIER indisponível — os filtros de responsável e tipo não foram carregados.</>
+        ) : (
+          <>
+            Catálogo lido do PIER: <strong>{pierUsers.length} responsáveis/BPOs</strong> e{" "}
+            <strong>{pierTypes.length} tipos de solicitação</strong>.
+          </>
+        )}
       </div>
       {unnamed.length > 0 && (
         <details className="mg-unnamed">
@@ -199,8 +218,14 @@ export function GestaoInteligentePage() {
         <div className="mg-error">A competência final não pode ser anterior à inicial.</div>
       )}
       {error && <div className="mg-error">{error}</div>}
+      {catalogError && <div className="mg-error">{catalogError}</div>}
       {loading ? (
         <div className="mg-empty">Lendo dados do PIER…</div>
+      ) : dashboardFailed ? (
+        <div className="mg-empty">
+          <strong>Não foi possível carregar os dados da Gestão Inteligente.</strong>
+          <span>{error}</span>
+        </div>
       ) : !data?.items.length ? (
         <div className="mg-empty">
           <strong>Nenhuma solicitação sincronizada nesta competência.</strong>
