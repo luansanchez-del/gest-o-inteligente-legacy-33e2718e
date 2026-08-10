@@ -7,6 +7,7 @@ export interface CarteiraFiltros {
   busca?: string;
   situacao?: "TODOS" | "VINCULADO" | "NAO_VINCULADO";
   status?: string;
+  regime?: string;
 }
 
 export interface CarteiraLinha {
@@ -37,6 +38,7 @@ export interface CarteiraResumo {
     mensagem: string | null;
   } | null;
   integracao: { available: boolean; reason?: string };
+  filtrosDisponiveis: { regimes: string[]; statuses: string[] };
 }
 
 function normalizarDocumento(value: string | null | undefined) {
@@ -98,6 +100,17 @@ export async function listarCarteira(
     };
   });
 
+  // Opções de filtro vêm da carteira completa (antes dos filtros) para o select ficar estável.
+  const valoresUnicos = (selector: (l: CarteiraLinha) => string | null) =>
+    Array.from(
+      new Set(linhas.map((l) => selector(l)?.trim()).filter((v): v is string => Boolean(v))),
+    ).sort((a, b) => a.localeCompare(b, "pt-BR"));
+
+  const filtrosDisponiveis = {
+    regimes: valoresUnicos((l) => l.regime),
+    statuses: valoresUnicos((l) => l.status),
+  };
+
   const busca = filtros.busca?.trim().toLowerCase();
   if (busca) {
     linhas = linhas.filter(
@@ -107,6 +120,7 @@ export async function listarCarteira(
     );
   }
   if (filtros.status) linhas = linhas.filter((l) => l.status === filtros.status);
+  if (filtros.regime) linhas = linhas.filter((l) => (l.regime ?? "").trim() === filtros.regime);
   if (filtros.situacao === "VINCULADO") linhas = linhas.filter((l) => l.vinculado);
   if (filtros.situacao === "NAO_VINCULADO") linhas = linhas.filter((l) => !l.vinculado);
 
@@ -137,6 +151,7 @@ export async function listarCarteira(
           }
         : null,
       integracao: await pierAdapter.status(),
+      filtrosDisponiveis,
     },
   };
 }

@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link2, Link2Off, RefreshCw, Stethoscope } from "lucide-react";
+import { Link2, Link2Off, RefreshCw, Stethoscope, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/common/PageHeader";
@@ -60,17 +60,26 @@ export const Route = createFileRoute("/_authenticated/carteira")({
 });
 
 type StatusFiltro = "Todos" | "Ativo" | "Inativo";
+type SituacaoFiltro = "TODOS" | "VINCULADO" | "NAO_VINCULADO";
+const TODOS_REGIMES = "__TODOS__";
 
 function CarteiraPage() {
   const queryClient = useQueryClient();
   const [busca, setBusca] = useState("");
   const [status, setStatus] = useState<StatusFiltro>("Todos");
+  const [regime, setRegime] = useState<string>(TODOS_REGIMES);
+  const [situacao, setSituacao] = useState<SituacaoFiltro>("TODOS");
 
   const consulta = useQuery({
-    queryKey: ["carteira", busca, status],
+    queryKey: ["carteira", busca, status, regime, situacao],
     queryFn: () =>
       listarCarteira({
-        data: { busca, ...(status === "Todos" ? {} : { status }) },
+        data: {
+          busca,
+          ...(status === "Todos" ? {} : { status }),
+          ...(regime === TODOS_REGIMES ? {} : { regime }),
+          ...(situacao === "TODOS" ? {} : { situacao }),
+        },
       }),
     placeholderData: (anterior) => anterior,
   });
@@ -119,6 +128,15 @@ function CarteiraPage() {
   const resumo = consulta.data?.resumo;
   const linhas = consulta.data?.linhas ?? [];
   const ultimaSincronizacao = resumo?.ultimaSincronizacao;
+  const regimes = resumo?.filtrosDisponiveis?.regimes ?? [];
+  const temFiltroAtivo =
+    busca.trim() !== "" || status !== "Todos" || regime !== TODOS_REGIMES || situacao !== "TODOS";
+  const limparFiltros = () => {
+    setBusca("");
+    setStatus("Todos");
+    setRegime(TODOS_REGIMES);
+    setSituacao("TODOS");
+  };
 
   return (
     <div className="space-y-6">
@@ -182,7 +200,7 @@ function CarteiraPage() {
       </div>
 
       <Card className="overflow-hidden">
-        <div className="flex flex-col gap-3 border-b border-border p-4 md:flex-row md:items-center">
+        <div className="flex flex-col gap-3 border-b border-border p-4 md:flex-row md:flex-wrap md:items-center">
           <Input
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
@@ -190,15 +208,44 @@ function CarteiraPage() {
             className="md:max-w-sm"
           />
           <Select value={status} onValueChange={(v) => setStatus(v as StatusFiltro)}>
-            <SelectTrigger className="md:w-56">
+            <SelectTrigger className="md:w-44" aria-label="Status PIER">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="Todos">Todos</SelectItem>
+              <SelectItem value="Todos">Todos os status</SelectItem>
               <SelectItem value="Ativo">Ativos</SelectItem>
               <SelectItem value="Inativo">Inativos</SelectItem>
             </SelectContent>
           </Select>
+          <Select value={regime} onValueChange={setRegime}>
+            <SelectTrigger className="md:w-56" aria-label="Regime tributário">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={TODOS_REGIMES}>Todos os regimes</SelectItem>
+              {regimes.map((r) => (
+                <SelectItem key={r} value={r}>
+                  {r}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={situacao} onValueChange={(v) => setSituacao(v as SituacaoFiltro)}>
+            <SelectTrigger className="md:w-48" aria-label="Situação do vínculo">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="TODOS">Todos os vínculos</SelectItem>
+              <SelectItem value="VINCULADO">Vinculados</SelectItem>
+              <SelectItem value="NAO_VINCULADO">Sem vínculo</SelectItem>
+            </SelectContent>
+          </Select>
+          {temFiltroAtivo ? (
+            <Button variant="ghost" size="sm" onClick={limparFiltros}>
+              <X className="mr-2 h-4 w-4" />
+              Limpar filtros
+            </Button>
+          ) : null}
         </div>
 
         {consulta.isLoading ? (
