@@ -26,6 +26,18 @@ function slugify(value: string) {
   );
 }
 
+/** Repete uma leitura que falhou por instabilidade momentânea de rede/PostgREST. */
+async function comRetry<T extends { error: { message: string } | null }>(
+  executar: () => PromiseLike<T>,
+): Promise<T> {
+  let ultimo = await executar();
+  for (let tentativa = 0; tentativa < 2 && ultimo.error; tentativa++) {
+    await new Promise((r) => setTimeout(r, 150 * (tentativa + 1)));
+    ultimo = await executar();
+  }
+  return ultimo;
+}
+
 /**
  * Carrega o contexto do usuário autenticado (organização + papéis).
  * Na primeira entrada, provisiona a organização e concede o papel de administrador.
@@ -33,15 +45,23 @@ function slugify(value: string) {
 export async function loadContext(userId: string, email?: string): Promise<AppContext> {
   const db = supabaseAdmin;
 
-  const { data: membership, error } = await db
-    .from("membership")
-    .select("organization_id, organization:organization_id(name)")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const { data: membership, error } = await comRetry(() =>
+    db
+      .from("membership")
+      .select("organization_id, organization:organization_id(name)")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+  );
 
-  if (error) throw new AppError("INESPERADO", "Não foi possível carregar seu acesso.", error.message);
+  if (error)
+    throw new AppError(
+      "INESPERADO",
+      "Não foi possível carregar seu acesso.",
+      `membership select falhou para user ${userId}: ${JSON.stringify(error)}`,
+    );
+
 
   let organizationId = membership?.organization_id ?? null;
   let organizationName =
