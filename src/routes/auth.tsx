@@ -48,12 +48,15 @@ function AuthPage() {
   const [modo, setModo] = useState<"entrar" | "criar">("entrar");
   const [mensagem, setMensagem] = useState("");
   const [carregando, setCarregando] = useState(false);
+  const [montado, setMontado] = useState(false);
 
   useEffect(() => {
+    setMontado(true);
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) window.location.replace(destino);
     });
   }, [destino]);
+
 
   async function comEmail(e: React.FormEvent) {
     e.preventDefault();
