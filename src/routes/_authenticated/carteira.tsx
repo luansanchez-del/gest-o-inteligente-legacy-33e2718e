@@ -1,0 +1,231 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { Link2, Link2Off, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
+
+import { PageHeader } from "@/components/common/PageHeader";
+import {
+  CarregandoTabela,
+  ErroConsulta,
+  EstadoVazio,
+} from "@/components/common/EstadoConsulta";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  desvincularCliente,
+  listarCarteira,
+  sincronizarCarteira,
+  vincularCliente,
+} from "@/lib/api/carteira.functions";
+import { formatarCnpj, formatarDataHora } from "@/lib/formato";
+import { mensagemDeErro } from "@/lib/erros";
+
+export const Route = createFileRoute("/_authenticated/carteira")({
+  head: () => ({
+    meta: [
+      { title: "Carteira PIER | Gestão Inteligente" },
+      {
+        name: "description",
+        content:
+          "Clientes disponíveis no PIER, com indicação de vínculo com as empresas internas e sincronização manual.",
+      },
+      { property: "og:title", content: "Carteira PIER | Gestão Inteligente" },
+      {
+        property: "og:description",
+        content: "Consulte e vincule os clientes do PIER às empresas da sua carteira.",
+      },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
+    ],
+  }),
+  component: CarteiraPage,
+});
+
+function CarteiraPage() {
+  const queryClient = useQueryClient();
+  const [busca, setBusca] = useState("");
+  const [situacao, setSituacao] = useState<"TODOS" | "VINCULADO" | "NAO_VINCULADO">("TODOS");
+
+  const consulta = useQuery({
+    queryKey: ["carteira", busca, situacao],
+    queryFn: () => listarCarteira({ data: { busca, situacao } }),
+  });
+
+  const sincronizar = useMutation({
+    mutationFn: () => sincronizarCarteira(),
+    onSuccess: (r) => {
+      toast.success(`Sincronização concluída: ${r.processados} clientes atualizados.`);
+      void queryClient.invalidateQueries({ queryKey: ["carteira"] });
+    },
+    onError: (e) => toast.error(mensagemDeErro(e)),
+  });
+
+  const vincular = useMutation({
+    mutationFn: (pierClientId: string) => vincularCliente({ data: { pierClientId } }),
+    onSuccess: () => {
+      toast.success("Cliente vinculado a uma empresa interna.");
+      void queryClient.invalidateQueries({ queryKey: ["carteira"] });
+    },
+    onError: (e) => toast.error(mensagemDeErro(e)),
+  });
+
+  const desvincular = useMutation({
+    mutationFn: (pierClientId: string) => desvincularCliente({ data: { pierClientId } }),
+    onSuccess: () => {
+      toast.success("Vínculo removido.");
+      void queryClient.invalidateQueries({ queryKey: ["carteira"] });
+    },
+    onError: (e) => toast.error(mensagemDeErro(e)),
+  });
+
+  const resumo = consulta.data?.resumo;
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        titulo="Carteira PIER"
+        descricao="Clientes disponíveis no PIER e o vínculo com as empresas internas."
+        acoes={
+          <Button onClick={() => sincronizar.mutate()} disabled={sincronizar.isPending}>
+            <RefreshCw
+              className={`mr-2 h-4 w-4 ${sincronizar.isPending ? "animate-spin" : ""}`}
+            />
+            Atualizar carteira
+          </Button>
+        }
+      />
+
+      {resumo && !resumo.integracao.available ? (
+        <Card className="border-warning/40 bg-warning-soft p-4 text-sm text-warning-strong">
+          Integração com o PIER indisponível: {resumo.integracao.reason ?? "não configurada"}.
+        </Card>
+      ) : null}
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Card className="p-4">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Clientes</p>
+          <p className="text-2xl font-semibold tabular-nums">{resumo?.total ?? "—"}</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Vinculados</p>
+          <p className="text-2xl font-semibold tabular-nums">{resumo?.vinculados ?? "—"}</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Sem vínculo</p>
+          <p className="text-2xl font-semibold tabular-nums">{resumo?.naoVinculados ?? "—"}</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Última atualização: {formatarDataHora(resumo?.ultimaSincronizacao?.finishedAt)}
+          </p>
+        </Card>
+      </div>
+
+      <Card className="overflow-hidden">
+        <div className="flex flex-col gap-3 border-b border-border p-4 md:flex-row md:items-center">
+          <Input
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar por nome ou CNPJ"
+            className="md:max-w-sm"
+          />
+          <Select value={situacao} onValueChange={(v) => setSituacao(v as typeof situacao)}>
+            <SelectTrigger className="md:w-56">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="TODOS">Todos os clientes</SelectItem>
+              <SelectItem value="VINCULADO">Somente vinculados</SelectItem>
+              <SelectItem value="NAO_VINCULADO">Somente sem vínculo</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {consulta.isLoading ? (
+          <CarregandoTabela />
+        ) : consulta.isError ? (
+          <div className="p-4">
+            <ErroConsulta error={consulta.error} onRetry={() => void consulta.refetch()} />
+          </div>
+        ) : (consulta.data?.linhas.length ?? 0) === 0 ? (
+          <EstadoVazio
+            titulo="Nenhum cliente na carteira"
+            descricao="Use “Atualizar carteira” para buscar os clientes disponíveis no PIER."
+          />
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Cliente</TableHead>
+                <TableHead>CNPJ</TableHead>
+                <TableHead>Responsável</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Empresa interna</TableHead>
+                <TableHead className="text-right">Ação</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {consulta.data!.linhas.map((linha) => (
+                <TableRow key={linha.pierClientId}>
+                  <TableCell className="font-medium">{linha.nome}</TableCell>
+                  <TableCell className="tabular-nums">{formatarCnpj(linha.documento)}</TableCell>
+                  <TableCell>
+                    {linha.responsavel ?? (
+                      <span className="text-muted-foreground">Sem responsável</span>
+                    )}
+                  </TableCell>
+                  <TableCell>{linha.status ?? "—"}</TableCell>
+                  <TableCell>
+                    {linha.vinculado ? (
+                      <span className="text-success-strong">{linha.empresaNome}</span>
+                    ) : (
+                      <span className="text-muted-foreground">Não vinculado</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {linha.vinculado ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => desvincular.mutate(linha.pierClientId)}
+                        disabled={desvincular.isPending}
+                      >
+                        <Link2Off className="mr-2 h-4 w-4" />
+                        Desvincular
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => vincular.mutate(linha.pierClientId)}
+                        disabled={vincular.isPending}
+                      >
+                        <Link2 className="mr-2 h-4 w-4" />
+                        Vincular
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </Card>
+    </div>
+  );
+}

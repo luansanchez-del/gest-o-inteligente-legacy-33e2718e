@@ -1,15 +1,16 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
-  Building2,
-  SlidersHorizontal,
-  ListChecks,
   BarChart3,
+  Building2,
+  ClipboardList,
+  Cog,
+  Gauge,
   Inbox,
-  LayoutDashboard,
-  Boxes,
-  Settings,
+  ListChecks,
+  PlayCircle,
+  Rocket,
+  ShieldCheck,
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 
 import {
   Sidebar,
@@ -23,86 +24,54 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 
-type Item = {
-  title: string;
-  icon: LucideIcon;
-  /** Rota tipada do app novo. */
-  to?: "/";
-  /** Caminho servido pelo catch-all legado. */
-  legacy?: string;
-  disabled?: boolean;
-};
+const GRUPOS = [
+  {
+    label: "Gestão",
+    itens: [
+      { title: "Painel", to: "/", icon: Gauge },
+      { title: "Carteira", to: "/carteira", icon: Building2 },
+    ],
+  },
+] as const;
 
-const grupos: Array<{ label: string; items: Item[] }> = [
-  {
-    label: "Gestão inteligente",
-    items: [
-      { title: "Gestão", icon: LayoutDashboard, legacy: "gestao-fechamentos" },
-      { title: "Carteira PIER", icon: Building2, to: "/" },
-      { title: "Clientes", icon: Boxes, legacy: "gestao-fechamentos/empresa" },
-      { title: "Processamentos", icon: ListChecks, legacy: "gestao-fechamentos/central" },
-      { title: "Solicitações", icon: Inbox, legacy: "pier/solicitacoes" },
-    ],
-  },
-  {
-    label: "Contábil",
-    items: [
-      { title: "Implantação", icon: Boxes, legacy: "implantacoes" },
-      { title: "Configurações", icon: Settings, disabled: true },
-    ],
-  },
-];
 
 export function AppSidebar() {
-  const currentPath = useRouterState({ select: (r) => r.location.pathname });
-
-  const isActive = (item: Item) =>
-    item.to ? currentPath === item.to : item.legacy ? currentPath === `/${item.legacy}` : false;
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   return (
-    <Sidebar collapsible="icon">
-      <SidebarHeader className="px-4 py-4">
-        <p className="text-sm font-semibold leading-tight">Gestão Inteligente</p>
-        <p className="text-xs text-sidebar-foreground/70">Fechamentos contábeis</p>
+    <Sidebar collapsible="icon" className="border-r-0">
+      <SidebarHeader className="px-3 py-4">
+        <div className="flex items-center gap-2">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+            <ClipboardList className="h-5 w-5" />
+          </span>
+          <div className="min-w-0 group-data-[collapsible=icon]:hidden">
+            <p className="truncate text-sm font-semibold leading-tight">Gestão Inteligente</p>
+            <p className="truncate text-xs text-sidebar-foreground/60">Fechamentos contábeis</p>
+          </div>
+        </div>
       </SidebarHeader>
+
       <SidebarContent>
-        {grupos.map((grupo) => (
+        {GRUPOS.map((grupo) => (
           <SidebarGroup key={grupo.label}>
             <SidebarGroupLabel>{grupo.label}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {grupo.items.map((item) => (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton
-                      asChild={!item.disabled}
-                      isActive={isActive(item)}
-                      tooltip={item.disabled ? `${item.title} (em breve)` : item.title}
-                      aria-disabled={item.disabled}
-                      className={item.disabled ? "cursor-not-allowed opacity-50" : undefined}
-                    >
-                      {item.disabled ? (
-                        <span className="flex items-center gap-2">
-                          <item.icon className="h-4 w-4" />
-                          <span>{item.title}</span>
-                        </span>
-                      ) : item.to ? (
-                        <Link to={item.to} className="flex items-center gap-2">
-                          <item.icon className="h-4 w-4" />
+                {grupo.itens.map((item) => {
+                  const ativo =
+                    item.to === "/" ? pathname === "/" : pathname.startsWith(item.to);
+                  return (
+                    <SidebarMenuItem key={item.to}>
+                      <SidebarMenuButton asChild isActive={ativo} tooltip={item.title}>
+                        <Link to={item.to}>
+                          <item.icon />
                           <span>{item.title}</span>
                         </Link>
-                      ) : (
-                        <Link
-                          to="/$"
-                          params={{ _splat: item.legacy! }}
-                          className="flex items-center gap-2"
-                        >
-                          <item.icon className="h-4 w-4" />
-                          <span>{item.title}</span>
-                        </Link>
-                      )}
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
