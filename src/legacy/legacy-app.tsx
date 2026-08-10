@@ -1,5 +1,4 @@
 import { useLocation } from "@tanstack/react-router";
-import { AppShell } from "./components/AppShell";
 import { HomePage } from "./pages/HomePage";
 import { ImplantacoesListPage } from "./pages/implantacoes/ImplantacoesListPage";
 import { ImplantacaoWorkflowPage } from "./pages/implantacao-contabil/ImplantacaoWorkflowPage";
@@ -22,5 +21,5 @@ export function LegacyApp() {
   else if (pathname.startsWith("/gestao-fechamentos/central/")) page = <BatchExecutionDetailPage />;
   else if (pathname === "/pier/solicitacoes") page = <PierSolicitacoesPage />;
 
-  return <AppShell>{page}</AppShell>;
+  return page;
 }
