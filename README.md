@@ -1,6 +1,6 @@
-# GESTÃO INTELIGENTE - LEGACY
+# Gestão Contábil Inteligente
 
-cRIAR REPOSITORIO NO GITHUB
+Frontend dos módulos de implantação contábil e gestão inteligente de fechamentos.
 
 This project was built with [Lovable](https://lovable.dev).
 
@@ -22,3 +22,15 @@ cd <repository-name>
 npm i
 npm run dev
 ```
+
+## Configuração da API
+
+O frontend consome o backend NestJS existente. Configure `VITE_API_URL` no ambiente do Lovable ou em um arquivo `.env.local` durante o desenvolvimento:
+
+```env
+VITE_API_URL=https://api.seu-dominio.com.br
+```
+
+Sem essa variável, o ambiente local usa `http://localhost:3000`.
+
+Credenciais do PIER e do banco de dados pertencem exclusivamente ao backend e nunca devem ser adicionadas neste repositório.
