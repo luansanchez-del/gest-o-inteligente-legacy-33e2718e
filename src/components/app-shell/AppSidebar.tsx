@@ -30,24 +30,10 @@ const GRUPOS = [
     itens: [
       { title: "Painel", to: "/", icon: Gauge },
       { title: "Carteira", to: "/carteira", icon: Building2 },
-      { title: "Nova gestão", to: "/gestao/nova", icon: PlayCircle },
-      { title: "Acompanhamento", to: "/gestao/acompanhamento", icon: ListChecks },
-      { title: "Índice de entrega", to: "/indice", icon: BarChart3 },
     ],
-  },
-  {
-    label: "Operação",
-    itens: [
-      { title: "Solicitações", to: "/solicitacoes", icon: Inbox },
-      { title: "Revisão humana", to: "/revisao", icon: ShieldCheck },
-      { title: "Implantação", to: "/implantacao", icon: Rocket },
-    ],
-  },
-  {
-    label: "Administração",
-    itens: [{ title: "Configurações", to: "/configuracoes", icon: Cog }],
   },
 ] as const;
+
 
 export function AppSidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });

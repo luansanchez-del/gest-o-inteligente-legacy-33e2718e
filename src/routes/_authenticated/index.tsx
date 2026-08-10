@@ -63,9 +63,9 @@ function Painel() {
         titulo="Painel"
         descricao={`Situação consolidada até a competência ${formatarCompetencia(competencia)}.`}
         acoes={
-          <Button asChild>
-            <Link to="/gestao/nova">
-              Iniciar gestão
+          <Button asChild variant="outline">
+            <Link to="/carteira">
+              Abrir carteira
               <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
           </Button>
@@ -113,9 +113,7 @@ function Painel() {
           </div>
           <p className="text-3xl font-semibold tabular-nums">{revisao.data?.length ?? "—"}</p>
           <p className="text-sm text-muted-foreground">Itens aguardando decisão de um gestor.</p>
-          <Button asChild variant="outline" size="sm">
-            <Link to="/revisao">Abrir fila</Link>
-          </Button>
+          <p className="text-xs text-muted-foreground">Fila detalhada disponível em breve.</p>
         </Card>
 
         <Card className="space-y-3 p-5">
@@ -126,9 +124,7 @@ function Painel() {
           <p className="text-sm text-muted-foreground">
             Consulte o andamento das gestões abertas por competência, responsável e situação.
           </p>
-          <Button asChild variant="outline" size="sm">
-            <Link to="/gestao/acompanhamento">Ver execuções</Link>
-          </Button>
+          <p className="text-xs text-muted-foreground">Tela de execuções disponível em breve.</p>
         </Card>
       </div>
     </div>
