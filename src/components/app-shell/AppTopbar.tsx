@@ -67,10 +67,12 @@ export function AppTopbar({ organizacao }: { organizacao?: string }) {
             )}
           </BreadcrumbItem>
           {partes.map((parte, indice) => (
-            <BreadcrumbItem key={`${parte}-${indice}`}>
-              <BreadcrumbSeparator />
-              <BreadcrumbPage>{ROTULOS[parte] ?? parte}</BreadcrumbPage>
-            </BreadcrumbItem>
+            <>
+              <BreadcrumbSeparator key={`sep-${parte}-${indice}`} />
+              <BreadcrumbItem key={`item-${parte}-${indice}`}>
+                <BreadcrumbPage>{ROTULOS[parte] ?? parte}</BreadcrumbPage>
+              </BreadcrumbItem>
+            </>
           ))}
         </BreadcrumbList>
       </Breadcrumb>

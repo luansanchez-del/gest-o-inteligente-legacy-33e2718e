@@ -48,6 +48,38 @@ interface TokenCache {
 
 let cache: TokenCache | null = null;
 
+async function safeResponseText(response: Response): Promise<string> {
+  try {
+    const clone = response.clone();
+    const text = await clone.text();
+    return text.length > 500 ? text.slice(0, 500) + "…" : text;
+  } catch {
+    return "";
+  }
+}
+
+function extractToken(payload: Record<string, unknown>): string | null {
+  for (const key of ["token", "accessToken", "access_token", "jwt", "bearer"]) {
+    const value = payload[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+function extractExpiration(payload: Record<string, unknown>): number {
+  for (const key of ["expiraEm", "expiresAt", "expires_at", "exp", "expiration"]) {
+    const value = payload[key];
+    if (typeof value === "string") {
+      const parsed = Date.parse(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value > 1_000_000_000_000 ? value : value * 1000;
+    }
+  }
+  return Number.NaN;
+}
+
 /** Autentica em /api/v2/auth/login com usuário e senha. Nunca registra credencial nem token. */
 async function autenticar(config: PierConfig, forcar = false): Promise<string> {
   const chave = `${config.baseUrl}|${config.usuario}`;
@@ -63,19 +95,20 @@ async function autenticar(config: PierConfig, forcar = false): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const response = await fetch(`${config.baseUrl}/api/v2/auth/login`, {
+    const authUrl = `${config.baseUrl}/api/v2/auth/login`;
+    const response = await fetch(authUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({
-        usuario: config.usuario,
-        login: config.usuario,
-        email: config.usuario,
-        senha: config.senha,
+        Username: config.usuario,
+        Password: config.senha,
       }),
       signal: controller.signal,
     });
 
+    const bodyPreview = await safeResponseText(response);
     console.info(`[pier] POST /api/v2/auth/login -> ${response.status}`);
+    if (bodyPreview) console.info(`[pier] resposta: ${bodyPreview}`);
 
     if (response.status === 401 || response.status === 403) {
       throw integracaoIndisponivel(
@@ -83,18 +116,25 @@ async function autenticar(config: PierConfig, forcar = false): Promise<string> {
       );
     }
     if (!response.ok) {
-      throw integracaoFalhou("Não foi possível autenticar no PIER.", `HTTP ${response.status}`);
+      throw integracaoFalhou(
+        "Não foi possível autenticar no PIER.",
+        `HTTP ${response.status}: ${bodyPreview || "sem corpo"}`,
+      );
     }
 
-    const payload = (await response.json()) as { token?: string; expiraEm?: string };
-    if (!payload?.token) {
-      throw integracaoFalhou("O PIER não retornou um token de acesso válido.");
+    const payload = (await response.json()) as Record<string, unknown>;
+    const token = extractToken(payload);
+    if (!token) {
+      throw integracaoFalhou(
+        "O PIER não retornou um token de acesso válido.",
+        `campos: ${Object.keys(payload).join(", ")}`,
+      );
     }
 
-    const expiraEm = payload.expiraEm ? Date.parse(payload.expiraEm) : Number.NaN;
+    const expiraEm = extractExpiration(payload);
     cache = {
       chave,
-      token: payload.token,
+      token,
       expiraEm: Number.isFinite(expiraEm) ? expiraEm : Date.now() + 30 * 60_000,
     };
     return cache.token;
@@ -104,6 +144,45 @@ async function autenticar(config: PierConfig, forcar = false): Promise<string> {
       "Não foi possível falar com o PIER agora.",
       error instanceof Error ? error.message : String(error),
     );
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Testa a conectividade e autenticação com o PIER sem realizar alterações. */
+export async function testarConexaoPier(): Promise<{
+  ok: boolean;
+  status?: number;
+  detalhe?: string;
+}> {
+  const resolved = readPierConfig();
+  if (!resolved.ok) return { ok: false, detalhe: resolved.reason };
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const authUrl = `${resolved.config.baseUrl}/api/v2/auth/login`;
+    const response = await fetch(authUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        Username: resolved.config.usuario,
+        Password: resolved.config.senha,
+      }),
+      signal: controller.signal,
+    });
+
+    const bodyPreview = await safeResponseText(response);
+    return {
+      ok: response.ok,
+      status: response.status,
+      detalhe: bodyPreview || `HTTP ${response.status}`,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      detalhe: error instanceof Error ? error.message : String(error),
+    };
   } finally {
     clearTimeout(timer);
   }

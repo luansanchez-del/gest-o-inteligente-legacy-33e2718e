@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link2, Link2Off, RefreshCw } from "lucide-react";
+import { Link2, Link2Off, RefreshCw, Stethoscope } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/common/PageHeader";
@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/table";
 import {
   desvincularCliente,
+  diagnosticarConexaoPier,
   listarCarteira,
   sincronizarCarteira,
   vincularCliente,
@@ -83,6 +84,20 @@ function CarteiraPage() {
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
 
+  const diagnosticar = useMutation({
+    mutationFn: () => diagnosticarConexaoPier(),
+    onSuccess: (r) => {
+      if (r.ok) {
+        toast.success("Conexão com o PIER OK — autenticação funcionando.");
+      } else {
+        toast.error(`Conexão com o PIER falhou: ${r.detalhe ?? "erro desconhecido"}`, {
+          duration: 8000,
+        });
+      }
+    },
+    onError: (e) => toast.error(mensagemDeErro(e)),
+  });
+
   const vincular = useMutation({
     mutationFn: (pierClientId: string) => vincularCliente({ data: { pierClientId } }),
     onSuccess: () => {
@@ -111,12 +126,23 @@ function CarteiraPage() {
         titulo="Carteira PIER"
         descricao="Clientes sincronizados do PIER e o vínculo com as empresas internas."
         acoes={
-          <Button onClick={() => sincronizar.mutate()} disabled={sincronizar.isPending}>
-            <RefreshCw
-              className={`mr-2 h-4 w-4 ${sincronizar.isPending ? "animate-spin" : ""}`}
-            />
-            Sincronizar PIER
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => diagnosticar.mutate()}
+              disabled={diagnosticar.isPending}
+              title="Testar autenticação com o PIER"
+            >
+              <Stethoscope className="mr-2 h-4 w-4" />
+              Testar conexão
+            </Button>
+            <Button onClick={() => sincronizar.mutate()} disabled={sincronizar.isPending}>
+              <RefreshCw
+                className={`mr-2 h-4 w-4 ${sincronizar.isPending ? "animate-spin" : ""}`}
+              />
+              Sincronizar PIER
+            </Button>
+          </div>
         }
       />
 
