@@ -28,14 +28,15 @@ function inferPurpose(typeName: string | null): PierRequest["purpose"] {
   return "OTHER";
 }
 
+/** Mapeia o cliente da PIER Public API V2 para o modelo interno. */
 export function mapClient(raw: Raw): PierClient {
   return {
-    externalId: str(raw, "id", "externalId", "codigo") ?? "",
-    name: str(raw, "name", "nome", "razaoSocial") ?? "Sem nome",
-    document: str(raw, "document", "cnpj", "documento"),
+    externalId: str(raw, "id", "idCliente", "externalId", "codigo") ?? "",
+    name: str(raw, "nome", "name", "razaoSocial") ?? "Sem nome",
+    document: str(raw, "documento", "document", "cnpj", "cpf"),
     status: str(raw, "status", "situacao"),
-    taxRegime: str(raw, "taxRegime", "tributacao", "regime"),
-    responsibleName: str(raw, "responsibleName", "responsavel"),
+    taxRegime: str(raw, "tributacao", "taxRegime", "regime"),
+    responsibleName: null,
     raw,
   };
 }
