@@ -100,10 +100,8 @@ async function autenticar(config: PierConfig, forcar = false): Promise<string> {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({
-        usuario: config.usuario,
-        login: config.usuario,
-        email: config.usuario,
-        senha: config.senha,
+        Username: config.usuario,
+        Password: config.senha,
       }),
       signal: controller.signal,
     });
