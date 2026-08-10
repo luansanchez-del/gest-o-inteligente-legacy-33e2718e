@@ -28,6 +28,13 @@ export const sincronizarCarteira = createServerFn({ method: "POST" })
     }),
   );
 
+export const diagnosticarConexaoPier = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async () => {
+    const { testarConexaoPier } = await import("@/server/integrations/pier/pier.http");
+    return testarConexaoPier();
+  });
+
 export const vincularCliente = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { pierClientId: string }) => {
