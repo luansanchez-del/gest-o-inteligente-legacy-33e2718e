@@ -60,17 +60,26 @@ export const Route = createFileRoute("/_authenticated/carteira")({
 });
 
 type StatusFiltro = "Todos" | "Ativo" | "Inativo";
+type SituacaoFiltro = "TODOS" | "VINCULADO" | "NAO_VINCULADO";
+const TODOS_REGIMES = "__TODOS__";
 
 function CarteiraPage() {
   const queryClient = useQueryClient();
   const [busca, setBusca] = useState("");
   const [status, setStatus] = useState<StatusFiltro>("Todos");
+  const [regime, setRegime] = useState<string>(TODOS_REGIMES);
+  const [situacao, setSituacao] = useState<SituacaoFiltro>("TODOS");
 
   const consulta = useQuery({
-    queryKey: ["carteira", busca, status],
+    queryKey: ["carteira", busca, status, regime, situacao],
     queryFn: () =>
       listarCarteira({
-        data: { busca, ...(status === "Todos" ? {} : { status }) },
+        data: {
+          busca,
+          ...(status === "Todos" ? {} : { status }),
+          ...(regime === TODOS_REGIMES ? {} : { regime }),
+          ...(situacao === "TODOS" ? {} : { situacao }),
+        },
       }),
     placeholderData: (anterior) => anterior,
   });
