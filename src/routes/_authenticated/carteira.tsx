@@ -200,7 +200,7 @@ function CarteiraPage() {
       </div>
 
       <Card className="overflow-hidden">
-        <div className="flex flex-col gap-3 border-b border-border p-4 md:flex-row md:items-center">
+        <div className="flex flex-col gap-3 border-b border-border p-4 md:flex-row md:flex-wrap md:items-center">
           <Input
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
@@ -208,15 +208,44 @@ function CarteiraPage() {
             className="md:max-w-sm"
           />
           <Select value={status} onValueChange={(v) => setStatus(v as StatusFiltro)}>
-            <SelectTrigger className="md:w-56">
+            <SelectTrigger className="md:w-44" aria-label="Status PIER">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="Todos">Todos</SelectItem>
+              <SelectItem value="Todos">Todos os status</SelectItem>
               <SelectItem value="Ativo">Ativos</SelectItem>
               <SelectItem value="Inativo">Inativos</SelectItem>
             </SelectContent>
           </Select>
+          <Select value={regime} onValueChange={setRegime}>
+            <SelectTrigger className="md:w-56" aria-label="Regime tributário">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={TODOS_REGIMES}>Todos os regimes</SelectItem>
+              {regimes.map((r) => (
+                <SelectItem key={r} value={r}>
+                  {r}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={situacao} onValueChange={(v) => setSituacao(v as SituacaoFiltro)}>
+            <SelectTrigger className="md:w-48" aria-label="Situação do vínculo">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="TODOS">Todos os vínculos</SelectItem>
+              <SelectItem value="VINCULADO">Vinculados</SelectItem>
+              <SelectItem value="NAO_VINCULADO">Sem vínculo</SelectItem>
+            </SelectContent>
+          </Select>
+          {temFiltroAtivo ? (
+            <Button variant="ghost" size="sm" onClick={limparFiltros}>
+              <X className="mr-2 h-4 w-4" />
+              Limpar filtros
+            </Button>
+          ) : null}
         </div>
 
         {consulta.isLoading ? (
