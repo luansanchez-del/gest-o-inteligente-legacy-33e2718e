@@ -166,10 +166,14 @@ export async function sincronizarCarteira(ctx: AppContext) {
     const clientes = await pierAdapter.listClients();
     let processados = 0;
     let falhas = 0;
+    const agora = new Date().toISOString();
+    const TAMANHO_LOTE = 250;
 
-    for (const cliente of clientes) {
+    // Upsert em lotes: milhares de round-trips individuais faziam a sincronização estourar o tempo.
+    for (let inicio = 0; inicio < clientes.length; inicio += TAMANHO_LOTE) {
+      const lote = clientes.slice(inicio, inicio + TAMANHO_LOTE);
       const { error } = await ctx.db.from("pier_client").upsert(
-        {
+        lote.map((cliente) => ({
           organization_id: ctx.organizationId,
           external_id: cliente.externalId,
           name: cliente.name,
@@ -178,24 +182,24 @@ export async function sincronizarCarteira(ctx: AppContext) {
           tax_regime: cliente.taxRegime,
           responsible_name: cliente.responsibleName,
           raw: cliente.raw as never,
-          synced_at: new Date().toISOString(),
-        },
+          synced_at: agora,
+        })),
         { onConflict: "organization_id,external_id" },
       );
 
       if (error) {
-        falhas += 1;
+        falhas += lote.length;
         await ctx.db.from("sync_event").insert({
           organization_id: ctx.organizationId,
           sync_run_id: run.id,
           level: "CRITICAL",
-          external_id: cliente.externalId,
           message: error.message,
         });
       } else {
-        processados += 1;
+        processados += lote.length;
       }
     }
+
 
     await finalizar("COMPLETED", { total: clientes.length, processados, falhas });
     await audit(ctx, {
