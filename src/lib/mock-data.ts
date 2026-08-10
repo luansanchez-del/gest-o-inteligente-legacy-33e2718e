@@ -164,7 +164,7 @@ export const companies: Company[] = COMPANY_NAMES.map((name, i) => ({
   active: i !== 16,
   linkedToPier: ![2, 7, 12, 16].includes(i),
   segment: i % 3 === 0 ? "BPO" : "CONTABIL",
-  internalOwnerName: INTERNAL_OWNERS[i % INTERNAL_OWNERS.length],
+  internalOwnerName: INTERNAL_OWNERS[i % INTERNAL_OWNERS.length] ?? null,
 }));
 
 const STATUS_POOL: ClosingStatus[] = [
@@ -185,7 +185,9 @@ function monthDeadline(month: string, day: number) {
 }
 
 function nextMonthDate(month: string, day: number) {
-  const [y, m] = month.split("-").map(Number);
+  const parts = month.split("-").map(Number);
+  const y = parts[0] as number;
+  const m = parts[1] as number;
   const d = new Date(Date.UTC(y, m - 1 + 1, day, 15, 0, 0));
   return d.toISOString();
 }
@@ -201,11 +203,11 @@ companies.forEach((company, ci) => {
   MONTHS.forEach((month, mi) => {
     (["ACCOUNTING", "TAX"] as ClosingType[]).forEach((type, ti) => {
       const pick = Math.floor(rand() * STATUS_POOL.length);
-      let status = STATUS_POOL[(pick + ci + mi + ti) % STATUS_POOL.length];
+      let status = STATUS_POOL[(pick + ci + mi + ti) % STATUS_POOL.length] as ClosingStatus;
       if (!company.linkedToPier) status = "AWAITING";
 
       const responsible = company.linkedToPier
-        ? RESPONSIBLES[(ci + mi + ti) % RESPONSIBLES.length]
+        ? RESPONSIBLES[(ci + mi + ti) % RESPONSIBLES.length] ?? null
         : null;
 
       const deadline = monthDeadline(month, type === "TAX" ? 20 : 25);
@@ -253,7 +255,7 @@ companies.forEach((company, ci) => {
       const qty = 2 + ((ci + mi) % 3);
       for (let r = 0; r < qty; r++) {
         seqRequest += 1;
-        const typeName = REQUEST_TYPES[(ci + r + mi) % REQUEST_TYPES.length];
+        const typeName = REQUEST_TYPES[(ci + r + mi) % REQUEST_TYPES.length] as string;
         const finished = status === "APPROVED" || (r === 0 && status !== "AWAITING");
         externalRequests.push({
           id: `sol-${seqRequest}`,
@@ -270,7 +272,7 @@ companies.forEach((company, ci) => {
                   ? "OTHER"
                   : "ACCOUNTING_CLOSING",
           status: finished ? "Concluída" : status === "AWAITING" ? "Aguardando cliente" : "Em análise",
-          responsibleName: responsible,
+          responsibleName: responsible ?? null,
           requestedAt: monthDeadline(month, 5),
           finishedAt: finished ? monthDeadline(month, late ? 28 : 16) : null,
           deadlineAt: deadline,
