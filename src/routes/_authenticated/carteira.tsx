@@ -84,6 +84,20 @@ function CarteiraPage() {
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
 
+  const diagnosticar = useMutation({
+    mutationFn: () => diagnosticarConexaoPier(),
+    onSuccess: (r) => {
+      if (r.ok) {
+        toast.success("Conexão com o PIER OK — autenticação funcionando.");
+      } else {
+        toast.error(`Conexão com o PIER falhou: ${r.detalhe ?? "erro desconhecido"}`, {
+          duration: 8000,
+        });
+      }
+    },
+    onError: (e) => toast.error(mensagemDeErro(e)),
+  });
+
   const vincular = useMutation({
     mutationFn: (pierClientId: string) => vincularCliente({ data: { pierClientId } }),
     onSuccess: () => {
