@@ -210,7 +210,6 @@ export async function pierGet<T>(
     const token = await autenticar(config, renovou);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-    const startedAt = Date.now();
     try {
       const response = await fetch(url, {
         headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
