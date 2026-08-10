@@ -10,12 +10,18 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as IndiceEntregaRouteImport } from './routes/indice-entrega'
 import { Route as GestaoAcompanhamentoRouteImport } from './routes/gestao.acompanhamento'
 import { Route as GestaoNovaRouteImport } from './routes/gestao.nova'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const IndiceEntregaRoute = IndiceEntregaRouteImport.update({
+  id: '/indice-entrega',
+  path: '/indice-entrega',
   getParentRoute: () => rootRouteImport,
 } as any)
 const GestaoAcompanhamentoRoute = GestaoAcompanhamentoRouteImport.update({
@@ -31,30 +37,39 @@ const GestaoNovaRoute = GestaoNovaRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/indice-entrega': typeof IndiceEntregaRoute
   '/gestao/acompanhamento': typeof GestaoAcompanhamentoRoute
   '/gestao/nova': typeof GestaoNovaRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/indice-entrega': typeof IndiceEntregaRoute
   '/gestao/acompanhamento': typeof GestaoAcompanhamentoRoute
   '/gestao/nova': typeof GestaoNovaRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/indice-entrega': typeof IndiceEntregaRoute
   '/gestao/acompanhamento': typeof GestaoAcompanhamentoRoute
   '/gestao/nova': typeof GestaoNovaRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/gestao/acompanhamento' | '/gestao/nova'
+  fullPaths: '/' | '/indice-entrega' | '/gestao/acompanhamento' | '/gestao/nova'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/gestao/acompanhamento' | '/gestao/nova'
-  id: '__root__' | '/' | '/gestao/acompanhamento' | '/gestao/nova'
+  to: '/' | '/indice-entrega' | '/gestao/acompanhamento' | '/gestao/nova'
+  id:
+    | '__root__'
+    | '/'
+    | '/indice-entrega'
+    | '/gestao/acompanhamento'
+    | '/gestao/nova'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  IndiceEntregaRoute: typeof IndiceEntregaRoute
   GestaoAcompanhamentoRoute: typeof GestaoAcompanhamentoRoute
   GestaoNovaRoute: typeof GestaoNovaRoute
 }
@@ -66,6 +81,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/indice-entrega': {
+      id: '/indice-entrega'
+      path: '/indice-entrega'
+      fullPath: '/indice-entrega'
+      preLoaderRoute: typeof IndiceEntregaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/gestao/acompanhamento': {
@@ -87,6 +109,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  IndiceEntregaRoute: IndiceEntregaRoute,
   GestaoAcompanhamentoRoute: GestaoAcompanhamentoRoute,
   GestaoNovaRoute: GestaoNovaRoute,
 }
