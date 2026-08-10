@@ -2,15 +2,15 @@ import { integracaoFalhou, integracaoIndisponivel } from "../../lib/errors";
 
 export interface PierConfig {
   baseUrl: string;
-  token: string;
+  apiKey: string;
 }
 
 /** Lê a configuração do PIER apenas do ambiente do servidor. Nunca de VITE_*. */
 export function readPierConfig(): { ok: true; config: PierConfig } | { ok: false; reason: string } {
   const baseUrl = process.env["PIER_BASE_URL"]?.trim();
-  const token = process.env["PIER_API_TOKEN"]?.trim();
+  const apiKey = process.env["PIER_API_KEY"]?.trim();
 
-  const missing = [!baseUrl && "PIER_BASE_URL", !token && "PIER_API_TOKEN"].filter(
+  const missing = [!baseUrl && "PIER_BASE_URL", !apiKey && "PIER_API_KEY"].filter(
     Boolean,
   ) as string[];
 
@@ -21,37 +21,109 @@ export function readPierConfig(): { ok: true; config: PierConfig } | { ok: false
     };
   }
 
-  return { ok: true, config: { baseUrl: baseUrl!.replace(/\/+$/, ""), token: token! } };
+  return { ok: true, config: { baseUrl: baseUrl!.replace(/\/+$/, ""), apiKey: apiKey! } };
 }
 
-const TIMEOUT_MS = 15000;
+const TIMEOUT_MS = 20000;
 const MAX_ATTEMPTS = 3;
+/** Renova o token um pouco antes do vencimento informado pelo PIER. */
+const RENOVAR_ANTES_MS = 60_000;
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** GET no PIER com timeout, retry com backoff e sem jamais registrar a credencial. */
-export async function pierGet<T>(path: string, query?: Record<string, string | undefined>) {
+interface TokenCache {
+  chave: string;
+  token: string;
+  expiraEm: number;
+}
+
+let cache: TokenCache | null = null;
+
+/** Autentica em /api/v2/auth/login-apikey. Nunca registra a API Key nem o token. */
+async function autenticar(config: PierConfig, forcar = false): Promise<string> {
+  const chave = config.baseUrl;
+  if (
+    !forcar &&
+    cache &&
+    cache.chave === chave &&
+    cache.expiraEm - RENOVAR_ANTES_MS > Date.now()
+  ) {
+    return cache.token;
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const response = await fetch(`${config.baseUrl}/api/v2/auth/login-apikey`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ apiKey: config.apiKey }),
+      signal: controller.signal,
+    });
+
+    console.info(`[pier] POST /api/v2/auth/login-apikey -> ${response.status}`);
+
+    if (response.status === 401 || response.status === 403) {
+      throw integracaoIndisponivel(
+        "O PIER recusou a credencial configurada. Revise a chave de integração.",
+      );
+    }
+    if (!response.ok) {
+      throw integracaoFalhou("Não foi possível autenticar no PIER.", `HTTP ${response.status}`);
+    }
+
+    const payload = (await response.json()) as { token?: string; expiraEm?: string };
+    if (!payload?.token) {
+      throw integracaoFalhou("O PIER não retornou um token de acesso válido.");
+    }
+
+    const expiraEm = payload.expiraEm ? Date.parse(payload.expiraEm) : Number.NaN;
+    cache = {
+      chave,
+      token: payload.token,
+      expiraEm: Number.isFinite(expiraEm) ? expiraEm : Date.now() + 30 * 60_000,
+    };
+    return cache.token;
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error) throw error;
+    throw integracaoFalhou(
+      "Não foi possível falar com o PIER agora.",
+      error instanceof Error ? error.message : String(error),
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** GET autenticado no PIER com timeout, retry com backoff e renovação de token em 401. */
+export async function pierGet<T>(
+  path: string,
+  query?: Record<string, string | number | undefined>,
+): Promise<T> {
   const resolved = readPierConfig();
   if (!resolved.ok) throw integracaoIndisponivel(resolved.reason);
+  const { config } = resolved;
 
-  const url = new URL(`${resolved.config.baseUrl}${path}`);
+  const url = new URL(`${config.baseUrl}${path}`);
   for (const [key, value] of Object.entries(query ?? {})) {
-    if (value) url.searchParams.set(key, value);
+    if (value !== undefined && value !== null && `${value}` !== "") {
+      url.searchParams.set(key, String(value));
+    }
   }
 
   let lastDetail = "";
+  let renovou = false;
+
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const token = await autenticar(config, renovou);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
     const startedAt = Date.now();
     try {
       const response = await fetch(url, {
-        headers: {
-          Accept: "application/json",
-          Authorization: `Bearer ${resolved.config.token}`,
-        },
+        headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
         signal: controller.signal,
       });
 
@@ -59,9 +131,15 @@ export async function pierGet<T>(path: string, query?: Record<string, string | u
         `[pier] GET ${path} -> ${response.status} em ${Date.now() - startedAt}ms (tentativa ${attempt})`,
       );
 
+      if (response.status === 401 && !renovou) {
+        renovou = true;
+        cache = null;
+        continue;
+      }
+
       if (response.status === 401 || response.status === 403) {
         throw integracaoIndisponivel(
-          "O PIER recusou as credenciais configuradas. Revise a credencial de integração.",
+          "O PIER recusou a credencial configurada. Revise a chave de integração.",
         );
       }
 

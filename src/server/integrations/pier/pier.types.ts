@@ -36,7 +36,7 @@ export interface PierPost {
 export interface PierAdapter {
   /** Informa se a integração está configurada e utilizável. */
   status(): Promise<{ available: boolean; reason?: string }>;
-  listClients(): Promise<PierClient[]>;
+  listClients(options?: { status?: "Ativo" | "Inativo" | "Todos" }): Promise<PierClient[]>;
   listRequests(input: { clientExternalId: string; referenceMonth: string }): Promise<PierRequest[]>;
   listPosts(input: { requestExternalId: string }): Promise<PierPost[]>;
 }
