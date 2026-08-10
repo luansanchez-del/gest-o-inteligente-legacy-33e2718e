@@ -10,33 +10,43 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as GestaoNovaRouteImport } from './routes/gestao.nova'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const GestaoNovaRoute = GestaoNovaRouteImport.update({
+  id: '/gestao/nova',
+  path: '/gestao/nova',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/gestao/nova': typeof GestaoNovaRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/gestao/nova': typeof GestaoNovaRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/gestao/nova': typeof GestaoNovaRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/gestao/nova'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/gestao/nova'
+  id: '__root__' | '/' | '/gestao/nova'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  GestaoNovaRoute: typeof GestaoNovaRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +58,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/gestao/nova': {
+      id: '/gestao/nova'
+      path: '/gestao/nova'
+      fullPath: '/gestao/nova'
+      preLoaderRoute: typeof GestaoNovaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  GestaoNovaRoute: GestaoNovaRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
