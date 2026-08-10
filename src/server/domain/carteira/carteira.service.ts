@@ -47,13 +47,27 @@ export async function listarCarteira(
   ctx: AppContext,
   filtros: CarteiraFiltros,
 ): Promise<{ linhas: CarteiraLinha[]; resumo: CarteiraResumo }> {
-  const { data: clientes, error } = await ctx.db
-    .from("pier_client")
-    .select("id, external_id, name, document, status, tax_regime, responsible_name, synced_at")
-    .eq("organization_id", ctx.organizationId)
-    .order("name");
+  // PostgREST corta em 1000 linhas por requisição: pagina até trazer a carteira completa.
+  const clientes: NonNullable<Awaited<ReturnType<typeof buscarPagina>>["data"]> = [];
+  const buscarPagina = (de: number, ate: number) =>
+    ctx.db
+      .from("pier_client")
+      .select("id, external_id, name, document, status, tax_regime, responsible_name, synced_at")
+      .eq("organization_id", ctx.organizationId)
+      .order("name")
+      .range(de, ate);
 
-  if (error) throw new AppError("INESPERADO", "Não foi possível carregar a carteira.", error.message);
+  const TAMANHO_PAGINA = 1000;
+  for (let pagina = 0; pagina < 50; pagina++) {
+    const de = pagina * TAMANHO_PAGINA;
+    const { data, error } = await buscarPagina(de, de + TAMANHO_PAGINA - 1);
+    if (error)
+      throw new AppError("INESPERADO", "Não foi possível carregar a carteira.", error.message);
+    clientes.push(...(data ?? []));
+    if (!data || data.length < TAMANHO_PAGINA) break;
+  }
+
+
 
   const { data: vinculos } = await ctx.db
     .from("company_pier_link")
