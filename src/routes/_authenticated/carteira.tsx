@@ -128,6 +128,15 @@ function CarteiraPage() {
   const resumo = consulta.data?.resumo;
   const linhas = consulta.data?.linhas ?? [];
   const ultimaSincronizacao = resumo?.ultimaSincronizacao;
+  const regimes = resumo?.filtrosDisponiveis?.regimes ?? [];
+  const temFiltroAtivo =
+    busca.trim() !== "" || status !== "Todos" || regime !== TODOS_REGIMES || situacao !== "TODOS";
+  const limparFiltros = () => {
+    setBusca("");
+    setStatus("Todos");
+    setRegime(TODOS_REGIMES);
+    setSituacao("TODOS");
+  };
 
   return (
     <div className="space-y-6">
