@@ -11,7 +11,7 @@ export class ApiConfigError extends Error {
 export class ApiNetworkError extends Error {
   constructor(
     readonly endpoint: string,
-    readonly cause?: unknown,
+    readonly originalError?: unknown,
   ) {
     super(
       `Não foi possível conectar à API da Gestão Inteligente (${endpoint}). Verifique se o backend está acessível a partir deste ambiente.`,
