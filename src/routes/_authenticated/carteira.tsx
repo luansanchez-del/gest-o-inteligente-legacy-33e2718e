@@ -44,7 +44,7 @@ export const Route = createFileRoute("/_authenticated/carteira")({
       {
         name: "description",
         content:
-          "Clientes disponíveis no PIER, com indicação de vínculo com as empresas internas e sincronização manual.",
+          "Clientes sincronizados do PIER, com tributação, status e situação do vínculo com as empresas internas.",
       },
       { property: "og:title", content: "Carteira PIER | Gestão Inteligente" },
       {
@@ -58,14 +58,20 @@ export const Route = createFileRoute("/_authenticated/carteira")({
   component: CarteiraPage,
 });
 
+type StatusFiltro = "Todos" | "Ativo" | "Inativo";
+
 function CarteiraPage() {
   const queryClient = useQueryClient();
   const [busca, setBusca] = useState("");
-  const [situacao, setSituacao] = useState<"TODOS" | "VINCULADO" | "NAO_VINCULADO">("TODOS");
+  const [status, setStatus] = useState<StatusFiltro>("Todos");
 
   const consulta = useQuery({
-    queryKey: ["carteira", busca, situacao],
-    queryFn: () => listarCarteira({ data: { busca, situacao } }),
+    queryKey: ["carteira", busca, status],
+    queryFn: () =>
+      listarCarteira({
+        data: { busca, ...(status === "Todos" ? {} : { status }) },
+      }),
+    placeholderData: (anterior) => anterior,
   });
 
   const sincronizar = useMutation({
@@ -96,18 +102,20 @@ function CarteiraPage() {
   });
 
   const resumo = consulta.data?.resumo;
+  const linhas = consulta.data?.linhas ?? [];
+  const ultimaSincronizacao = resumo?.ultimaSincronizacao;
 
   return (
     <div className="space-y-6">
       <PageHeader
         titulo="Carteira PIER"
-        descricao="Clientes disponíveis no PIER e o vínculo com as empresas internas."
+        descricao="Clientes sincronizados do PIER e o vínculo com as empresas internas."
         acoes={
           <Button onClick={() => sincronizar.mutate()} disabled={sincronizar.isPending}>
             <RefreshCw
               className={`mr-2 h-4 w-4 ${sincronizar.isPending ? "animate-spin" : ""}`}
             />
-            Atualizar carteira
+            Sincronizar PIER
           </Button>
         }
       />
@@ -116,6 +124,14 @@ function CarteiraPage() {
         <Card className="border-warning/40 bg-warning-soft p-4 text-sm text-warning-strong">
           Integração com o PIER indisponível: {resumo.integracao.reason ?? "não configurada"}.
         </Card>
+      ) : null}
+
+      {sincronizar.isError ? (
+        <ErroConsulta
+          error={sincronizar.error}
+          titulo="A sincronização com o PIER falhou"
+          onRetry={() => sincronizar.mutate()}
+        />
       ) : null}
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -131,7 +147,10 @@ function CarteiraPage() {
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Sem vínculo</p>
           <p className="text-2xl font-semibold tabular-nums">{resumo?.naoVinculados ?? "—"}</p>
           <p className="mt-1 text-[11px] text-muted-foreground">
-            Última atualização: {formatarDataHora(resumo?.ultimaSincronizacao?.finishedAt)}
+            Última sincronização:{" "}
+            {ultimaSincronizacao
+              ? formatarDataHora(ultimaSincronizacao.finishedAt ?? ultimaSincronizacao.startedAt)
+              : "nunca sincronizada"}
           </p>
         </Card>
       </div>
@@ -141,17 +160,17 @@ function CarteiraPage() {
           <Input
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            placeholder="Buscar por nome ou CNPJ"
+            placeholder="Buscar por nome, CNPJ ou CPF"
             className="md:max-w-sm"
           />
-          <Select value={situacao} onValueChange={(v) => setSituacao(v as typeof situacao)}>
+          <Select value={status} onValueChange={(v) => setStatus(v as StatusFiltro)}>
             <SelectTrigger className="md:w-56">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="TODOS">Todos os clientes</SelectItem>
-              <SelectItem value="VINCULADO">Somente vinculados</SelectItem>
-              <SelectItem value="NAO_VINCULADO">Somente sem vínculo</SelectItem>
+              <SelectItem value="Todos">Todos</SelectItem>
+              <SelectItem value="Ativo">Ativos</SelectItem>
+              <SelectItem value="Inativo">Inativos</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -162,33 +181,30 @@ function CarteiraPage() {
           <div className="p-4">
             <ErroConsulta error={consulta.error} onRetry={() => void consulta.refetch()} />
           </div>
-        ) : (consulta.data?.linhas.length ?? 0) === 0 ? (
+        ) : linhas.length === 0 ? (
           <EstadoVazio
-            titulo="Nenhum cliente na carteira"
-            descricao="Use “Atualizar carteira” para buscar os clientes disponíveis no PIER."
+            titulo="Nenhum cliente PIER sincronizado."
+            descricao="Use “Sincronizar PIER” para trazer os clientes da carteira."
           />
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Cliente</TableHead>
-                <TableHead>CNPJ</TableHead>
-                <TableHead>Responsável</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Empresa interna</TableHead>
+                <TableHead>Nome</TableHead>
+                <TableHead>CNPJ/CPF</TableHead>
+                <TableHead>Tributação</TableHead>
+                <TableHead>Status PIER</TableHead>
+                <TableHead>Situação do vínculo</TableHead>
+                <TableHead>Última sincronização</TableHead>
                 <TableHead className="text-right">Ação</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {consulta.data!.linhas.map((linha) => (
+              {linhas.map((linha) => (
                 <TableRow key={linha.pierClientId}>
                   <TableCell className="font-medium">{linha.nome}</TableCell>
                   <TableCell className="tabular-nums">{formatarCnpj(linha.documento)}</TableCell>
-                  <TableCell>
-                    {linha.responsavel ?? (
-                      <span className="text-muted-foreground">Sem responsável</span>
-                    )}
-                  </TableCell>
+                  <TableCell>{linha.regime ?? "—"}</TableCell>
                   <TableCell>{linha.status ?? "—"}</TableCell>
                   <TableCell>
                     {linha.vinculado ? (
@@ -196,6 +212,9 @@ function CarteiraPage() {
                     ) : (
                       <span className="text-muted-foreground">Não vinculado</span>
                     )}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {formatarDataHora(linha.sincronizadoEm)}
                   </TableCell>
                   <TableCell className="text-right">
                     {linha.vinculado ? (
