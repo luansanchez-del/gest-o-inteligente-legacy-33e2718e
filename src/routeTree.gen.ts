@@ -12,12 +12,9 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SplatRouteImport } from './routes/$'
 import { Route as AuthRouteImport } from './routes/auth'
-import { Route as IndiceEntregaRouteImport } from './routes/indice-entrega'
 import { Route as McpRouteImport } from './routes/mcp'
 import { Route as Char91DotmcpChar93ListToolsRouteImport } from './routes/[.mcp]/list-tools'
 import { Route as Char91DotwellKnownChar93OauthProtectedResourceRouteImport } from './routes/[.well-known]/oauth-protected-resource'
-import { Route as GestaoAcompanhamentoRouteImport } from './routes/gestao.acompanhamento'
-import { Route as GestaoNovaRouteImport } from './routes/gestao.nova'
 import { Route as DotlovableOauthConsentRouteImport } from './routes/[.]lovable.oauth.consent'
 import { Route as Char91DotmcpChar93InvokeToolToolRouteImport } from './routes/[.mcp]/invoke-tool/$tool'
 
@@ -34,11 +31,6 @@ const SplatRoute = SplatRouteImport.update({
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const IndiceEntregaRoute = IndiceEntregaRouteImport.update({
-  id: '/indice-entrega',
-  path: '/indice-entrega',
   getParentRoute: () => rootRouteImport,
 } as any)
 const McpRoute = McpRouteImport.update({
@@ -58,16 +50,6 @@ const Char91DotwellKnownChar93OauthProtectedResourceRoute =
     path: '/.well-known/oauth-protected-resource',
     getParentRoute: () => rootRouteImport,
   } as any)
-const GestaoAcompanhamentoRoute = GestaoAcompanhamentoRouteImport.update({
-  id: '/gestao/acompanhamento',
-  path: '/gestao/acompanhamento',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const GestaoNovaRoute = GestaoNovaRouteImport.update({
-  id: '/gestao/nova',
-  path: '/gestao/nova',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const DotlovableOauthConsentRoute = DotlovableOauthConsentRouteImport.update({
   id: '/.lovable/oauth/consent',
   path: '/.lovable/oauth/consent',
@@ -84,12 +66,9 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$': typeof SplatRoute
   '/auth': typeof AuthRoute
-  '/indice-entrega': typeof IndiceEntregaRoute
   '/mcp': typeof McpRoute
   '/.mcp/list-tools': typeof Char91DotmcpChar93ListToolsRoute
   '/.well-known/oauth-protected-resource': typeof Char91DotwellKnownChar93OauthProtectedResourceRoute
-  '/gestao/acompanhamento': typeof GestaoAcompanhamentoRoute
-  '/gestao/nova': typeof GestaoNovaRoute
   '/.lovable/oauth/consent': typeof DotlovableOauthConsentRoute
   '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
 }
@@ -97,12 +76,9 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/$': typeof SplatRoute
   '/auth': typeof AuthRoute
-  '/indice-entrega': typeof IndiceEntregaRoute
   '/mcp': typeof McpRoute
   '/.mcp/list-tools': typeof Char91DotmcpChar93ListToolsRoute
   '/.well-known/oauth-protected-resource': typeof Char91DotwellKnownChar93OauthProtectedResourceRoute
-  '/gestao/acompanhamento': typeof GestaoAcompanhamentoRoute
-  '/gestao/nova': typeof GestaoNovaRoute
   '/.lovable/oauth/consent': typeof DotlovableOauthConsentRoute
   '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
 }
@@ -111,12 +87,9 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/$': typeof SplatRoute
   '/auth': typeof AuthRoute
-  '/indice-entrega': typeof IndiceEntregaRoute
   '/mcp': typeof McpRoute
   '/.mcp/list-tools': typeof Char91DotmcpChar93ListToolsRoute
   '/.well-known/oauth-protected-resource': typeof Char91DotwellKnownChar93OauthProtectedResourceRoute
-  '/gestao/acompanhamento': typeof GestaoAcompanhamentoRoute
-  '/gestao/nova': typeof GestaoNovaRoute
   '/.lovable/oauth/consent': typeof DotlovableOauthConsentRoute
   '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
 }
@@ -126,12 +99,9 @@ export interface FileRouteTypes {
     | '/'
     | '/$'
     | '/auth'
-    | '/indice-entrega'
     | '/mcp'
     | '/.mcp/list-tools'
     | '/.well-known/oauth-protected-resource'
-    | '/gestao/acompanhamento'
-    | '/gestao/nova'
     | '/.lovable/oauth/consent'
     | '/.mcp/invoke-tool/$tool'
   fileRoutesByTo: FileRoutesByTo
@@ -139,12 +109,9 @@ export interface FileRouteTypes {
     | '/'
     | '/$'
     | '/auth'
-    | '/indice-entrega'
     | '/mcp'
     | '/.mcp/list-tools'
     | '/.well-known/oauth-protected-resource'
-    | '/gestao/acompanhamento'
-    | '/gestao/nova'
     | '/.lovable/oauth/consent'
     | '/.mcp/invoke-tool/$tool'
   id:
@@ -152,12 +119,9 @@ export interface FileRouteTypes {
     | '/'
     | '/$'
     | '/auth'
-    | '/indice-entrega'
     | '/mcp'
     | '/.mcp/list-tools'
     | '/.well-known/oauth-protected-resource'
-    | '/gestao/acompanhamento'
-    | '/gestao/nova'
     | '/.lovable/oauth/consent'
     | '/.mcp/invoke-tool/$tool'
   fileRoutesById: FileRoutesById
@@ -166,12 +130,9 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   SplatRoute: typeof SplatRoute
   AuthRoute: typeof AuthRoute
-  IndiceEntregaRoute: typeof IndiceEntregaRoute
   McpRoute: typeof McpRoute
   Char91DotmcpChar93ListToolsRoute: typeof Char91DotmcpChar93ListToolsRoute
   Char91DotwellKnownChar93OauthProtectedResourceRoute: typeof Char91DotwellKnownChar93OauthProtectedResourceRoute
-  GestaoAcompanhamentoRoute: typeof GestaoAcompanhamentoRoute
-  GestaoNovaRoute: typeof GestaoNovaRoute
   DotlovableOauthConsentRoute: typeof DotlovableOauthConsentRoute
   Char91DotmcpChar93InvokeToolToolRoute: typeof Char91DotmcpChar93InvokeToolToolRoute
 }
@@ -199,13 +160,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/indice-entrega': {
-      id: '/indice-entrega'
-      path: '/indice-entrega'
-      fullPath: '/indice-entrega'
-      preLoaderRoute: typeof IndiceEntregaRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/mcp': {
       id: '/mcp'
       path: '/mcp'
@@ -225,20 +179,6 @@ declare module '@tanstack/react-router' {
       path: '/.well-known/oauth-protected-resource'
       fullPath: '/.well-known/oauth-protected-resource'
       preLoaderRoute: typeof Char91DotwellKnownChar93OauthProtectedResourceRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/gestao/acompanhamento': {
-      id: '/gestao/acompanhamento'
-      path: '/gestao/acompanhamento'
-      fullPath: '/gestao/acompanhamento'
-      preLoaderRoute: typeof GestaoAcompanhamentoRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/gestao/nova': {
-      id: '/gestao/nova'
-      path: '/gestao/nova'
-      fullPath: '/gestao/nova'
-      preLoaderRoute: typeof GestaoNovaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/.lovable/oauth/consent': {
@@ -262,13 +202,10 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SplatRoute: SplatRoute,
   AuthRoute: AuthRoute,
-  IndiceEntregaRoute: IndiceEntregaRoute,
   McpRoute: McpRoute,
   Char91DotmcpChar93ListToolsRoute: Char91DotmcpChar93ListToolsRoute,
   Char91DotwellKnownChar93OauthProtectedResourceRoute:
     Char91DotwellKnownChar93OauthProtectedResourceRoute,
-  GestaoAcompanhamentoRoute: GestaoAcompanhamentoRoute,
-  GestaoNovaRoute: GestaoNovaRoute,
   DotlovableOauthConsentRoute: DotlovableOauthConsentRoute,
   Char91DotmcpChar93InvokeToolToolRoute: Char91DotmcpChar93InvokeToolToolRoute,
 }

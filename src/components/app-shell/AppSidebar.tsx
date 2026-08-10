@@ -27,7 +27,7 @@ type Item = {
   title: string;
   icon: LucideIcon;
   /** Rota tipada do app novo. */
-  to?: "/" | "/gestao/nova" | "/gestao/acompanhamento" | "/indice-entrega";
+  to?: "/";
   /** Caminho servido pelo catch-all legado. */
   legacy?: string;
   disabled?: boolean;
@@ -39,9 +39,8 @@ const grupos: Array<{ label: string; items: Item[] }> = [
     items: [
       { title: "Gestão", icon: LayoutDashboard, legacy: "gestao-fechamentos" },
       { title: "Carteira PIER", icon: Building2, to: "/" },
-      { title: "Nova gestão", icon: SlidersHorizontal, to: "/gestao/nova" },
-      { title: "Acompanhamento", icon: ListChecks, to: "/gestao/acompanhamento" },
-      { title: "Índice de entrega", icon: BarChart3, to: "/indice-entrega" },
+      { title: "Clientes", icon: Boxes, legacy: "gestao-fechamentos/empresa" },
+      { title: "Processamentos", icon: ListChecks, legacy: "gestao-fechamentos/central" },
       { title: "Solicitações", icon: Inbox, legacy: "pier/solicitacoes" },
     ],
   },
