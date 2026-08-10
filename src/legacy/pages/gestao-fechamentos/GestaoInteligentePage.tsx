@@ -186,15 +186,21 @@ export function GestaoInteligentePage() {
         </div>
         <button
           className="mg-start"
-          disabled={starting || !data?.companyIds.length}
+          disabled={starting || dashboardFailed || Boolean(catalogError) || !data?.companyIds.length}
           onClick={startManagement}
         >
           {starting ? "Iniciando…" : `Iniciar gestão (${data?.companyIds.length ?? 0} empresas)`}
         </button>
       </section>
       <div className="mg-source">
-        Catálogo lido do PIER: <strong>{pierUsers.length} responsáveis/BPOs</strong> e{" "}
-        <strong>{pierTypes.length} tipos de solicitação</strong>.
+        {catalogError ? (
+          <>Catálogo do PIER indisponível — os filtros de responsável e tipo não foram carregados.</>
+        ) : (
+          <>
+            Catálogo lido do PIER: <strong>{pierUsers.length} responsáveis/BPOs</strong> e{" "}
+            <strong>{pierTypes.length} tipos de solicitação</strong>.
+          </>
+        )}
       </div>
       {unnamed.length > 0 && (
         <details className="mg-unnamed">
@@ -212,8 +218,14 @@ export function GestaoInteligentePage() {
         <div className="mg-error">A competência final não pode ser anterior à inicial.</div>
       )}
       {error && <div className="mg-error">{error}</div>}
+      {catalogError && <div className="mg-error">{catalogError}</div>}
       {loading ? (
         <div className="mg-empty">Lendo dados do PIER…</div>
+      ) : dashboardFailed ? (
+        <div className="mg-empty">
+          <strong>Não foi possível carregar os dados da Gestão Inteligente.</strong>
+          <span>{error}</span>
+        </div>
       ) : !data?.items.length ? (
         <div className="mg-empty">
           <strong>Nenhuma solicitação sincronizada nesta competência.</strong>
