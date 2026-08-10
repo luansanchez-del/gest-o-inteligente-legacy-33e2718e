@@ -2,17 +2,21 @@ import { integracaoFalhou, integracaoIndisponivel } from "../../lib/errors";
 
 export interface PierConfig {
   baseUrl: string;
-  apiKey: string;
+  usuario: string;
+  senha: string;
 }
 
 /** Lê a configuração do PIER apenas do ambiente do servidor. Nunca de VITE_*. */
 export function readPierConfig(): { ok: true; config: PierConfig } | { ok: false; reason: string } {
   const baseUrl = process.env["PIER_BASE_URL"]?.trim();
-  const apiKey = process.env["PIER_API_KEY"]?.trim();
+  const usuario = process.env["PIER_USUARIO"]?.trim();
+  const senha = process.env["PIER_SENHA"]?.trim();
 
-  const missing = [!baseUrl && "PIER_BASE_URL", !apiKey && "PIER_API_KEY"].filter(
-    Boolean,
-  ) as string[];
+  const missing = [
+    !baseUrl && "PIER_BASE_URL",
+    !usuario && "PIER_USUARIO",
+    !senha && "PIER_SENHA",
+  ].filter(Boolean) as string[];
 
   if (missing.length) {
     return {
@@ -21,7 +25,10 @@ export function readPierConfig(): { ok: true; config: PierConfig } | { ok: false
     };
   }
 
-  return { ok: true, config: { baseUrl: baseUrl!.replace(/\/+$/, ""), apiKey: apiKey! } };
+  return {
+    ok: true,
+    config: { baseUrl: baseUrl!.replace(/\/+$/, ""), usuario: usuario!, senha: senha! },
+  };
 }
 
 const TIMEOUT_MS = 20000;
@@ -41,9 +48,9 @@ interface TokenCache {
 
 let cache: TokenCache | null = null;
 
-/** Autentica em /api/v2/auth/login-apikey. Nunca registra a API Key nem o token. */
+/** Autentica em /api/v2/auth/login com usuário e senha. Nunca registra credencial nem token. */
 async function autenticar(config: PierConfig, forcar = false): Promise<string> {
-  const chave = config.baseUrl;
+  const chave = `${config.baseUrl}|${config.usuario}`;
   if (
     !forcar &&
     cache &&
@@ -56,18 +63,23 @@ async function autenticar(config: PierConfig, forcar = false): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const response = await fetch(`${config.baseUrl}/api/v2/auth/login-apikey`, {
+    const response = await fetch(`${config.baseUrl}/api/v2/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ apiKey: config.apiKey }),
+      body: JSON.stringify({
+        usuario: config.usuario,
+        login: config.usuario,
+        email: config.usuario,
+        senha: config.senha,
+      }),
       signal: controller.signal,
     });
 
-    console.info(`[pier] POST /api/v2/auth/login-apikey -> ${response.status}`);
+    console.info(`[pier] POST /api/v2/auth/login -> ${response.status}`);
 
     if (response.status === 401 || response.status === 403) {
       throw integracaoIndisponivel(
-        "O PIER recusou a credencial configurada. Revise a chave de integração.",
+        "O PIER recusou o usuário e a senha configurados. Revise as credenciais de integração.",
       );
     }
     if (!response.ok) {
