@@ -41,10 +41,19 @@ import type {
   RowImportStatus,
 } from "./types";
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
+import { ApiHttpError, ApiNetworkError, resolveApiUrl } from "@/lib/api-config";
+
+async function doFetch(path: string, init: RequestInit): Promise<Response> {
+  const url = `${resolveApiUrl()}${path}`;
+  try {
+    return await fetch(url, init);
+  } catch (error) {
+    throw new ApiNetworkError(url, error);
+  }
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await doFetch(path, {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -54,7 +63,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`Erro ${response.status} em ${path}: ${body}`);
+    throw new ApiHttpError(response.status, path, body);
   }
 
   if (response.status === 204) {
@@ -65,10 +74,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 async function upload<T>(path: string, formData: FormData): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, { method: "POST", body: formData });
+  const response = await doFetch(path, { method: "POST", body: formData });
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`Erro ${response.status} em ${path}: ${body}`);
+    throw new ApiHttpError(response.status, path, body);
   }
   return (await response.json()) as T;
 }
