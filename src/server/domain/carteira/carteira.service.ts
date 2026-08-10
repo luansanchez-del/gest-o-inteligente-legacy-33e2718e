@@ -38,6 +38,7 @@ export interface CarteiraResumo {
     mensagem: string | null;
   } | null;
   integracao: { available: boolean; reason?: string };
+  filtrosDisponiveis: { regimes: string[]; statuses: string[] };
 }
 
 function normalizarDocumento(value: string | null | undefined) {
