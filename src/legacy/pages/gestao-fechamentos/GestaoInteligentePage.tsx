@@ -4,6 +4,7 @@ import { api } from "../../api/client";
 import type { DeliverySituation, ManagementDashboard, PierUsuario } from "../../api/types";
 import { useDepartmentNames } from "../../lib/useDepartmentNames";
 import { DepartmentNameField } from "../../components/DepartmentNameField";
+import { describeApiError } from "@/lib/api-config";
 
 const labels: Record<DeliverySituation, string> = {
   DELIVERED_ON_TIME: "Entregue no prazo",
