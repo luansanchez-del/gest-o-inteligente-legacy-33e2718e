@@ -2,17 +2,21 @@ import { integracaoFalhou, integracaoIndisponivel } from "../../lib/errors";
 
 export interface PierConfig {
   baseUrl: string;
-  apiKey: string;
+  usuario: string;
+  senha: string;
 }
 
 /** Lê a configuração do PIER apenas do ambiente do servidor. Nunca de VITE_*. */
 export function readPierConfig(): { ok: true; config: PierConfig } | { ok: false; reason: string } {
   const baseUrl = process.env["PIER_BASE_URL"]?.trim();
-  const apiKey = process.env["PIER_API_KEY"]?.trim();
+  const usuario = process.env["PIER_USUARIO"]?.trim();
+  const senha = process.env["PIER_SENHA"]?.trim();
 
-  const missing = [!baseUrl && "PIER_BASE_URL", !apiKey && "PIER_API_KEY"].filter(
-    Boolean,
-  ) as string[];
+  const missing = [
+    !baseUrl && "PIER_BASE_URL",
+    !usuario && "PIER_USUARIO",
+    !senha && "PIER_SENHA",
+  ].filter(Boolean) as string[];
 
   if (missing.length) {
     return {
@@ -21,7 +25,10 @@ export function readPierConfig(): { ok: true; config: PierConfig } | { ok: false
     };
   }
 
-  return { ok: true, config: { baseUrl: baseUrl!.replace(/\/+$/, ""), apiKey: apiKey! } };
+  return {
+    ok: true,
+    config: { baseUrl: baseUrl!.replace(/\/+$/, ""), usuario: usuario!, senha: senha! },
+  };
 }
 
 const TIMEOUT_MS = 20000;
