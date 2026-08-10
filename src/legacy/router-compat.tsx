@@ -22,7 +22,11 @@ export function NavLink({ to, children, className, end = false, ...props }: Link
     : location.pathname === to || location.pathname.startsWith(`${to}/`);
   const resolvedClassName =
     typeof className === "function"
-      ? className({ isActive: active, isPending: false, isTransitioning: false } as never)
+      ? (className as (state: { isActive: boolean; isPending: boolean; isTransitioning: boolean }) => string)({
+          isActive: active,
+          isPending: false,
+          isTransitioning: false,
+        })
       : className;
 
   return (
