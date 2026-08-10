@@ -106,9 +106,8 @@ async function autenticar(config: PierConfig, forcar = false): Promise<string> {
       signal: controller.signal,
     });
 
-    const bodyPreview = await safeResponseText(response);
-    console.info(`[pier] POST /api/v2/auth/login -> ${response.status}`);
-    if (bodyPreview) console.info(`[pier] resposta: ${bodyPreview}`);
+    const bodyPreview = response.ok ? "" : await safeResponseText(response);
+
 
     if (response.status === 401 || response.status === 403) {
       throw integracaoIndisponivel(
@@ -211,16 +210,16 @@ export async function pierGet<T>(
     const token = await autenticar(config, renovou);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-    const startedAt = Date.now();
     try {
       const response = await fetch(url, {
         headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
         signal: controller.signal,
       });
 
-      console.info(
-        `[pier] GET ${path} -> ${response.status} em ${Date.now() - startedAt}ms (tentativa ${attempt})`,
-      );
+      if (!response.ok) {
+        console.warn(`[pier] GET ${path} -> ${response.status} (tentativa ${attempt})`);
+      }
+
 
       if (response.status === 401 && !renovou) {
         renovou = true;
