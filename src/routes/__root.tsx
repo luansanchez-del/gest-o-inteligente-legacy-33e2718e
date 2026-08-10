@@ -10,6 +10,9 @@ import {
 import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { AppSidebar } from "@/components/AppSidebar";
+import { Toaster } from "@/components/ui/sonner";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 
 function NotFoundComponent() {
@@ -77,16 +80,16 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Gestão Contábil Inteligente" },
+      { title: "Gestão de Fechamentos Contábeis" },
       {
         name: "description",
-        content: "Gestão inteligente de implantações e fechamentos contábeis",
+        content:
+          "Painel de gestão de fechamentos contábeis e índice de entrega para escritórios de contabilidade e BPO.",
       },
-      { name: "author", content: "Gestão Contábil" },
-      { property: "og:title", content: "Gestão Contábil Inteligente" },
+      { property: "og:title", content: "Gestão de Fechamentos Contábeis" },
       {
         property: "og:description",
-        content: "Gestão inteligente de implantações e fechamentos contábeis",
+        content: "Carteira PIER, gestão de fechamentos e índice de entrega em um só lugar.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -125,8 +128,24 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-      <Outlet />
+      <SidebarProvider>
+        <div className="flex min-h-screen w-full bg-background">
+          <AppSidebar />
+          <div className="flex flex-1 flex-col">
+            <header className="flex h-14 items-center gap-3 border-b px-4">
+              <SidebarTrigger />
+              <span className="text-sm font-medium text-muted-foreground">
+                Gestão Inteligente de Fechamentos
+              </span>
+            </header>
+            <main className="flex-1 p-4 md:p-6">
+              {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+              <Outlet />
+            </main>
+          </div>
+        </div>
+        <Toaster />
+      </SidebarProvider>
     </QueryClientProvider>
   );
 }

@@ -142,3 +142,49 @@
     color: var(--color-foreground);
   }
 }
+
+/* Tokens de situação do fechamento contábil */
+:root {
+  --brand: oklch(0.46 0.11 195);
+  --brand-foreground: oklch(0.99 0.005 195);
+  --st-ok: oklch(0.58 0.13 160);
+  --st-ok-soft: oklch(0.95 0.04 160);
+  --st-late: oklch(0.62 0.19 28);
+  --st-late-soft: oklch(0.95 0.05 28);
+  --st-warn: oklch(0.72 0.15 75);
+  --st-warn-soft: oklch(0.96 0.06 85);
+  --st-wait: oklch(0.62 0.12 250);
+  --st-wait-soft: oklch(0.95 0.04 250);
+  --st-neutral: oklch(0.55 0.02 260);
+  --st-neutral-soft: oklch(0.95 0.005 260);
+}
+
+.dark {
+  --brand: oklch(0.72 0.11 195);
+  --brand-foreground: oklch(0.17 0.02 195);
+  --st-ok: oklch(0.75 0.13 160);
+  --st-ok-soft: oklch(0.3 0.05 160);
+  --st-late: oklch(0.72 0.16 28);
+  --st-late-soft: oklch(0.32 0.07 28);
+  --st-warn: oklch(0.8 0.13 80);
+  --st-warn-soft: oklch(0.33 0.06 80);
+  --st-wait: oklch(0.75 0.11 250);
+  --st-wait-soft: oklch(0.3 0.05 250);
+  --st-neutral: oklch(0.72 0.02 260);
+  --st-neutral-soft: oklch(0.3 0.01 260);
+}
+
+@theme inline {
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-st-ok: var(--st-ok);
+  --color-st-ok-soft: var(--st-ok-soft);
+  --color-st-late: var(--st-late);
+  --color-st-late-soft: var(--st-late-soft);
+  --color-st-warn: var(--st-warn);
+  --color-st-warn-soft: var(--st-warn-soft);
+  --color-st-wait: var(--st-wait);
+  --color-st-wait-soft: var(--st-wait-soft);
+  --color-st-neutral: var(--st-neutral);
+  --color-st-neutral-soft: var(--st-neutral-soft);
+}

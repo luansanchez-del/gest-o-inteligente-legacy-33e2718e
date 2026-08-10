@@ -11,6 +11,9 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SplatRouteImport } from './routes/$'
+import { Route as IndiceEntregaRouteImport } from './routes/indice-entrega'
+import { Route as GestaoAcompanhamentoRouteImport } from './routes/gestao.acompanhamento'
+import { Route as GestaoNovaRouteImport } from './routes/gestao.nova'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -22,31 +25,65 @@ const SplatRoute = SplatRouteImport.update({
   path: '/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const IndiceEntregaRoute = IndiceEntregaRouteImport.update({
+  id: '/indice-entrega',
+  path: '/indice-entrega',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GestaoAcompanhamentoRoute = GestaoAcompanhamentoRouteImport.update({
+  id: '/gestao/acompanhamento',
+  path: '/gestao/acompanhamento',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GestaoNovaRoute = GestaoNovaRouteImport.update({
+  id: '/gestao/nova',
+  path: '/gestao/nova',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$': typeof SplatRoute
+  '/indice-entrega': typeof IndiceEntregaRoute
+  '/gestao/acompanhamento': typeof GestaoAcompanhamentoRoute
+  '/gestao/nova': typeof GestaoNovaRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/$': typeof SplatRoute
+  '/indice-entrega': typeof IndiceEntregaRoute
+  '/gestao/acompanhamento': typeof GestaoAcompanhamentoRoute
+  '/gestao/nova': typeof GestaoNovaRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/$': typeof SplatRoute
+  '/indice-entrega': typeof IndiceEntregaRoute
+  '/gestao/acompanhamento': typeof GestaoAcompanhamentoRoute
+  '/gestao/nova': typeof GestaoNovaRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/$'
+  fullPaths:
+    '/' | '/$' | '/indice-entrega' | '/gestao/acompanhamento' | '/gestao/nova'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/$'
-  id: '__root__' | '/' | '/$'
+  to: '/' | '/$' | '/indice-entrega' | '/gestao/acompanhamento' | '/gestao/nova'
+  id:
+    | '__root__'
+    | '/'
+    | '/$'
+    | '/indice-entrega'
+    | '/gestao/acompanhamento'
+    | '/gestao/nova'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   SplatRoute: typeof SplatRoute
+  IndiceEntregaRoute: typeof IndiceEntregaRoute
+  GestaoAcompanhamentoRoute: typeof GestaoAcompanhamentoRoute
+  GestaoNovaRoute: typeof GestaoNovaRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -65,12 +102,36 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/indice-entrega': {
+      id: '/indice-entrega'
+      path: '/indice-entrega'
+      fullPath: '/indice-entrega'
+      preLoaderRoute: typeof IndiceEntregaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/gestao/acompanhamento': {
+      id: '/gestao/acompanhamento'
+      path: '/gestao/acompanhamento'
+      fullPath: '/gestao/acompanhamento'
+      preLoaderRoute: typeof GestaoAcompanhamentoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/gestao/nova': {
+      id: '/gestao/nova'
+      path: '/gestao/nova'
+      fullPath: '/gestao/nova'
+      preLoaderRoute: typeof GestaoNovaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SplatRoute: SplatRoute,
+  IndiceEntregaRoute: IndiceEntregaRoute,
+  GestaoAcompanhamentoRoute: GestaoAcompanhamentoRoute,
+  GestaoNovaRoute: GestaoNovaRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
