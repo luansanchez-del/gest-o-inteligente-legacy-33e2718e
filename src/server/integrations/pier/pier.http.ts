@@ -106,9 +106,8 @@ async function autenticar(config: PierConfig, forcar = false): Promise<string> {
       signal: controller.signal,
     });
 
-    const bodyPreview = await safeResponseText(response);
-    console.info(`[pier] POST /api/v2/auth/login -> ${response.status}`);
-    if (bodyPreview) console.info(`[pier] resposta: ${bodyPreview}`);
+    const bodyPreview = response.ok ? "" : await safeResponseText(response);
+
 
     if (response.status === 401 || response.status === 403) {
       throw integracaoIndisponivel(
