@@ -151,6 +151,7 @@ export async function listarCarteira(
           }
         : null,
       integracao: await pierAdapter.status(),
+      filtrosDisponiveis,
     },
   };
 }
