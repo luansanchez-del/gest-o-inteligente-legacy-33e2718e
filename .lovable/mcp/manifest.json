@@ -1,0 +1,149 @@
+{
+  "version": 1,
+  "sdk_version": "0.26.1",
+  "path": "/mcp",
+  "auth": {
+    "type": "oauth",
+    "issuer": "https://jyaqzarvulejqdnhcdbz.supabase.co/auth/v1",
+    "accepted_audiences": [
+      "authenticated"
+    ]
+  },
+  "mcp": {
+    "server": {
+      "name": "gestao-inteligente-legacy",
+      "version": "0.1.0",
+      "title": "GESTÃO INTELIGENTE - LEGACY"
+    },
+    "tools": [
+      {
+        "name": "listar_carteira_pier",
+        "title": "Listar carteira PIER",
+        "description": "Lista os clientes da carteira PIER (cache local mantido pelo backend da Gestão Inteligente), com filtros opcionais de busca, status e tributação.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "busca": {
+              "description": "Texto livre: nome ou documento do cliente.",
+              "type": "string"
+            },
+            "status": {
+              "description": "Status do cliente no PIER, ex.: Ativo.",
+              "type": "string"
+            },
+            "tributacao": {
+              "description": "Regime de tributação do cliente.",
+              "type": "string"
+            }
+          }
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "ultima_sincronizacao_carteira",
+        "title": "Última sincronização da carteira",
+        "description": "Informa quando a carteira PIER foi sincronizada pela última vez pelo backend da Gestão Inteligente.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {}
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "listar_responsaveis_pier",
+        "title": "Listar responsáveis/BPOs do PIER",
+        "description": "Lista os usuários (responsáveis e BPOs) do PIER lidos pelo backend da Gestão Inteligente.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "status": {
+              "description": "Filtro de status do usuário no PIER, ex.: \"Ativo\" ou \"Todos\".",
+              "type": "string"
+            }
+          }
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "listar_tipos_solicitacao",
+        "title": "Listar tipos de solicitação",
+        "description": "Lista os tipos de solicitação do PIER disponíveis para filtrar a gestão de fechamentos.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "status": {
+              "description": "Status do tipo, ex.: \"Ativo\".",
+              "type": "string"
+            }
+          }
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "dashboard_gestao_fechamentos",
+        "title": "Dashboard de gestão de fechamentos",
+        "description": "Retorna o painel da Gestão Inteligente por competência: índice de entrega, situações por empresa, departamento e responsável.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "competenciaInicio": {
+              "type": "string",
+              "description": "Competência inicial no formato \"AAAA-MM\"."
+            },
+            "competenciaFim": {
+              "type": "string",
+              "description": "Competência final no formato \"AAAA-MM\"."
+            },
+            "teamId": {
+              "description": "Departamento do responsável (id do PIER).",
+              "type": "string"
+            },
+            "responsibleExternalId": {
+              "description": "Id externo do responsável no PIER.",
+              "type": "string"
+            },
+            "typeExternalId": {
+              "description": "Id externo do tipo de solicitação.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "competenciaInicio",
+            "competenciaFim"
+          ]
+        },
+        "outputSchema": null
+      }
+    ]
+  }
+}
