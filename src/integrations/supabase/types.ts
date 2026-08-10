@@ -292,6 +292,7 @@ export type Database = {
           created_at: string
           deadline_at: string | null
           delivered_at: string | null
+          department_external_id: string | null
           id: string
           last_analysis_at: string | null
           organization_id: string
@@ -307,6 +308,7 @@ export type Database = {
           created_at?: string
           deadline_at?: string | null
           delivered_at?: string | null
+          department_external_id?: string | null
           id?: string
           last_analysis_at?: string | null
           organization_id: string
@@ -322,6 +324,7 @@ export type Database = {
           created_at?: string
           deadline_at?: string | null
           delivered_at?: string | null
+          department_external_id?: string | null
           id?: string
           last_analysis_at?: string | null
           organization_id?: string
@@ -814,6 +817,103 @@ export type Database = {
           },
         ]
       }
+      pier_department: {
+        Row: {
+          created_at: string
+          external_id: string
+          id: string
+          name: string
+          organization_id: string
+          synced_at: string
+          updated_at: string
+          user_count: number
+        }
+        Insert: {
+          created_at?: string
+          external_id: string
+          id?: string
+          name: string
+          organization_id: string
+          synced_at?: string
+          updated_at?: string
+          user_count?: number
+        }
+        Update: {
+          created_at?: string
+          external_id?: string
+          id?: string
+          name?: string
+          organization_id?: string
+          synced_at?: string
+          updated_at?: string
+          user_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pier_department_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organization"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pier_user: {
+        Row: {
+          created_at: string
+          department_external_id: string | null
+          email: string | null
+          external_id: string
+          id: string
+          kind: string | null
+          login: string | null
+          name: string
+          organization_id: string
+          raw: Json
+          status: string | null
+          synced_at: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          department_external_id?: string | null
+          email?: string | null
+          external_id: string
+          id?: string
+          kind?: string | null
+          login?: string | null
+          name: string
+          organization_id: string
+          raw?: Json
+          status?: string | null
+          synced_at?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          department_external_id?: string | null
+          email?: string | null
+          external_id?: string
+          id?: string
+          kind?: string | null
+          login?: string | null
+          name?: string
+          organization_id?: string
+          raw?: Json
+          status?: string | null
+          synced_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pier_user_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organization"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       post: {
         Row: {
           author_name: string | null
@@ -864,9 +964,14 @@ export type Database = {
       }
       request: {
         Row: {
+          client_document: string | null
+          client_external_id: string | null
+          client_name: string | null
           closing_period_id: string | null
+          company_id: string | null
           created_at: string
           deadline_at: string | null
+          department_external_id: string | null
           description: string | null
           external_id: string
           finished_at: string | null
@@ -876,16 +981,25 @@ export type Database = {
           organization_id: string
           purpose: string
           raw: Json
+          reference_month: string | null
           requested_at: string | null
+          responsible_external_id: string | null
           responsible_name: string | null
           status: string | null
+          synced_at: string
+          type_external_id: string | null
           type_name: string | null
           updated_at: string
         }
         Insert: {
+          client_document?: string | null
+          client_external_id?: string | null
+          client_name?: string | null
           closing_period_id?: string | null
+          company_id?: string | null
           created_at?: string
           deadline_at?: string | null
+          department_external_id?: string | null
           description?: string | null
           external_id: string
           finished_at?: string | null
@@ -895,16 +1009,25 @@ export type Database = {
           organization_id: string
           purpose?: string
           raw?: Json
+          reference_month?: string | null
           requested_at?: string | null
+          responsible_external_id?: string | null
           responsible_name?: string | null
           status?: string | null
+          synced_at?: string
+          type_external_id?: string | null
           type_name?: string | null
           updated_at?: string
         }
         Update: {
+          client_document?: string | null
+          client_external_id?: string | null
+          client_name?: string | null
           closing_period_id?: string | null
+          company_id?: string | null
           created_at?: string
           deadline_at?: string | null
+          department_external_id?: string | null
           description?: string | null
           external_id?: string
           finished_at?: string | null
@@ -914,9 +1037,13 @@ export type Database = {
           organization_id?: string
           purpose?: string
           raw?: Json
+          reference_month?: string | null
           requested_at?: string | null
+          responsible_external_id?: string | null
           responsible_name?: string | null
           status?: string | null
+          synced_at?: string
+          type_external_id?: string | null
           type_name?: string | null
           updated_at?: string
         }
@@ -926,6 +1053,13 @@ export type Database = {
             columns: ["closing_period_id"]
             isOneToOne: false
             referencedRelation: "closing_period"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "company"
             referencedColumns: ["id"]
           },
           {

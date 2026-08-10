@@ -1,4 +1,4 @@
-import type { PierClient, PierPost, PierRequest } from "./pier.types";
+import type { PierClient, PierPost, PierRequest, PierUser } from "./pier.types";
 
 type Raw = Record<string, unknown>;
 
@@ -28,6 +28,27 @@ function inferPurpose(typeName: string | null): PierRequest["purpose"] {
   return "OTHER";
 }
 
+/**
+ * O PIER não expõe competência em campo próprio: ela vem na descrição
+ * ("FECHAMENTO CONTÁBIL - 01/2026"). Extrai MM/AAAA e normaliza para AAAA-MM.
+ */
+export function extrairCompetencia(descricao: string | null): string | null {
+  if (!descricao) return null;
+  const match = descricao.match(/(0[1-9]|1[0-2])[/-](20\d{2})/);
+  return match ? `${match[2]}-${match[1]}` : null;
+}
+
+/** A listagem de solicitações traz "NOME DA EMPRESA [00.000.000/0001-00]". */
+export function separarNomeEDocumento(nomeCliente: string | null): {
+  nome: string | null;
+  documento: string | null;
+} {
+  if (!nomeCliente) return { nome: null, documento: null };
+  const match = nomeCliente.match(/^(.*?)\s*\[([^\]]+)\]\s*$/);
+  if (!match) return { nome: nomeCliente.trim(), documento: null };
+  return { nome: (match[1] ?? "").trim() || null, documento: (match[2] ?? "").trim() || null };
+}
+
 /** Mapeia o cliente da PIER Public API V2 para o modelo interno. */
 export function mapClient(raw: Raw): PierClient {
   return {
@@ -41,21 +62,44 @@ export function mapClient(raw: Raw): PierClient {
   };
 }
 
-export function mapRequest(raw: Raw, clientExternalId: string): PierRequest {
-  const typeName = str(raw, "typeName", "tipo", "type");
+/** Mapeia UsuarioResumoPublic (/api/v2/usuarios). */
+export function mapUser(raw: Raw): PierUser {
+  return {
+    externalId: str(raw, "id") ?? "",
+    name: str(raw, "nome", "name") ?? "Sem nome",
+    kind: str(raw, "tipo"),
+    login: str(raw, "login"),
+    email: str(raw, "email"),
+    status: str(raw, "status"),
+    departmentExternalId: str(raw, "departamentoPrincipalId"),
+    raw,
+  };
+}
+
+/** Mapeia SolicitacaoPierPublic (/api/v2/solicitacoes). */
+export function mapRequest(raw: Raw, typeName?: string | null): PierRequest {
+  const descricao = str(raw, "descricao", "description", "assunto");
+  const cliente = separarNomeEDocumento(str(raw, "nomeCliente"));
+  const nomeTipo = typeName ?? str(raw, "nomeTipo", "typeName", "tipo");
+
   return {
     externalId: str(raw, "id", "externalId") ?? "",
-    clientExternalId,
-    number: str(raw, "number", "numero"),
-    description: str(raw, "description", "descricao", "titulo"),
-    typeName,
-    purpose: inferPurpose(typeName),
+    clientExternalId: str(raw, "idCliente"),
+    clientName: cliente.nome,
+    clientDocument: cliente.documento,
+    number: str(raw, "numero", "number"),
+    description: descricao,
+    typeExternalId: str(raw, "idTipoSolicitacao"),
+    typeName: nomeTipo,
+    purpose: inferPurpose(nomeTipo ?? descricao),
+    referenceMonth: extrairCompetencia(descricao),
     status: str(raw, "status", "situacao"),
-    responsibleName: str(raw, "responsibleName", "responsavel"),
-    requestedAt: str(raw, "requestedAt", "criadoEm", "dataSolicitacao"),
-    finishedAt: str(raw, "finishedAt", "concluidoEm", "dataConclusao"),
-    deadlineAt: str(raw, "deadlineAt", "prazo", "dataPrazo"),
-    hasAttachment: bool(raw, "hasAttachment", "possuiAnexo", "anexos"),
+    responsibleExternalId: str(raw, "idResponsavel"),
+    responsibleName: str(raw, "nomeResponsavel", "responsavel"),
+    requestedAt: str(raw, "solicitadaEm", "dataAbertura", "requestedAt"),
+    finishedAt: str(raw, "finalizadaEm", "dataFinalizacao", "finishedAt"),
+    deadlineAt: str(raw, "prazo", "dataPrazo", "deadlineAt"),
+    hasAttachment: bool(raw, "flgTemAnexo", "hasAttachment", "possuiAnexo"),
     raw,
   };
 }

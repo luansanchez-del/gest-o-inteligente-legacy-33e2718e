@@ -6,9 +6,9 @@ import { comContexto, emailDoToken } from "./contexto";
 type EscopoInput = {
   competencia: string;
   tipo: "CONTABIL" | "FISCAL" | "OUTRO";
+  departamentoId?: string | null;
+  responsavelId?: string | null;
   empresaIds?: string[];
-  responsavel?: string | null;
-  incluirSemResponsavel?: boolean;
 };
 
 function validarEscopo(input: EscopoInput) {
@@ -17,6 +17,38 @@ function validarEscopo(input: EscopoInput) {
   if (!input.tipo) throw new Error("VALIDACAO::Informe o tipo de fechamento.");
   return input;
 }
+
+export const listarEquipe = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input?: { incluirInativos?: boolean }) => input ?? {})
+  .handler(async ({ data, context }) =>
+    comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
+      const service = await import("@/server/domain/gestao/escopo.service");
+      return service.listarEquipe(ctx, data);
+    }),
+  );
+
+export const sincronizarEquipe = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) =>
+    comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
+      const service = await import("@/server/domain/gestao/escopo.service");
+      return service.sincronizarEquipe(ctx);
+    }),
+  );
+
+export const sincronizarSolicitacoes = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(validarEscopo)
+  .handler(async ({ data, context }) =>
+    comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
+      const service = await import("@/server/domain/gestao/escopo.service");
+      return service.sincronizarSolicitacoes(ctx, {
+        competencia: data.competencia,
+        tipo: data.tipo,
+      });
+    }),
+  );
 
 export const montarPreview = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])

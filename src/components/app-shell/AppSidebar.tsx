@@ -30,9 +30,11 @@ const GRUPOS = [
     itens: [
       { title: "Painel", to: "/", icon: Gauge },
       { title: "Carteira", to: "/carteira", icon: Building2 },
+      { title: "Gestão", to: "/gestao", icon: PlayCircle },
     ],
   },
 ] as const;
+
 
 
 export function AppSidebar() {
