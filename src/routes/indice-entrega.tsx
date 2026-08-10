@@ -374,5 +374,6 @@ function IndicePage() {
 function formatDias(valor: number) {
   const dias = Math.abs(Math.round(valor));
   if (valor === 0) return "sem dados";
-  return valor < 0 ? `${dias} dias de antecedência` : `${dias} dias`;
+  const rotulo = `${dias} ${dias === 1 ? "dia" : "dias"}`;
+  return valor < 0 ? `${rotulo} de antecedência` : rotulo;
 }
