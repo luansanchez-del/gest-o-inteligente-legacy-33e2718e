@@ -67,10 +67,12 @@ export function AppTopbar({ organizacao }: { organizacao?: string }) {
             )}
           </BreadcrumbItem>
           {partes.map((parte, indice) => (
-            <BreadcrumbItem key={`${parte}-${indice}`}>
+            <React.Fragment key={`${parte}-${indice}`}>
               <BreadcrumbSeparator />
-              <BreadcrumbPage>{ROTULOS[parte] ?? parte}</BreadcrumbPage>
-            </BreadcrumbItem>
+              <BreadcrumbItem>
+                <BreadcrumbPage>{ROTULOS[parte] ?? parte}</BreadcrumbPage>
+              </BreadcrumbItem>
+            </React.Fragment>
           ))}
         </BreadcrumbList>
       </Breadcrumb>
