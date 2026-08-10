@@ -10,11 +10,17 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as GestaoAcompanhamentoRouteImport } from './routes/gestao.acompanhamento'
 import { Route as GestaoNovaRouteImport } from './routes/gestao.nova'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GestaoAcompanhamentoRoute = GestaoAcompanhamentoRouteImport.update({
+  id: '/gestao/acompanhamento',
+  path: '/gestao/acompanhamento',
   getParentRoute: () => rootRouteImport,
 } as any)
 const GestaoNovaRoute = GestaoNovaRouteImport.update({
@@ -25,27 +31,31 @@ const GestaoNovaRoute = GestaoNovaRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/gestao/acompanhamento': typeof GestaoAcompanhamentoRoute
   '/gestao/nova': typeof GestaoNovaRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/gestao/acompanhamento': typeof GestaoAcompanhamentoRoute
   '/gestao/nova': typeof GestaoNovaRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/gestao/acompanhamento': typeof GestaoAcompanhamentoRoute
   '/gestao/nova': typeof GestaoNovaRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/gestao/nova'
+  fullPaths: '/' | '/gestao/acompanhamento' | '/gestao/nova'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/gestao/nova'
-  id: '__root__' | '/' | '/gestao/nova'
+  to: '/' | '/gestao/acompanhamento' | '/gestao/nova'
+  id: '__root__' | '/' | '/gestao/acompanhamento' | '/gestao/nova'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  GestaoAcompanhamentoRoute: typeof GestaoAcompanhamentoRoute
   GestaoNovaRoute: typeof GestaoNovaRoute
 }
 
@@ -56,6 +66,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/gestao/acompanhamento': {
+      id: '/gestao/acompanhamento'
+      path: '/gestao/acompanhamento'
+      fullPath: '/gestao/acompanhamento'
+      preLoaderRoute: typeof GestaoAcompanhamentoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/gestao/nova': {
@@ -70,6 +87,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  GestaoAcompanhamentoRoute: GestaoAcompanhamentoRoute,
   GestaoNovaRoute: GestaoNovaRoute,
 }
 export const routeTree = rootRouteImport
