@@ -10,8 +10,9 @@ import {
 import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { AppSidebar } from "@/components/AppSidebar";
+import { SidebarProvider } from "@/components/ui/sidebar";
+import { AppSidebar } from "@/components/app-shell/AppSidebar";
+import { AppTopbar } from "@/components/app-shell/AppTopbar";
 import { Toaster } from "@/components/ui/sonner";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 
@@ -129,15 +130,10 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <SidebarProvider>
-        <div className="flex min-h-screen w-full bg-background">
+        <div className="flex min-h-screen w-full bg-muted/40">
           <AppSidebar />
           <div className="flex flex-1 flex-col">
-            <header className="flex h-14 items-center gap-3 border-b px-4">
-              <SidebarTrigger />
-              <span className="text-sm font-medium text-muted-foreground">
-                Gestão Inteligente de Fechamentos
-              </span>
-            </header>
+            <AppTopbar />
             <main className="flex-1 p-4 md:p-6">
               {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
               <Outlet />
