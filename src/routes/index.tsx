@@ -1,141 +1,254 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Search, Link2, CheckCircle2 } from "lucide-react";
+import { Search, RefreshCw, DownloadCloud, AlertCircle, Loader2 } from "lucide-react";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useCompanies } from "@/hooks/use-dominio";
-import { linkCompanyToPier } from "@/lib/api-client";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { CarteiraTable } from "@/components/carteira/CarteiraTable";
+import {
+  montarLinhas,
+  useAcoesCarteira,
+  useClientesCache,
+  useEmpresasLocais,
+  useUltimaSincronizacao,
+} from "@/hooks/use-pier-carteira";
+import type { PierClienteCache } from "@/legacy/api/types";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Carteira PIER | Gestão de Fechamentos Contábeis" },
+      { title: "Carteira PIER | Gestão Inteligente de Fechamentos" },
       {
         name: "description",
         content:
-          "Veja os clientes disponíveis no PIER, identifique quem já está vinculado ao sistema e importe novas empresas para a gestão de fechamentos.",
+          "Consulte a carteira de clientes do PIER, identifique quais já possuem empresa local correspondente e importe novos clientes para a gestão de fechamentos.",
       },
-      { property: "og:title", content: "Carteira PIER | Gestão de Fechamentos Contábeis" },
+      { property: "og:title", content: "Carteira PIER | Gestão Inteligente de Fechamentos" },
       {
         property: "og:description",
-        content: "Clientes do PIER vinculados e não vinculados ao escritório contábil.",
+        content: "Clientes do PIER, situação de vínculo e importação para o sistema contábil.",
       },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
   component: CarteiraPage,
 });
 
+const STATUS = ["", "Ativo", "Inativo"];
+const TRIBUTACOES = [
+  "",
+  "Simples Nacional",
+  "Lucro Presumido",
+  "Lucro Real",
+  "MEI",
+  "Pessoa Física",
+];
+
+function formatarData(valor: string | null | undefined) {
+  if (!valor) return null;
+  const data = new Date(valor);
+  if (Number.isNaN(data.getTime())) return null;
+  return data.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+}
+
 function CarteiraPage() {
-  const { data: companies = [], isLoading } = useCompanies();
   const [busca, setBusca] = useState("");
-  const [filtro, setFiltro] = useState("todas");
-  const queryClient = useQueryClient();
+  const [status, setStatus] = useState("");
+  const [tributacao, setTributacao] = useState("");
+  const [filtros, setFiltros] = useState<{
+    search?: string;
+    status?: string;
+    tributacao?: string;
+  }>({});
 
-  const vincular = useMutation({
-    mutationFn: linkCompanyToPier,
-    onSuccess: (company) => {
-      queryClient.invalidateQueries({ queryKey: ["companies"] });
-      toast.success(`${company.name} vinculada ao PIER.`);
-    },
-  });
+  const clientes = useClientesCache(filtros);
+  const empresas = useEmpresasLocais();
+  const ultimaSync = useUltimaSincronizacao();
+  const { sincronizar, importar, importarTodos, vincular } = useAcoesCarteira();
 
-  const lista = useMemo(() => {
-    const termo = busca.trim().toLowerCase();
-    return companies.filter((c) => {
-      const casaBusca =
-        !termo || c.name.toLowerCase().includes(termo) || c.document.includes(termo);
-      const casaFiltro =
-        filtro === "todas" ||
-        (filtro === "vinculadas" && c.linkedToPier) ||
-        (filtro === "nao" && !c.linkedToPier);
-      return casaBusca && casaFiltro;
+  const linhas = useMemo(
+    () => montarLinhas(clientes.data ?? [], empresas.data ?? []),
+    [clientes.data, empresas.data],
+  );
+
+  const carregando = clientes.isLoading || empresas.isLoading;
+  const erro = (clientes.error ?? empresas.error) as Error | null;
+  const syncedAt = formatarData(ultimaSync.data?.lastSyncedAt);
+
+  function aplicarFiltros() {
+    setFiltros({
+      search: busca.trim() || undefined,
+      status: status || undefined,
+      tributacao: tributacao || undefined,
     });
-  }, [companies, busca, filtro]);
+  }
 
-  const vinculadas = companies.filter((c) => c.linkedToPier).length;
+  function handleSincronizar() {
+    sincronizar.mutate(undefined, {
+      onSuccess: (r) => {
+        ultimaSync.refetch();
+        toast.success(
+          `Carteira sincronizada: ${r.found} encontrados, ${r.created} novos, ${r.updated} atualizados.`,
+        );
+      },
+      onError: (e) => toast.error((e as Error).message),
+    });
+  }
+
+  function handleImportar(cliente: PierClienteCache) {
+    importar.mutate(cliente, {
+      onSuccess: (r) =>
+        toast.success(
+          r.created
+            ? `Empresa ${r.company.name} criada e vinculada.`
+            : `Empresa ${r.company.name} vinculada.`,
+        ),
+      onError: (e) => toast.error((e as Error).message),
+    });
+  }
+
+  function handleImportarTodos() {
+    importarTodos.mutate(undefined, {
+      onSuccess: (r) =>
+        toast.success(
+          `${r.found} clientes analisados: ${r.created} criados, ${r.linked} vinculados, ${r.existing} já existentes, ${r.skipped} ignorados.`,
+        ),
+      onError: (e) => toast.error((e as Error).message),
+    });
+  }
+
+  function handleVincular(companyId: string) {
+    vincular.mutate(companyId, {
+      onSuccess: (r) =>
+        r.linked ? toast.success("Empresa vinculada ao PIER.") : toast.error("Vínculo não encontrado no PIER."),
+      onError: (e) => toast.error((e as Error).message),
+    });
+  }
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Carteira PIER</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {vinculadas} de {companies.length} clientes já estão vinculados a uma empresa do sistema.
-        </p>
-      </header>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Carteira PIER</h1>
+          <p className="text-sm text-muted-foreground">
+            {syncedAt
+              ? `Última sincronização em ${syncedAt}.`
+              : "Carteira nunca sincronizada neste ambiente."}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={handleSincronizar} disabled={sincronizar.isPending}>
+            {sincronizar.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            Sincronizar carteira
+          </Button>
+          <Button onClick={handleImportarTodos} disabled={importarTodos.isPending}>
+            {importarTodos.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <DownloadCloud className="h-4 w-4" />
+            )}
+            Importar todos
+          </Button>
+        </div>
+      </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative w-full sm:max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-3">
+        <div className="relative min-w-[220px] flex-1">
+          <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            placeholder="Buscar por nome ou CNPJ"
-            className="pl-9"
+            onKeyDown={(e) => e.key === "Enter" && aplicarFiltros()}
+            placeholder="Buscar por nome ou documento"
+            className="pl-8"
+            aria-label="Buscar cliente na carteira"
           />
         </div>
-        <Tabs value={filtro} onValueChange={setFiltro}>
-          <TabsList>
-            <TabsTrigger value="todas">Todas</TabsTrigger>
-            <TabsTrigger value="vinculadas">Vinculadas</TabsTrigger>
-            <TabsTrigger value="nao">Não vinculadas</TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <select
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+          aria-label="Status"
+          className="h-9 rounded-md border bg-background px-2 text-sm"
+        >
+          {STATUS.map((s) => (
+            <option key={s} value={s}>
+              {s || "Todos os status"}
+            </option>
+          ))}
+        </select>
+        <select
+          value={tributacao}
+          onChange={(e) => setTributacao(e.target.value)}
+          aria-label="Tributação"
+          className="h-9 rounded-md border bg-background px-2 text-sm"
+        >
+          {TRIBUTACOES.map((t) => (
+            <option key={t} value={t}>
+              {t || "Todas as tributações"}
+            </option>
+          ))}
+        </select>
+        <Button variant="secondary" onClick={aplicarFiltros}>
+          Filtrar
+        </Button>
       </div>
 
-      {isLoading ? (
-        <p className="text-sm text-muted-foreground">Carregando clientes…</p>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {lista.map((company) => (
-            <Card key={company.id} className="flex flex-col">
-              <CardHeader className="pb-2">
-                <div className="flex items-start justify-between gap-2">
-                  <CardTitle className="text-base leading-snug">{company.name}</CardTitle>
-                  {company.linkedToPier ? (
-                    <Badge variant="outline" className="border-st-ok/30 bg-st-ok-soft text-st-ok">
-                      Vinculada
-                    </Badge>
-                  ) : (
-                    <Badge
-                      variant="outline"
-                      className="border-st-warn/30 bg-st-warn-soft text-st-warn"
-                    >
-                      Não vinculada
-                    </Badge>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent className="flex flex-1 flex-col justify-between gap-4">
-                <div className="space-y-1 text-sm text-muted-foreground">
-                  <p>CNPJ {company.document}</p>
-                  <p>Carteira: {company.segment === "BPO" ? "BPO" : "Contábil"}</p>
-                  <p>Time interno: {company.internalOwnerName ?? "Não definido"}</p>
-                </div>
-                {company.linkedToPier ? (
-                  <div className="flex items-center gap-2 text-sm text-st-ok">
-                    <CheckCircle2 className="h-4 w-4" />
-                    Pronta para gestão
-                  </div>
-                ) : (
-                  <Button
-                    size="sm"
-                    onClick={() => vincular.mutate(company.id)}
-                    disabled={vincular.isPending}
-                  >
-                    <Link2 className="h-4 w-4" />
-                    Vincular ao sistema
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
+      {erro ? (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Não foi possível carregar a carteira</AlertTitle>
+          <AlertDescription className="space-y-3">
+            <p>{erro.message}</p>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                clientes.refetch();
+                empresas.refetch();
+              }}
+            >
+              Tentar novamente
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : carregando ? (
+        <div className="space-y-2 rounded-lg border bg-card p-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} className="h-9 w-full" />
           ))}
         </div>
+      ) : linhas.length === 0 ? (
+        <div className="rounded-lg border bg-card p-10 text-center">
+          <p className="text-sm font-medium">Nenhum cliente na carteira</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {ultimaSync.data?.lastSyncedAt
+              ? "Nenhum cliente encontrado com esses filtros."
+              : 'Clique em "Sincronizar carteira" para trazer os clientes do PIER.'}
+          </p>
+        </div>
+      ) : (
+        <>
+          <p className="text-sm text-muted-foreground">
+            {linhas.length} cliente(s) na carteira ·{" "}
+            {linhas.filter((l) => l.situacao === "VINCULADO").length} com empresa local ·{" "}
+            {linhas.filter((l) => l.situacao === "NAO_IDENTIFICADO").length} não identificados
+          </p>
+          <CarteiraTable
+            linhas={linhas}
+            onImportar={handleImportar}
+            onVincular={handleVincular}
+            importandoId={importar.isPending ? (importar.variables?.id ?? null) : null}
+            vinculandoId={vincular.isPending ? (vincular.variables ?? null) : null}
+          />
+        </>
       )}
     </div>
   );
