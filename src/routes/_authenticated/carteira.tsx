@@ -126,12 +126,23 @@ function CarteiraPage() {
         titulo="Carteira PIER"
         descricao="Clientes sincronizados do PIER e o vínculo com as empresas internas."
         acoes={
-          <Button onClick={() => sincronizar.mutate()} disabled={sincronizar.isPending}>
-            <RefreshCw
-              className={`mr-2 h-4 w-4 ${sincronizar.isPending ? "animate-spin" : ""}`}
-            />
-            Sincronizar PIER
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => diagnosticar.mutate()}
+              disabled={diagnosticar.isPending}
+              title="Testar autenticação com o PIER"
+            >
+              <Stethoscope className="mr-2 h-4 w-4" />
+              Testar conexão
+            </Button>
+            <Button onClick={() => sincronizar.mutate()} disabled={sincronizar.isPending}>
+              <RefreshCw
+                className={`mr-2 h-4 w-4 ${sincronizar.isPending ? "animate-spin" : ""}`}
+              />
+              Sincronizar PIER
+            </Button>
+          </div>
         }
       />
 
