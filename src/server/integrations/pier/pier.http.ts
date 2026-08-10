@@ -216,9 +216,8 @@ export async function pierGet<T>(
         signal: controller.signal,
       });
 
-      if (!response.ok) {
-        console.warn(`[pier] GET ${path} -> ${response.status} (tentativa ${attempt})`);
-      }
+
+
 
 
       if (response.status === 401 && !renovou) {
