@@ -5,9 +5,7 @@ import { Separator } from "@/components/ui/separator";
 
 const TITULOS: Record<string, string[]> = {
   "/": ["Gestão inteligente", "Carteira PIER"],
-  "/gestao/nova": ["Gestão inteligente", "Nova gestão"],
-  "/gestao/acompanhamento": ["Gestão inteligente", "Acompanhamento"],
-  "/indice-entrega": ["Gestão inteligente", "Índice de entrega"],
+  "/auth": ["Acesso", "Entrar"],
   "/gestao-fechamentos": ["Gestão inteligente", "Gestão"],
   "/gestao-fechamentos/empresa": ["Gestão inteligente", "Empresa"],
   "/gestao-fechamentos/central": ["Gestão inteligente", "Processamentos"],
