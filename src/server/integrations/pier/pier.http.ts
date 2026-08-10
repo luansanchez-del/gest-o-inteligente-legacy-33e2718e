@@ -166,10 +166,8 @@ export async function testarConexaoPier(): Promise<{
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({
-        usuario: resolved.config.usuario,
-        login: resolved.config.usuario,
-        email: resolved.config.usuario,
-        senha: resolved.config.senha,
+        Username: resolved.config.usuario,
+        Password: resolved.config.senha,
       }),
       signal: controller.signal,
     });
