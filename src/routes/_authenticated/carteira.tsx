@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link2, Link2Off, RefreshCw } from "lucide-react";
+import { Link2, Link2Off, RefreshCw, Stethoscope } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/common/PageHeader";
@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/table";
 import {
   desvincularCliente,
+  diagnosticarConexaoPier,
   listarCarteira,
   sincronizarCarteira,
   vincularCliente,
