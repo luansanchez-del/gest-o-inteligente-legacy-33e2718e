@@ -10,6 +10,7 @@ import {
   PlayCircle,
   Rocket,
   ShieldCheck,
+  Users,
 } from "lucide-react";
 
 import {
@@ -31,6 +32,7 @@ const GRUPOS = [
       { title: "Painel", to: "/", icon: Gauge },
       { title: "Carteira", to: "/carteira", icon: Building2 },
       { title: "Gestão", to: "/gestao", icon: PlayCircle },
+      { title: "Equipe e departamentos", to: "/equipe", icon: Users },
     ],
   },
 ] as const;
