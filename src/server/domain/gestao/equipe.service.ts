@@ -124,15 +124,15 @@ interface Casamento {
 }
 
 async function analisar(ctx: AppContext, rows: LinhaImportacao[]) {
-  const { data: usuarios, error } = await ctx.db
-    .from("pier_user")
-    .select("external_id, name, email, kind, department_external_id")
-    .eq("organization_id", ctx.organizationId);
+  const usuarios = await carregarUsuariosPier<{
+    external_id: string;
+    name: string;
+    email: string | null;
+    kind: string | null;
+    department_external_id: string | null;
+  }>(ctx, "external_id, name, email, kind, department_external_id");
 
-  if (error)
-    throw new AppError("INESPERADO", "Não foi possível carregar os usuários.", error.message);
-
-  const internos = (usuarios ?? []).filter((u) =>
+  const internos = usuarios.filter((u) =>
     TIPOS_INTERNOS.has((u.kind ?? "").toLowerCase()),
   );
 
