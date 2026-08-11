@@ -185,17 +185,21 @@ export async function listarEquipe(ctx: AppContext, opcoes?: { incluirInativos?:
   if (error)
     throw new AppError("INESPERADO", "Não foi possível carregar os departamentos.", error.message);
 
-  const { data: usuarios } = await ctx.db
-    .from("pier_user")
-    .select("external_id, name, kind, status, department_external_id")
-    .eq("organization_id", ctx.organizationId)
-    .order("name");
+  const usuarios = await carregarUsuariosPier<{
+    external_id: string;
+    name: string;
+    kind: string | null;
+    status: string | null;
+    department_external_id: string | null;
+  }>(ctx, "external_id, name, kind, status, department_external_id");
 
-  const internos = (usuarios ?? []).filter(
-    (u) =>
-      TIPOS_INTERNOS.has((u.kind ?? "").toLowerCase()) &&
-      (opcoes?.incluirInativos || (u.status ?? "").toLowerCase() === "ativo"),
-  );
+  const internos = usuarios
+    .filter(
+      (u) =>
+        TIPOS_INTERNOS.has((u.kind ?? "").toLowerCase()) &&
+        (opcoes?.incluirInativos || (u.status ?? "").toLowerCase() === "ativo"),
+    )
+    .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
 
   const ativosPorDepto = new Map<string, number>();
   for (const u of internos) {
