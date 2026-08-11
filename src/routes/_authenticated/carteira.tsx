@@ -34,6 +34,7 @@ import {
   listarCarteira,
   sincronizarCarteira,
   vincularCliente,
+  vincularClientesEmLote,
 } from "@/lib/api/carteira.functions";
 import { formatarCnpj, formatarDataHora } from "@/lib/formato";
 import { mensagemDeErro } from "@/lib/erros";
