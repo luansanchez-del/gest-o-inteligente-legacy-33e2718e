@@ -2,6 +2,8 @@ import { audit } from "../../lib/audit";
 import { assertCanWrite, type AppContext } from "../../lib/context";
 import { AppError } from "../../lib/errors";
 import { resolverTipoSolicitacao, type TipoFechamento } from "./escopo.service";
+import { carregarTodasAsLinhas, carregarUsuariosPier } from "./pier-user.repo";
+
 
 export interface EscopoFiltro {
   competencia: string;
@@ -65,29 +67,32 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
   if (error)
     throw new AppError("INESPERADO", "Não foi possível montar o escopo.", error.message);
 
-  const [{ data: usuarios }, { data: departamentos }, { data: clientes }, { data: aberturas }] =
-    await Promise.all([
-      ctx.db
-        .from("pier_user")
-        .select("external_id, name, status, department_external_id")
-        .eq("organization_id", ctx.organizationId),
-      ctx.db
-        .from("pier_department")
-        .select("external_id, name")
-        .eq("organization_id", ctx.organizationId),
-      ctx.db
-        .from("pier_client")
-        .select("document, tax_regime")
-        .eq("organization_id", ctx.organizationId),
-      ctx.db
-        .from("closing_period")
-        .select("company_id")
-        .eq("organization_id", ctx.organizationId)
-        .eq("reference_month", filtro.competencia)
-        .eq("type", filtro.tipo),
-    ]);
+  const [usuarios, { data: departamentos }, clientes, { data: aberturas }] = await Promise.all([
+    carregarUsuariosPier<{
+      external_id: string;
+      name: string;
+      status: string | null;
+      department_external_id: string | null;
+    }>(ctx, "external_id, name, status, department_external_id"),
+    ctx.db
+      .from("pier_department")
+      .select("external_id, name")
+      .eq("organization_id", ctx.organizationId),
+    carregarTodasAsLinhas<{ document: string | null; tax_regime: string | null }>(
+      ctx,
+      "pier_client",
+      "document, tax_regime",
+    ),
+    ctx.db
+      .from("closing_period")
+      .select("company_id")
+      .eq("organization_id", ctx.organizationId)
+      .eq("reference_month", filtro.competencia)
+      .eq("type", filtro.tipo),
+  ]);
 
-  const usuarioPorId = new Map((usuarios ?? []).map((u) => [u.external_id, u]));
+  const usuarioPorId = new Map(usuarios.map((u) => [u.external_id, u]));
+
   const deptoNome = new Map((departamentos ?? []).map((d) => [d.external_id, d.name]));
   const regimePorDoc = new Map(
     (clientes ?? []).map((c) => [normalizarDocumento(c.document), c.tax_regime]),
