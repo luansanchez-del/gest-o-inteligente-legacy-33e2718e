@@ -2,6 +2,8 @@ import { audit } from "../../lib/audit";
 import { assertCanWrite, type AppContext } from "../../lib/context";
 import { AppError } from "../../lib/errors";
 import { pierAdapter } from "../../integrations/pier/pier.adapter";
+import { carregarUsuariosPier } from "./pier-user.repo";
+
 
 /**
  * IDs reais dos tipos de solicitação no PIER (/api/v2/tipos-solicitacao).
