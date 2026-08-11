@@ -2,6 +2,8 @@ import { audit } from "../../lib/audit";
 import { assertCanWrite, type AppContext } from "../../lib/context";
 import { AppError } from "../../lib/errors";
 import { resolverTipoSolicitacao, type TipoFechamento } from "./escopo.service";
+import { carregarTodasAsLinhas, carregarUsuariosPier } from "./pier-user.repo";
+
 
 export interface EscopoFiltro {
   competencia: string;
