@@ -128,15 +128,42 @@ function GestaoPage() {
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
 
+  const renomear = useMutation({
+    mutationFn: () =>
+      renomearDepartamento({
+        data: { departamentoId: departamento, nome: novoNomeDepartamento.trim() },
+      }),
+    onSuccess: () => {
+      toast.success("Nome do departamento atualizado.");
+      setRenomeando(false);
+      void queryClient.invalidateQueries({ queryKey: ["equipe-pier"] });
+      void queryClient.invalidateQueries({ queryKey: ["preview-gestao"] });
+    },
+    onError: (e) => toast.error(mensagemDeErro(e)),
+  });
+
   const departamentos = equipe.data?.departamentos ?? [];
   const usuarios = equipe.data?.usuarios ?? [];
-  const usuariosDoDepartamento = useMemo(
-    () =>
-      departamento === TODOS_DEPARTAMENTOS
-        ? usuarios
-        : usuarios.filter((u) => u.departamentoId === departamento),
-    [usuarios, departamento],
-  );
+  const departamentoSelecionado = departamentos.find((d) => d.id === departamento);
+  const usuariosDoDepartamento = useMemo(() => {
+    if (departamento === TODOS_DEPARTAMENTOS) return usuarios;
+    const doDepto = usuarios.filter((u) => u.departamentoId === departamento);
+    return doDepto.length ? doDepto : usuarios;
+  }, [usuarios, departamento]);
+
+  const filtrosAtivos =
+    departamento !== TODOS_DEPARTAMENTOS ||
+    responsavel !== TODOS_USUARIOS ||
+    incluirInativos ||
+    competencia !== competenciaAtual();
+
+  function limparFiltros() {
+    setCompetencia(competenciaAtual());
+    setDepartamento(TODOS_DEPARTAMENTOS);
+    setResponsavel(TODOS_USUARIOS);
+    setIncluirInativos(false);
+  }
+
 
   const dados = preview.data;
 
