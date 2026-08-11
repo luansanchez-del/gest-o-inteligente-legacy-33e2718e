@@ -106,6 +106,9 @@ function GestaoPage() {
     onSuccess: (r) => {
       toast.success(`${r.processados} usuários e ${r.departamentos} departamentos atualizados.`);
       void queryClient.invalidateQueries({ queryKey: ["equipe-pier"] });
+      void queryClient.invalidateQueries({ queryKey: ["equipe-completa"] });
+      void queryClient.invalidateQueries({ queryKey: ["preview-gestao"] });
+
     },
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
