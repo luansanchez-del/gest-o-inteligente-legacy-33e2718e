@@ -1,6 +1,8 @@
 import { audit } from "../../lib/audit";
 import { assertCanWrite, type AppContext } from "../../lib/context";
 import { AppError } from "../../lib/errors";
+import { carregarUsuariosPier } from "./pier-user.repo";
+
 
 /** Tipos considerados internos do escritório (o PIER também lista usuários "Cliente"). */
 const TIPOS_INTERNOS = new Set(["colaborador", "gestor", "encarregado"]);
