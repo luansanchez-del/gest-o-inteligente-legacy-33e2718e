@@ -79,6 +79,8 @@ function GestaoPage() {
   const [departamento, setDepartamento] = useState(TODOS_DEPARTAMENTOS);
   const [responsavel, setResponsavel] = useState(TODOS_USUARIOS);
   const [incluirInativos, setIncluirInativos] = useState(false);
+  const [renomeando, setRenomeando] = useState(false);
+  const [novoNomeDepartamento, setNovoNomeDepartamento] = useState("");
 
   const equipe = useQuery({
     queryKey: ["equipe-pier", incluirInativos],
