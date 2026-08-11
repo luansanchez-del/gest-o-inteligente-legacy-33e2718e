@@ -237,6 +237,38 @@ export async function listarEquipe(ctx: AppContext, opcoes?: { incluirInativos?:
   };
 }
 
+/**
+ * O PIER não expõe o nome dos departamentos na API pública (só o código).
+ * Este ajuste permite ao escritório definir o nome legível exibido nos filtros.
+ */
+export async function renomearDepartamento(
+  ctx: AppContext,
+  input: { departamentoId: string; nome: string },
+) {
+  assertCanWrite(ctx);
+  const nome = input.nome.trim();
+  if (!nome) throw new AppError("VALIDACAO", "Informe o nome do departamento.");
+
+  const { error } = await ctx.db
+    .from("pier_department")
+    .update({ name: nome })
+    .eq("organization_id", ctx.organizationId)
+    .eq("external_id", input.departamentoId);
+
+  if (error)
+    throw new AppError("INESPERADO", "Não foi possível renomear o departamento.", error.message);
+
+  await audit(ctx, {
+    action: "RENOMEAR_DEPARTAMENTO",
+    entity: "pier_department",
+    entityId: input.departamentoId,
+    after: { nome },
+  });
+
+  return { id: input.departamentoId, nome };
+}
+
+
 function normalizarDocumento(value: string | null | undefined) {
   return (value ?? "").replace(/\D/g, "");
 }
