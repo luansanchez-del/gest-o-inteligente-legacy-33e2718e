@@ -10,6 +10,7 @@ import {
   PlayCircle,
   Rocket,
   ShieldCheck,
+  Users,
 } from "lucide-react";
 
 import {
