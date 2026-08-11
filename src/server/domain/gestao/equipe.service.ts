@@ -47,25 +47,29 @@ function normalizarTexto(value: string | null | undefined) {
 
 /** Visão operacional completa da equipe: departamentos + usuários internos. */
 export async function listarEquipeCompleta(ctx: AppContext) {
-  const [{ data: departamentos, error }, { data: usuarios }] = await Promise.all([
+  const [{ data: departamentos, error }, usuarios] = await Promise.all([
     ctx.db
       .from("pier_department")
       .select("external_id, name, user_count, synced_at")
       .eq("organization_id", ctx.organizationId)
       .order("name"),
-    ctx.db
-      .from("pier_user")
-      .select("external_id, name, kind, email, status, department_external_id")
-      .eq("organization_id", ctx.organizationId)
-      .order("name"),
+    carregarUsuariosPier<{
+      external_id: string;
+      name: string;
+      kind: string | null;
+      email: string | null;
+      status: string | null;
+      department_external_id: string | null;
+    }>(ctx, "external_id, name, kind, email, status, department_external_id"),
   ]);
 
   if (error)
     throw new AppError("INESPERADO", "Não foi possível carregar os departamentos.", error.message);
 
-  const internos = (usuarios ?? []).filter((u) =>
-    TIPOS_INTERNOS.has((u.kind ?? "").toLowerCase()),
-  );
+  const internos = usuarios
+    .filter((u) => TIPOS_INTERNOS.has((u.kind ?? "").toLowerCase()))
+    .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+
 
   const nomes = new Map((departamentos ?? []).map((d) => [d.external_id, d.name]));
   const ativos = new Map<string, number>();
