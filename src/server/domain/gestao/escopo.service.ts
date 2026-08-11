@@ -18,8 +18,12 @@ const TIPOS_INTERNOS = new Set(["colaborador", "gestor", "encarregado"]);
 export type TipoFechamento = "CONTABIL" | "FISCAL" | "OUTRO";
 
 export interface DepartamentoOpcao {
+  /** Código interno do PIER — usado como value, nunca exibido como rótulo. */
   id: string;
+  codigo: string;
   nome: string;
+  /** true quando o nome foi definido pelo escritório (e não o rótulo genérico). */
+  personalizado: boolean;
   totalUsuarios: number;
 }
 
