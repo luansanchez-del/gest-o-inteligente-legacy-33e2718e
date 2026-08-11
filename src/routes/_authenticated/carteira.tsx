@@ -70,6 +70,7 @@ function CarteiraPage() {
   const [status, setStatus] = useState<StatusFiltro>("Todos");
   const [regime, setRegime] = useState<string>(TODOS_REGIMES);
   const [situacao, setSituacao] = useState<SituacaoFiltro>("TODOS");
+  const [selecionados, setSelecionados] = useState<string[]>([]);
 
   const consulta = useQuery({
     queryKey: ["carteira", busca, status, regime, situacao],
