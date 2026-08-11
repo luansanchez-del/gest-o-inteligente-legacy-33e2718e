@@ -276,6 +276,34 @@ function CarteiraPage() {
           ) : null}
         </div>
 
+        {selecionaveis.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/40 px-4 py-2 text-sm">
+            <span className="text-muted-foreground">
+              {selecionadosValidos.length} de {selecionaveis.length} sem vínculo selecionados
+            </span>
+            <Button
+              size="sm"
+              onClick={() => vincularLote.mutate(selecionadosValidos)}
+              disabled={selecionadosValidos.length === 0 || vincularLote.isPending}
+            >
+              <Link2 className="mr-2 h-4 w-4" />
+              {vincularLote.isPending
+                ? "Vinculando…"
+                : `Vincular selecionados${
+                    selecionadosValidos.length ? ` (${selecionadosValidos.length})` : ""
+                  }`}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => alternarTodos(!todosSelecionados)}
+              disabled={vincularLote.isPending}
+            >
+              {todosSelecionados ? "Limpar seleção" : "Selecionar todos sem vínculo"}
+            </Button>
+          </div>
+        ) : null}
+
         {consulta.isLoading ? (
           <CarregandoTabela />
         ) : consulta.isError ? (
@@ -291,6 +319,14 @@ function CarteiraPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={todosSelecionados}
+                    onCheckedChange={(v) => alternarTodos(v === true)}
+                    disabled={selecionaveis.length === 0}
+                    aria-label="Selecionar todos sem vínculo"
+                  />
+                </TableHead>
                 <TableHead>Nome</TableHead>
                 <TableHead>CNPJ/CPF</TableHead>
                 <TableHead>Tributação</TableHead>
@@ -303,6 +339,14 @@ function CarteiraPage() {
             <TableBody>
               {linhas.map((linha) => (
                 <TableRow key={linha.pierClientId}>
+                  <TableCell>
+                    <Checkbox
+                      checked={selecionadosValidos.includes(linha.pierClientId)}
+                      onCheckedChange={(v) => alternarLinha(linha.pierClientId, v === true)}
+                      disabled={linha.vinculado}
+                      aria-label={`Selecionar ${linha.nome}`}
+                    />
+                  </TableCell>
                   <TableCell className="font-medium">{linha.nome}</TableCell>
                   <TableCell className="tabular-nums">{formatarCnpj(linha.documento)}</TableCell>
                   <TableCell>{linha.regime ?? "—"}</TableCell>
