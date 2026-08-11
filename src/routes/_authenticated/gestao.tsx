@@ -151,7 +151,9 @@ function GestaoPage() {
       toast.success("Nome do departamento atualizado.");
       setRenomeando(false);
       void queryClient.invalidateQueries({ queryKey: ["equipe-pier"] });
+      void queryClient.invalidateQueries({ queryKey: ["equipe-completa"] });
       void queryClient.invalidateQueries({ queryKey: ["preview-gestao"] });
+
     },
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
