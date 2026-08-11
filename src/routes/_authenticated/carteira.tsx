@@ -125,10 +125,36 @@ function CarteiraPage() {
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
 
+  const vincularLote = useMutation({
+    mutationFn: (pierClientIds: string[]) => vincularClientesEmLote({ data: { pierClientIds } }),
+    onSuccess: (r) => {
+      if (r.falhas.length) {
+        toast.warning(`${r.vinculados} vinculados, ${r.falhas.length} com falha.`, {
+          description: r.falhas[0]?.motivo,
+        });
+      } else {
+        toast.success(`${r.vinculados} clientes vinculados.`);
+      }
+      setSelecionados([]);
+      void queryClient.invalidateQueries({ queryKey: ["carteira"] });
+    },
+    onError: (e) => toast.error(mensagemDeErro(e)),
+  });
+
   const resumo = consulta.data?.resumo;
   const linhas = consulta.data?.linhas ?? [];
   const ultimaSincronizacao = resumo?.ultimaSincronizacao;
   const regimes = resumo?.filtrosDisponiveis?.regimes ?? [];
+  const selecionaveis = linhas.filter((l) => !l.vinculado);
+  const selecionadosValidos = selecionados.filter((id) =>
+    selecionaveis.some((l) => l.pierClientId === id),
+  );
+  const todosSelecionados =
+    selecionaveis.length > 0 && selecionadosValidos.length === selecionaveis.length;
+  const alternarTodos = (marcar: boolean) =>
+    setSelecionados(marcar ? selecionaveis.map((l) => l.pierClientId) : []);
+  const alternarLinha = (id: string, marcar: boolean) =>
+    setSelecionados((atual) => (marcar ? [...atual, id] : atual.filter((i) => i !== id)));
   const temFiltroAtivo =
     busca.trim() !== "" || status !== "Todos" || regime !== TODOS_REGIMES || situacao !== "TODOS";
   const limparFiltros = () => {
