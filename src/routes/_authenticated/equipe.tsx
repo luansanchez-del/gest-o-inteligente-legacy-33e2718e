@@ -289,7 +289,7 @@ function EquipePage() {
       {equipe.isLoading ? (
         <CarregandoTabela />
       ) : equipe.isError ? (
-        <ErroConsulta mensagem={mensagemDeErro(equipe.error)} onTentarNovamente={() => equipe.refetch()} />
+        <ErroConsulta error={equipe.error} onRetry={() => void equipe.refetch()} />
       ) : (
         <Tabs value={aba} onValueChange={setAba}>
           <TabsList>
