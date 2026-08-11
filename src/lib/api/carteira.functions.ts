@@ -49,6 +49,19 @@ export const vincularCliente = createServerFn({ method: "POST" })
     }),
   );
 
+export const vincularClientesEmLote = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { pierClientIds: string[] }) => {
+    if (!input?.pierClientIds?.length) throw new Error("VALIDACAO::Nenhum cliente selecionado.");
+    return input;
+  })
+  .handler(async ({ data, context }) =>
+    comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
+      const service = await import("@/server/domain/carteira/carteira.service");
+      return service.vincularClientesEmLote(ctx, data.pierClientIds);
+    }),
+  );
+
 export const desvincularCliente = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { pierClientId: string }) => {
