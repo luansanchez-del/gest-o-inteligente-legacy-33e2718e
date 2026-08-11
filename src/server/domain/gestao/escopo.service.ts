@@ -18,8 +18,12 @@ const TIPOS_INTERNOS = new Set(["colaborador", "gestor", "encarregado"]);
 export type TipoFechamento = "CONTABIL" | "FISCAL" | "OUTRO";
 
 export interface DepartamentoOpcao {
+  /** Código interno do PIER — usado como value, nunca exibido como rótulo. */
   id: string;
+  codigo: string;
   nome: string;
+  /** true quando o nome foi definido pelo escritório (e não o rótulo genérico). */
+  personalizado: boolean;
   totalUsuarios: number;
 }
 
@@ -202,12 +206,25 @@ export async function listarEquipe(ctx: AppContext, opcoes?: { incluirInativos?:
     );
   }
 
+  const opcoesDepartamento = (departamentos ?? [])
+    .map<DepartamentoOpcao>((d) => {
+      const personalizado = d.name !== nomePadraoDepartamento(d.external_id);
+      return {
+        id: d.external_id,
+        codigo: d.external_id,
+        nome: personalizado ? d.name : `Departamento ${d.external_id}`,
+        personalizado,
+        totalUsuarios: ativosPorDepto.get(d.external_id) ?? 0,
+      };
+    })
+    .sort((a, b) => {
+      if (a.personalizado !== b.personalizado) return a.personalizado ? -1 : 1;
+      if (a.totalUsuarios !== b.totalUsuarios) return b.totalUsuarios - a.totalUsuarios;
+      return a.nome.localeCompare(b.nome, "pt-BR");
+    });
+
   return {
-    departamentos: (departamentos ?? []).map<DepartamentoOpcao>((d) => ({
-      id: d.external_id,
-      nome: d.name,
-      totalUsuarios: ativosPorDepto.get(d.external_id) ?? 0,
-    })),
+    departamentos: opcoesDepartamento,
     usuarios: internos.map<UsuarioOpcao>((u) => ({
       id: u.external_id,
       nome: u.name,
@@ -219,6 +236,38 @@ export async function listarEquipe(ctx: AppContext, opcoes?: { incluirInativos?:
     integracao: await pierAdapter.status(),
   };
 }
+
+/**
+ * O PIER não expõe o nome dos departamentos na API pública (só o código).
+ * Este ajuste permite ao escritório definir o nome legível exibido nos filtros.
+ */
+export async function renomearDepartamento(
+  ctx: AppContext,
+  input: { departamentoId: string; nome: string },
+) {
+  assertCanWrite(ctx);
+  const nome = input.nome.trim();
+  if (!nome) throw new AppError("VALIDACAO", "Informe o nome do departamento.");
+
+  const { error } = await ctx.db
+    .from("pier_department")
+    .update({ name: nome })
+    .eq("organization_id", ctx.organizationId)
+    .eq("external_id", input.departamentoId);
+
+  if (error)
+    throw new AppError("INESPERADO", "Não foi possível renomear o departamento.", error.message);
+
+  await audit(ctx, {
+    action: "RENOMEAR_DEPARTAMENTO",
+    entity: "pier_department",
+    entityId: input.departamentoId,
+    after: { nome },
+  });
+
+  return { id: input.departamentoId, nome };
+}
+
 
 function normalizarDocumento(value: string | null | undefined) {
   return (value ?? "").replace(/\D/g, "");

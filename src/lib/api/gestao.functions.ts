@@ -95,3 +95,17 @@ export const detalharExecucao = createServerFn({ method: "GET" })
       return service.detalharExecucao(ctx, data.execucaoId);
     }),
   );
+
+export const renomearDepartamento = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { departamentoId: string; nome: string }) => {
+    if (!input?.departamentoId) throw new Error("VALIDACAO::Departamento não informado.");
+    if (!input?.nome?.trim()) throw new Error("VALIDACAO::Informe o nome do departamento.");
+    return input;
+  })
+  .handler(async ({ data, context }) =>
+    comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
+      const service = await import("@/server/domain/gestao/escopo.service");
+      return service.renomearDepartamento(ctx, data);
+    }),
+  );
