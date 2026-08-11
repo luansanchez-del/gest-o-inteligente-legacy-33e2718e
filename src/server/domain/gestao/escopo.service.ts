@@ -325,12 +325,12 @@ export async function sincronizarSolicitacoes(
       }
     }
 
-    const { data: usuarios } = await ctx.db
-      .from("pier_user")
-      .select("external_id, department_external_id")
-      .eq("organization_id", ctx.organizationId);
+    const usuarios = await carregarUsuariosPier<{
+      external_id: string;
+      department_external_id: string | null;
+    }>(ctx, "external_id, department_external_id");
     const deptoPorUsuario = new Map(
-      (usuarios ?? []).map((u) => [u.external_id, u.department_external_id]),
+      usuarios.map((u) => [u.external_id, u.department_external_id]),
     );
 
     const agora = new Date().toISOString();
