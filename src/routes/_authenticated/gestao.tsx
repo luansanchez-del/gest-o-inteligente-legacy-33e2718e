@@ -37,6 +37,7 @@ import {
   iniciarGestao,
   listarEquipe,
   montarPreview,
+  renomearDepartamento,
   sincronizarEquipe,
   sincronizarSolicitacoes,
 } from "@/lib/api/gestao.functions";
