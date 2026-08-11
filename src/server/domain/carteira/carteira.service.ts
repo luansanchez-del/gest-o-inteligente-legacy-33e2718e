@@ -316,6 +316,28 @@ export async function vincularCliente(ctx: AppContext, pierClientId: string) {
   return { empresaId };
 }
 
+/** Vincula vários clientes de uma vez; erros por linha não abortam o lote. */
+export async function vincularClientesEmLote(ctx: AppContext, pierClientIds: string[]) {
+  assertCanWrite(ctx);
+  let vinculados = 0;
+  const falhas: { pierClientId: string; motivo: string }[] = [];
+
+  for (const id of pierClientIds) {
+    try {
+      await vincularCliente(ctx, id);
+      vinculados += 1;
+    } catch (error) {
+      falhas.push({
+        pierClientId: id,
+        motivo:
+          error instanceof AppError ? error.userMessage : "Falha inesperada ao vincular o cliente.",
+      });
+    }
+  }
+
+  return { vinculados, falhas };
+}
+
 export async function desvincularCliente(ctx: AppContext, pierClientId: string) {
   assertCanWrite(ctx);
   const { error } = await ctx.db
