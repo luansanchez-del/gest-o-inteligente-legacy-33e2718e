@@ -206,12 +206,25 @@ export async function listarEquipe(ctx: AppContext, opcoes?: { incluirInativos?:
     );
   }
 
+  const opcoesDepartamento = (departamentos ?? [])
+    .map<DepartamentoOpcao>((d) => {
+      const personalizado = d.name !== nomePadraoDepartamento(d.external_id);
+      return {
+        id: d.external_id,
+        codigo: d.external_id,
+        nome: personalizado ? d.name : `Departamento ${d.external_id}`,
+        personalizado,
+        totalUsuarios: ativosPorDepto.get(d.external_id) ?? 0,
+      };
+    })
+    .sort((a, b) => {
+      if (a.personalizado !== b.personalizado) return a.personalizado ? -1 : 1;
+      if (a.totalUsuarios !== b.totalUsuarios) return b.totalUsuarios - a.totalUsuarios;
+      return a.nome.localeCompare(b.nome, "pt-BR");
+    });
+
   return {
-    departamentos: (departamentos ?? []).map<DepartamentoOpcao>((d) => ({
-      id: d.external_id,
-      nome: d.name,
-      totalUsuarios: ativosPorDepto.get(d.external_id) ?? 0,
-    })),
+    departamentos: opcoesDepartamento,
     usuarios: internos.map<UsuarioOpcao>((u) => ({
       id: u.external_id,
       nome: u.name,
