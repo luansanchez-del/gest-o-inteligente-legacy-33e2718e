@@ -12,6 +12,7 @@ import {
 } from "@/components/common/EstadoConsulta";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -34,6 +35,7 @@ import {
   listarCarteira,
   sincronizarCarteira,
   vincularCliente,
+  vincularClientesEmLote,
 } from "@/lib/api/carteira.functions";
 import { formatarCnpj, formatarDataHora } from "@/lib/formato";
 import { mensagemDeErro } from "@/lib/erros";
@@ -69,6 +71,7 @@ function CarteiraPage() {
   const [status, setStatus] = useState<StatusFiltro>("Todos");
   const [regime, setRegime] = useState<string>(TODOS_REGIMES);
   const [situacao, setSituacao] = useState<SituacaoFiltro>("TODOS");
+  const [selecionados, setSelecionados] = useState<string[]>([]);
 
   const consulta = useQuery({
     queryKey: ["carteira", busca, status, regime, situacao],
@@ -125,10 +128,36 @@ function CarteiraPage() {
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
 
+  const vincularLote = useMutation({
+    mutationFn: (pierClientIds: string[]) => vincularClientesEmLote({ data: { pierClientIds } }),
+    onSuccess: (r) => {
+      if (r.falhas.length) {
+        toast.warning(`${r.vinculados} vinculados, ${r.falhas.length} com falha.`, {
+          description: r.falhas[0]?.motivo,
+        });
+      } else {
+        toast.success(`${r.vinculados} clientes vinculados.`);
+      }
+      setSelecionados([]);
+      void queryClient.invalidateQueries({ queryKey: ["carteira"] });
+    },
+    onError: (e) => toast.error(mensagemDeErro(e)),
+  });
+
   const resumo = consulta.data?.resumo;
   const linhas = consulta.data?.linhas ?? [];
   const ultimaSincronizacao = resumo?.ultimaSincronizacao;
   const regimes = resumo?.filtrosDisponiveis?.regimes ?? [];
+  const selecionaveis = linhas.filter((l) => !l.vinculado);
+  const selecionadosValidos = selecionados.filter((id) =>
+    selecionaveis.some((l) => l.pierClientId === id),
+  );
+  const todosSelecionados =
+    selecionaveis.length > 0 && selecionadosValidos.length === selecionaveis.length;
+  const alternarTodos = (marcar: boolean) =>
+    setSelecionados(marcar ? selecionaveis.map((l) => l.pierClientId) : []);
+  const alternarLinha = (id: string, marcar: boolean) =>
+    setSelecionados((atual) => (marcar ? [...atual, id] : atual.filter((i) => i !== id)));
   const temFiltroAtivo =
     busca.trim() !== "" || status !== "Todos" || regime !== TODOS_REGIMES || situacao !== "TODOS";
   const limparFiltros = () => {
@@ -248,6 +277,34 @@ function CarteiraPage() {
           ) : null}
         </div>
 
+        {selecionaveis.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/40 px-4 py-2 text-sm">
+            <span className="text-muted-foreground">
+              {selecionadosValidos.length} de {selecionaveis.length} sem vínculo selecionados
+            </span>
+            <Button
+              size="sm"
+              onClick={() => vincularLote.mutate(selecionadosValidos)}
+              disabled={selecionadosValidos.length === 0 || vincularLote.isPending}
+            >
+              <Link2 className="mr-2 h-4 w-4" />
+              {vincularLote.isPending
+                ? "Vinculando…"
+                : `Vincular selecionados${
+                    selecionadosValidos.length ? ` (${selecionadosValidos.length})` : ""
+                  }`}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => alternarTodos(!todosSelecionados)}
+              disabled={vincularLote.isPending}
+            >
+              {todosSelecionados ? "Limpar seleção" : "Selecionar todos sem vínculo"}
+            </Button>
+          </div>
+        ) : null}
+
         {consulta.isLoading ? (
           <CarregandoTabela />
         ) : consulta.isError ? (
@@ -263,6 +320,14 @@ function CarteiraPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={todosSelecionados}
+                    onCheckedChange={(v) => alternarTodos(v === true)}
+                    disabled={selecionaveis.length === 0}
+                    aria-label="Selecionar todos sem vínculo"
+                  />
+                </TableHead>
                 <TableHead>Nome</TableHead>
                 <TableHead>CNPJ/CPF</TableHead>
                 <TableHead>Tributação</TableHead>
@@ -275,6 +340,14 @@ function CarteiraPage() {
             <TableBody>
               {linhas.map((linha) => (
                 <TableRow key={linha.pierClientId}>
+                  <TableCell>
+                    <Checkbox
+                      checked={selecionadosValidos.includes(linha.pierClientId)}
+                      onCheckedChange={(v) => alternarLinha(linha.pierClientId, v === true)}
+                      disabled={linha.vinculado}
+                      aria-label={`Selecionar ${linha.nome}`}
+                    />
+                  </TableCell>
                   <TableCell className="font-medium">{linha.nome}</TableCell>
                   <TableCell className="tabular-nums">{formatarCnpj(linha.documento)}</TableCell>
                   <TableCell>{linha.regime ?? "—"}</TableCell>
