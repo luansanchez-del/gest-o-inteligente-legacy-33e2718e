@@ -158,8 +158,7 @@ function GestaoPage() {
   const departamentoSelecionado = departamentos.find((d) => d.id === departamento);
   const usuariosDoDepartamento = useMemo(() => {
     if (departamento === TODOS_DEPARTAMENTOS) return usuarios;
-    const doDepto = usuarios.filter((u) => u.departamentoId === departamento);
-    return doDepto.length ? doDepto : usuarios;
+    return usuarios.filter((u) => u.departamentoId === departamento);
   }, [usuarios, departamento]);
 
   const filtrosAtivos =
