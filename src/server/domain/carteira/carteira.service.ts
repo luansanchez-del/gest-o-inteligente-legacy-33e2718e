@@ -30,12 +30,15 @@ export interface CarteiraLinha {
 }
 
 export interface CarteiraResumo {
+  /** Totais globais da carteira — nunca afetados pelos filtros da tela. */
   total: number;
   vinculados: number;
   naoVinculados: number;
   emRevisao: number;
   semDocumento: number;
   documentosDuplicados: number;
+  /** Quantas linhas o filtro atual está exibindo (null quando não há filtro). */
+  totalExibido: number | null;
   ultimaSincronizacao: {
     id: string;
     status: string;
