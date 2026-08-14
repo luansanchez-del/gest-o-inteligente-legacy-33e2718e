@@ -288,6 +288,27 @@ export async function salvarAnexoBytes(
   return { anexoId: anexo.id, reaproveitado: false, hash };
 }
 
+export async function enviarAnexo(
+  ctx: AppContext,
+  input: {
+    solicitacaoExternalId: string;
+    filename: string;
+    mimeType: string;
+    conteudoBase64: string;
+  },
+) {
+  assertCanWrite(ctx);
+  const solicitacao = await carregarSolicitacao(ctx, input.solicitacaoExternalId);
+
+  const bytes = base64ParaBytes(input.conteudoBase64);
+  if (!bytes.length) throw new AppError("VALIDACAO", "Arquivo vazio.");
+  if (bytes.length > TAMANHO_MAXIMO)
+    throw new AppError("VALIDACAO", "Arquivo acima do limite de 25 MB.");
+
+  return salvarAnexoBytes(ctx, solicitacao, { filename: input.filename, bytes });
+}
+
+
 export async function executarValidacao(
   ctx: AppContext,
   input: { solicitacaoExternalId: string; anexoId: string; reprocessar?: boolean },
