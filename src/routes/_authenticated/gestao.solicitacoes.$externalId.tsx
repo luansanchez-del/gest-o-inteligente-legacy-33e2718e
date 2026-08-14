@@ -113,6 +113,7 @@ function SolicitacaoPage() {
   const [busca, setBusca] = useState("");
   const [notas, setNotas] = useState("");
   const [expandido, setExpandido] = useState<string | null>(null);
+  const [confirmarProcessar, setConfirmarProcessar] = useState(false);
 
   const detalhe = useQuery({
     queryKey: ["solicitacao", id],
@@ -121,6 +122,7 @@ function SolicitacaoPage() {
 
   const dados = detalhe.data;
   const ultimaExecucao = dados?.execucoes?.[0] ?? null;
+  const processamento = dados?.processamento ?? null;
 
   const resultado = useQuery({
     queryKey: ["validacao", ultimaExecucao?.id],
