@@ -40,7 +40,7 @@ import {
 import { formatarCnpj } from "@/lib/formato";
 import { mensagemDeErro } from "@/lib/erros";
 
-export const Route = createFileRoute("/_authenticated/solicitacao/$id")({
+export const Route = createFileRoute("/_authenticated/gestao/solicitacoes/$externalId")({
   head: () => ({
     meta: [
       { title: "Análise da solicitação | Gestão Inteligente" },
@@ -96,7 +96,7 @@ async function arquivoParaBase64(arquivo: File) {
 }
 
 function SolicitacaoPage() {
-  const { id } = Route.useParams();
+  const { externalId: id } = Route.useParams();
   const queryClient = useQueryClient();
   const inputArquivo = useRef<HTMLInputElement>(null);
   const [severidade, setSeveridade] = useState(TODAS);
@@ -195,6 +195,14 @@ function SolicitacaoPage() {
   const documento = (totais["documento"] ?? {}) as Record<string, unknown>;
   const instrucao = dados?.instrucaoEfetiva ?? null;
 
+  const estadoAnalise = !ultimaExecucao
+    ? { rotulo: "Documento não carregado", classe: "bg-muted text-muted-foreground" }
+    : ultimaExecucao.status === "COMPLETED"
+      ? { rotulo: "Análise concluída", classe: "bg-success-soft text-success-strong" }
+      : ultimaExecucao.status === "FAILED"
+        ? { rotulo: "Falha na análise", classe: "bg-destructive/10 text-destructive" }
+        : { rotulo: "Analisando", classe: "bg-warning-soft text-warning-strong" };
+
   if (detalhe.isLoading) return <CarregandoTabela linhas={8} />;
   if (detalhe.isError)
     return <ErroConsulta error={detalhe.error} onRetry={() => void detalhe.refetch()} />;
@@ -234,8 +242,31 @@ function SolicitacaoPage() {
 
       <Card className="border-warning/40 bg-warning-soft p-3 text-sm text-warning-strong">
         <ShieldAlert className="mr-2 inline h-4 w-4" />
-        {dados?.avisoPier}
+        {dados?.avisoPier ?? "PIER não alterado — decisão interna."}
       </Card>
+
+      <Card className="space-y-2 p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge className={estadoAnalise.classe}>{estadoAnalise.rotulo}</Badge>
+          <span className="text-sm text-muted-foreground">
+            Status PIER: {dados?.solicitacao.status ?? "—"} · Responsável:{" "}
+            {dados?.solicitacao.responsavelNome ?? "—"}
+          </span>
+        </div>
+        {!dados?.anexos.length && dados?.solicitacao.possuiAnexo ? (
+          <p className="text-sm text-warning-strong">
+            Anexo identificado no PIER, mas conteúdo ainda não importado. Envie o PDF do balancete
+            manualmente para analisar no piloto.
+          </p>
+        ) : null}
+        {!dados?.anexos.length && !dados?.solicitacao.possuiAnexo ? (
+          <p className="text-sm text-muted-foreground">
+            Nenhum documento vinculado a esta solicitação. Envie o PDF do balancete para iniciar a
+            análise.
+          </p>
+        ) : null}
+      </Card>
+
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="space-y-3 p-4 lg:col-span-2">
