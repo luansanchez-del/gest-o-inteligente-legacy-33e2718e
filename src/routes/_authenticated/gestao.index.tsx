@@ -85,6 +85,7 @@ export const Route = createFileRoute("/_authenticated/gestao/")({
 const TODOS_DEPARTAMENTOS = "__TODOS__";
 const TODOS_USUARIOS = "__TODOS_USUARIOS__";
 const TODAS_FILAS = "__TODAS_FILAS__";
+const TODOS_ANEXOS = "__TODOS_ANEXOS__";
 
 /** Fila operacional do fechamento contábil. */
 const FILA: Record<string, { rotulo: string; classe: string }> = {
@@ -129,6 +130,7 @@ function GestaoPage() {
   const [departamento, setDepartamento] = useState(TODOS_DEPARTAMENTOS);
   const [responsavel, setResponsavel] = useState(TODOS_USUARIOS);
   const [fila, setFila] = useState(TODAS_FILAS);
+  const [anexo, setAnexo] = useState(TODOS_ANEXOS);
   const [incluirInativos, setIncluirInativos] = useState(false);
   const [renomeando, setRenomeando] = useState(false);
   const [confirmarProcessamento, setConfirmarProcessamento] = useState(false);
@@ -149,6 +151,7 @@ function GestaoPage() {
     departamentoId: departamento === TODOS_DEPARTAMENTOS ? null : departamento,
     responsavelId: responsavel === TODOS_USUARIOS ? null : responsavel,
     statusFila: fila === TODAS_FILAS ? null : (fila as never),
+    anexo: anexo === TODOS_ANEXOS ? null : (anexo as "COM_ANEXO" | "SEM_ANEXO"),
   };
 
   const preview = useQuery({
@@ -162,6 +165,7 @@ function GestaoPage() {
       filtro.departamentoId,
       filtro.responsavelId,
       fila,
+      anexo,
     ],
     queryFn: () => montarPreview({ data: filtro }),
     enabled: /^\d{4}-\d{2}$/.test(competencia),
@@ -195,7 +199,7 @@ function GestaoPage() {
       iniciarGestao({
         data: {
           ...filtro,
-          idempotencyKey: `${competencia}|${tipo}|${filtro.departamentoId ?? "todos"}|${filtro.responsavelId ?? "todos"}`,
+          idempotencyKey: `${competencia}|${tipo}|${filtro.departamentoId ?? "todos"}|${filtro.responsavelId ?? "todos"}|${anexo}`,
         },
       }),
     onSuccess: (r) => {
@@ -215,7 +219,26 @@ function GestaoPage() {
       const solicitacoes = (preview.data?.empresas ?? []).map(
         (e) => e.solicitacaoId,
       );
-      return processarEscopo({ data: { solicitacoes } });
+      const total = {
+        total: 0,
+        finalizadas: 0,
+        emRevisao: 0,
+        pendentes: 0,
+        jaFinalizadas: 0,
+        erros: 0,
+      };
+      for (let inicio = 0; inicio < solicitacoes.length; inicio += 100) {
+        const resultado = await processarEscopo({
+          data: { solicitacoes: solicitacoes.slice(inicio, inicio + 100) },
+        });
+        total.total += resultado.total;
+        total.finalizadas += resultado.finalizadas;
+        total.emRevisao += resultado.emRevisao;
+        total.pendentes += resultado.pendentes;
+        total.jaFinalizadas += resultado.jaFinalizadas;
+        total.erros += resultado.erros;
+      }
+      return total;
     },
     onSuccess: (r) => {
       setConfirmarProcessamento(false);
@@ -260,6 +283,7 @@ function GestaoPage() {
     departamento !== TODOS_DEPARTAMENTOS ||
     responsavel !== TODOS_USUARIOS ||
     fila !== TODAS_FILAS ||
+    anexo !== TODOS_ANEXOS ||
     competenciaFim !== "" ||
     busca !== "" ||
     revisaoCompetencia ||
@@ -272,6 +296,7 @@ function GestaoPage() {
     setDepartamento(TODOS_DEPARTAMENTOS);
     setResponsavel(TODOS_USUARIOS);
     setFila(TODAS_FILAS);
+    setAnexo(TODOS_ANEXOS);
     setCompetenciaFim("");
     setBusca("");
     setRevisaoCompetencia(false);
@@ -460,6 +485,22 @@ function GestaoPage() {
             </Select>
           </div>
 
+          <div className="min-w-[190px] space-y-1">
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              Anexos
+            </Label>
+            <Select value={anexo} onValueChange={setAnexo}>
+              <SelectTrigger aria-label="Filtrar por anexos">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={TODOS_ANEXOS}>Todos</SelectItem>
+                <SelectItem value="COM_ANEXO">Somente com anexo</SelectItem>
+                <SelectItem value="SEM_ANEXO">Somente sem anexo</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="space-y-1.5 lg:w-[220px]">
             <Label htmlFor="busca-cliente">Cliente (nome ou CNPJ)</Label>
             <Input
@@ -573,7 +614,7 @@ function GestaoPage() {
             <PlayCircle
               className={`mr-2 h-4 w-4 ${iniciar.isPending || processarLote.isPending ? "animate-pulse" : ""}`}
             />
-            {processarLote.isPending ? "Processando…" : "Iniciar gestão"}
+            {processarLote.isPending ? "Processando lote…" : "Validar em lote"}
           </Button>
         </div>
 
@@ -586,9 +627,10 @@ function GestaoPage() {
               <DialogTitle>Processar o escopo filtrado?</DialogTitle>
               <DialogDescription>
                 {dados?.totalEmpresas ?? 0} solicitação(ões) do escopo atual
-                serão processadas: conferência do estado real no PIER, leitura
-                do balancete e análise. A postagem privada e a finalização só
-                acontecem quando o resultado for aprovado sem erros nem alertas.
+                serão processadas em lote. O sistema conferirá o estado real no
+                PIER e lerá os anexos conforme o tipo de solicitação
+                selecionado. A postagem privada e a finalização só acontecem
+                quando o resultado for aprovado sem erros nem alertas.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>

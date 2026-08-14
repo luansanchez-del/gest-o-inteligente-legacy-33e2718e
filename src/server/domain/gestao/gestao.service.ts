@@ -33,6 +33,8 @@ export interface EscopoFiltro {
   revisaoCompetencia?: boolean;
   /** Busca livre por nome ou CNPJ do cliente. */
   busca?: string | null;
+  /** Filtra pela existência de anexo informada pelo PIER. */
+  anexo?: "COM_ANEXO" | "SEM_ANEXO" | null;
 }
 
 export interface EscopoLinha {
@@ -101,6 +103,9 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
   } else {
     consulta = consulta.eq("reference_month", filtro.competencia);
   }
+
+  if (filtro.anexo === "COM_ANEXO") consulta = consulta.eq("has_attachment", true);
+  if (filtro.anexo === "SEM_ANEXO") consulta = consulta.eq("has_attachment", false);
 
   const { data: solicitacoes, error } = await consulta;
 

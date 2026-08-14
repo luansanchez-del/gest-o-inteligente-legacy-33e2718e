@@ -20,6 +20,7 @@ type EscopoInput = {
     | null;
   revisaoCompetencia?: boolean;
   busca?: string | null;
+  anexo?: "COM_ANEXO" | "SEM_ANEXO" | null;
 };
 
 const COMPETENCIA = /^\d{4}-\d{2}$/;
