@@ -252,6 +252,59 @@ function CarteiraPage() {
         }
       />
 
+      <AlertDialog
+        open={preview !== null}
+        onOpenChange={(aberto) => {
+          if (!aberto && !vincularAuto.isPending) setPreview(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar vínculo automático</AlertDialogTitle>
+            <AlertDialogDescription>
+              Nada foi gravado ainda. Estes são os números da pré-visualização:
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {preview ? (
+            <ul className="space-y-1 text-sm">
+              <li>
+                Clientes na carteira: <strong className="tabular-nums">{preview.total}</strong>
+              </li>
+              <li>
+                Já vinculados: <strong className="tabular-nums">{preview.jaVinculados}</strong>
+              </li>
+              <li>
+                Empresas existentes a reutilizar:{" "}
+                <strong className="tabular-nums">{preview.reutilizarEmpresas}</strong>
+              </li>
+              <li>
+                Empresas a criar: <strong className="tabular-nums">{preview.criarEmpresas}</strong>
+              </li>
+              <li>
+                Conflitos: <strong className="tabular-nums">{preview.conflitos}</strong>
+              </li>
+              <li>
+                Sem documento: <strong className="tabular-nums">{preview.semDocumento}</strong>
+              </li>
+            </ul>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={vincularAuto.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                if (!vincularAuto.isPending) vincularAuto.mutate();
+              }}
+              disabled={vincularAuto.isPending}
+            >
+              {vincularAuto.isPending ? "Vinculando…" : "Confirmar e vincular"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+
+
       {resumo && !resumo.integracao.available ? (
         <Card className="border-warning/40 bg-warning-soft p-4 text-sm text-warning-strong">
           Integração com o PIER indisponível: {resumo.integracao.reason ?? "não configurada"}.
