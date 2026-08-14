@@ -190,8 +190,10 @@ function GestaoPage() {
   const filtrosAtivos =
     departamento !== TODOS_DEPARTAMENTOS ||
     responsavel !== TODOS_USUARIOS ||
+    fila !== TODAS_FILAS ||
     incluirInativos ||
     competencia !== competenciaAtual();
+
 
   function limparFiltros() {
     setCompetencia(competenciaAtual());
