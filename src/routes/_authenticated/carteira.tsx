@@ -282,8 +282,10 @@ function CarteiraPage() {
               <SelectItem value="TODOS">Todos os vínculos</SelectItem>
               <SelectItem value="VINCULADO">Vinculados</SelectItem>
               <SelectItem value="NAO_VINCULADO">Sem vínculo</SelectItem>
+              <SelectItem value="REVISAO">Em revisão</SelectItem>
             </SelectContent>
           </Select>
+
           {temFiltroAtivo ? (
             <Button variant="ghost" size="sm" onClick={limparFiltros}>
               <X className="mr-2 h-4 w-4" />
