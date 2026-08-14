@@ -91,6 +91,14 @@ function CarteiraPage() {
   const [regime, setRegime] = useState<string>(TODOS_REGIMES);
   const [situacao, setSituacao] = useState<SituacaoFiltro>("TODOS");
   const [selecionados, setSelecionados] = useState<string[]>([]);
+  const [preview, setPreview] = useState<{
+    total: number;
+    jaVinculados: number;
+    reutilizarEmpresas: number;
+    criarEmpresas: number;
+    conflitos: number;
+    semDocumento: number;
+  } | null>(null);
 
   const consulta = useQuery({
     queryKey: ["carteira", busca, status, regime, situacao],
