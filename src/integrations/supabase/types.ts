@@ -1071,6 +1071,187 @@ export type Database = {
           },
         ]
       }
+      request_attachment: {
+        Row: {
+          created_at: string
+          external_id: string | null
+          filename: string
+          id: string
+          metadata: Json
+          mime_type: string | null
+          organization_id: string
+          request_id: string
+          sha256: string
+          size_bytes: number | null
+          status: Database["public"]["Enums"]["attachment_status"]
+          storage_path: string
+          updated_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          external_id?: string | null
+          filename: string
+          id?: string
+          metadata?: Json
+          mime_type?: string | null
+          organization_id: string
+          request_id: string
+          sha256: string
+          size_bytes?: number | null
+          status?: Database["public"]["Enums"]["attachment_status"]
+          storage_path: string
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          external_id?: string | null
+          filename?: string
+          id?: string
+          metadata?: Json
+          mime_type?: string | null
+          organization_id?: string
+          request_id?: string
+          sha256?: string
+          size_bytes?: number | null
+          status?: Database["public"]["Enums"]["attachment_status"]
+          storage_path?: string
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "request_attachment_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organization"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_attachment_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "request"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      request_decision: {
+        Row: {
+          created_at: string
+          decided_at: string
+          decided_by: string | null
+          decision: Database["public"]["Enums"]["decision_kind"]
+          execution_id: string | null
+          id: string
+          notes: string | null
+          organization_id: string
+          pier_action_status: Database["public"]["Enums"]["pier_action_status"]
+          request_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          decided_at?: string
+          decided_by?: string | null
+          decision: Database["public"]["Enums"]["decision_kind"]
+          execution_id?: string | null
+          id?: string
+          notes?: string | null
+          organization_id: string
+          pier_action_status?: Database["public"]["Enums"]["pier_action_status"]
+          request_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          decided_at?: string
+          decided_by?: string | null
+          decision?: Database["public"]["Enums"]["decision_kind"]
+          execution_id?: string | null
+          id?: string
+          notes?: string | null
+          organization_id?: string
+          pier_action_status?: Database["public"]["Enums"]["pier_action_status"]
+          request_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "request_decision_execution_id_fkey"
+            columns: ["execution_id"]
+            isOneToOne: false
+            referencedRelation: "validation_execution"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_decision_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organization"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_decision_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "request"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      request_instruction: {
+        Row: {
+          created_at: string
+          id: string
+          interpreted: Json
+          occurred_at: string | null
+          organization_id: string
+          request_id: string
+          source: Database["public"]["Enums"]["instruction_source"]
+          source_external_id: string | null
+          text: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          interpreted?: Json
+          occurred_at?: string | null
+          organization_id: string
+          request_id: string
+          source: Database["public"]["Enums"]["instruction_source"]
+          source_external_id?: string | null
+          text: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          interpreted?: Json
+          occurred_at?: string | null
+          organization_id?: string
+          request_id?: string
+          source?: Database["public"]["Enums"]["instruction_source"]
+          source_external_id?: string | null
+          text?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "request_instruction_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organization"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_instruction_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "request"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       review_task: {
         Row: {
           assigned_to: string | null
@@ -1264,6 +1445,151 @@ export type Database = {
           },
         ]
       }
+      validation_execution: {
+        Row: {
+          actor_id: string | null
+          attachment_id: string
+          content_hash: string
+          created_at: string
+          error_message: string | null
+          finished_at: string | null
+          id: string
+          instruction_snapshot: Json
+          organization_id: string
+          request_id: string
+          result: Database["public"]["Enums"]["validation_result"] | null
+          started_at: string | null
+          status: Database["public"]["Enums"]["validation_status"]
+          summary: string | null
+          totals: Json
+          updated_at: string
+          validator_version: string
+        }
+        Insert: {
+          actor_id?: string | null
+          attachment_id: string
+          content_hash: string
+          created_at?: string
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          instruction_snapshot?: Json
+          organization_id: string
+          request_id: string
+          result?: Database["public"]["Enums"]["validation_result"] | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["validation_status"]
+          summary?: string | null
+          totals?: Json
+          updated_at?: string
+          validator_version: string
+        }
+        Update: {
+          actor_id?: string | null
+          attachment_id?: string
+          content_hash?: string
+          created_at?: string
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          instruction_snapshot?: Json
+          organization_id?: string
+          request_id?: string
+          result?: Database["public"]["Enums"]["validation_result"] | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["validation_status"]
+          summary?: string | null
+          totals?: Json
+          updated_at?: string
+          validator_version?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "validation_execution_attachment_id_fkey"
+            columns: ["attachment_id"]
+            isOneToOne: false
+            referencedRelation: "request_attachment"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "validation_execution_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organization"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "validation_execution_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "request"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      validation_finding: {
+        Row: {
+          account_code: string | null
+          account_name: string | null
+          code: string
+          created_at: string
+          detail: string | null
+          evidence: Json
+          execution_id: string
+          id: string
+          organization_id: string
+          page: number | null
+          requires_human: boolean
+          severity: Database["public"]["Enums"]["finding_severity"]
+          title: string
+        }
+        Insert: {
+          account_code?: string | null
+          account_name?: string | null
+          code: string
+          created_at?: string
+          detail?: string | null
+          evidence?: Json
+          execution_id: string
+          id?: string
+          organization_id: string
+          page?: number | null
+          requires_human?: boolean
+          severity: Database["public"]["Enums"]["finding_severity"]
+          title: string
+        }
+        Update: {
+          account_code?: string | null
+          account_name?: string | null
+          code?: string
+          created_at?: string
+          detail?: string | null
+          evidence?: Json
+          execution_id?: string
+          id?: string
+          organization_id?: string
+          page?: number | null
+          requires_human?: boolean
+          severity?: Database["public"]["Enums"]["finding_severity"]
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "validation_finding_execution_id_fkey"
+            columns: ["execution_id"]
+            isOneToOne: false
+            referencedRelation: "validation_execution"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "validation_finding_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organization"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -1288,6 +1614,7 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "gestor" | "colaborador" | "leitura"
+      attachment_status: "UPLOADED" | "PARSED" | "FAILED"
       closing_situation:
         | "CONCLUIDA_NO_PRAZO"
         | "CONCLUIDA_FORA_PRAZO"
@@ -1298,6 +1625,9 @@ export type Database = {
         | "PRECISA_REVISAO"
         | "NAO_ANALISADA"
       closing_type: "CONTABIL" | "FISCAL" | "OUTRO"
+      decision_kind: "APPROVED" | "RETURNED" | "NEEDS_REVIEW"
+      finding_severity: "INFO" | "WARNING" | "ERROR" | "BLOCKER"
+      instruction_source: "TITLE" | "POST" | "USER"
       item_status:
         | "PENDING"
         | "PROCESSING"
@@ -1306,9 +1636,16 @@ export type Database = {
         | "ERROR"
         | "SKIPPED"
       pendency_status: "OPEN" | "RESOLVED" | "IGNORED"
+      pier_action_status: "NOT_SENT" | "PENDING" | "SENT" | "FAILED"
       review_status: "PENDING" | "APPROVED" | "RETURNED" | "IGNORED"
       run_status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED"
       severity: "INFO" | "WARNING" | "CRITICAL"
+      validation_result:
+        | "APROVADO"
+        | "COM_ALERTAS"
+        | "REPROVADO"
+        | "REVISAO_HUMANA"
+      validation_status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1437,6 +1774,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "gestor", "colaborador", "leitura"],
+      attachment_status: ["UPLOADED", "PARSED", "FAILED"],
       closing_situation: [
         "CONCLUIDA_NO_PRAZO",
         "CONCLUIDA_FORA_PRAZO",
@@ -1448,6 +1786,9 @@ export const Constants = {
         "NAO_ANALISADA",
       ],
       closing_type: ["CONTABIL", "FISCAL", "OUTRO"],
+      decision_kind: ["APPROVED", "RETURNED", "NEEDS_REVIEW"],
+      finding_severity: ["INFO", "WARNING", "ERROR", "BLOCKER"],
+      instruction_source: ["TITLE", "POST", "USER"],
       item_status: [
         "PENDING",
         "PROCESSING",
@@ -1457,9 +1798,17 @@ export const Constants = {
         "SKIPPED",
       ],
       pendency_status: ["OPEN", "RESOLVED", "IGNORED"],
+      pier_action_status: ["NOT_SENT", "PENDING", "SENT", "FAILED"],
       review_status: ["PENDING", "APPROVED", "RETURNED", "IGNORED"],
       run_status: ["PENDING", "RUNNING", "COMPLETED", "FAILED", "CANCELLED"],
       severity: ["INFO", "WARNING", "CRITICAL"],
+      validation_result: [
+        "APROVADO",
+        "COM_ALERTAS",
+        "REPROVADO",
+        "REVISAO_HUMANA",
+      ],
+      validation_status: ["PENDING", "RUNNING", "COMPLETED", "FAILED"],
     },
   },
 } as const
