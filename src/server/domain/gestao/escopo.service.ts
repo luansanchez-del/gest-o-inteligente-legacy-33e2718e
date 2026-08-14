@@ -229,9 +229,11 @@ export async function listarEquipe(
     .filter(
       (u) =>
         TIPOS_INTERNOS.has((u.kind ?? "").toLowerCase()) &&
-        (opcoes?.incluirInativos || (u.status ?? "").toLowerCase() === "ativo"),
+        (opcoes?.incluirInativos || (u.status ?? "").toLowerCase() === "ativo") &&
+        (!contabeis || (u.department_external_id ? contabeis.has(u.department_external_id) : false)),
     )
     .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+
 
   const ativosPorDepto = new Map<string, number>();
   for (const u of internos) {
