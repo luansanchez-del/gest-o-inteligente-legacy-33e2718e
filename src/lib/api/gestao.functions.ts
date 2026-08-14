@@ -9,7 +9,7 @@ type EscopoInput = {
   tipo: "CONTABIL" | "FISCAL" | "OUTRO";
   departamentoId?: string | null;
   responsavelId?: string | null;
-  statusFila?: never;
+  statusFila?: "AGUARDANDO_DOCUMENTO" | "EM_ANALISE" | "APROVADO" | "DEVOLVIDO" | "HISTORICO" | null;
   revisaoCompetencia?: boolean;
   busca?: string | null;
 };
