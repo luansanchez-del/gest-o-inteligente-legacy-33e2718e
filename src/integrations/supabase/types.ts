@@ -357,6 +357,7 @@ export type Database = {
           active: boolean
           created_at: string
           document: string | null
+          document_digits: string | null
           id: string
           name: string
           organization_id: string
@@ -366,6 +367,7 @@ export type Database = {
           active?: boolean
           created_at?: string
           document?: string | null
+          document_digits?: string | null
           id?: string
           name: string
           organization_id: string
@@ -375,6 +377,7 @@ export type Database = {
           active?: boolean
           created_at?: string
           document?: string | null
+          document_digits?: string | null
           id?: string
           name?: string
           organization_id?: string

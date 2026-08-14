@@ -246,7 +246,13 @@ function CarteiraPage() {
         <Card className="p-4">
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Clientes</p>
           <p className="text-2xl font-semibold tabular-nums">{resumo?.total ?? "—"}</p>
+          {resumo?.totalExibido != null ? (
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Exibindo {resumo.totalExibido} com os filtros atuais
+            </p>
+          ) : null}
         </Card>
+
         <Card className="p-4">
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Vinculados</p>
           <p className="text-2xl font-semibold tabular-nums">{resumo?.vinculados ?? "—"}</p>

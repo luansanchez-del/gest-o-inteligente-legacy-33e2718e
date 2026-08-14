@@ -30,12 +30,15 @@ export interface CarteiraLinha {
 }
 
 export interface CarteiraResumo {
+  /** Totais globais da carteira — nunca afetados pelos filtros da tela. */
   total: number;
   vinculados: number;
   naoVinculados: number;
   emRevisao: number;
   semDocumento: number;
   documentosDuplicados: number;
+  /** Quantas linhas o filtro atual está exibindo (null quando não há filtro). */
+  totalExibido: number | null;
   ultimaSincronizacao: {
     id: string;
     status: string;
@@ -77,40 +80,51 @@ function classificarDocumento(
   return null;
 }
 
+const TAMANHO_PAGINA = 1000;
+
+/**
+ * PostgREST corta qualquer consulta em 1000 linhas. Este helper pagina por `range`
+ * até esgotar a tabela — obrigatório em toda leitura de carteira/vínculos/empresas.
+ */
+async function carregarTodas<T>(
+  rotulo: string,
+  buscarPagina: (de: number, ate: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<T[]> {
+  const acumulado: T[] = [];
+  for (let pagina = 0; pagina < 200; pagina++) {
+    const de = pagina * TAMANHO_PAGINA;
+    const { data, error } = await buscarPagina(de, de + TAMANHO_PAGINA - 1);
+    if (error) throw new AppError("INESPERADO", `Não foi possível carregar ${rotulo}.`, error.message);
+    acumulado.push(...(data ?? []));
+    if (!data || data.length < TAMANHO_PAGINA) break;
+  }
+  return acumulado;
+}
 
 export async function listarCarteira(
   ctx: AppContext,
   filtros: CarteiraFiltros,
 ): Promise<{ linhas: CarteiraLinha[]; resumo: CarteiraResumo }> {
-  // PostgREST corta em 1000 linhas por requisição: pagina até trazer a carteira completa.
-  const clientes: NonNullable<Awaited<ReturnType<typeof buscarPagina>>["data"]> = [];
-  const buscarPagina = (de: number, ate: number) =>
+  const clientes = await carregarTodas("a carteira", (de, ate) =>
     ctx.db
       .from("pier_client")
       .select("id, external_id, name, document, status, tax_regime, responsible_name, synced_at")
       .eq("organization_id", ctx.organizationId)
       .order("name")
-      .range(de, ate);
+      .range(de, ate),
+  );
 
-  const TAMANHO_PAGINA = 1000;
-  for (let pagina = 0; pagina < 50; pagina++) {
-    const de = pagina * TAMANHO_PAGINA;
-    const { data, error } = await buscarPagina(de, de + TAMANHO_PAGINA - 1);
-    if (error)
-      throw new AppError("INESPERADO", "Não foi possível carregar a carteira.", error.message);
-    clientes.push(...(data ?? []));
-    if (!data || data.length < TAMANHO_PAGINA) break;
-  }
-
-
-
-  const { data: vinculos } = await ctx.db
-    .from("company_pier_link")
-    .select("pier_client_id, company:company_id(id, name)")
-    .eq("organization_id", ctx.organizationId);
+  const vinculos = await carregarTodas("os vínculos", (de, ate) =>
+    ctx.db
+      .from("company_pier_link")
+      .select("pier_client_id, company:company_id(id, name)")
+      .eq("organization_id", ctx.organizationId)
+      .order("pier_client_id")
+      .range(de, ate),
+  );
 
   const mapaVinculo = new Map(
-    (vinculos ?? []).map((v) => [
+    vinculos.map((v) => [
       v.pier_client_id,
       v.company as unknown as { id: string; name: string } | null,
     ]),
@@ -122,7 +136,7 @@ export async function listarCarteira(
     if (digitos) ocorrenciasPorDocumento.set(digitos, (ocorrenciasPorDocumento.get(digitos) ?? 0) + 1);
   }
 
-  let linhas: CarteiraLinha[] = (clientes ?? []).map((c) => {
+  const todasAsLinhas: CarteiraLinha[] = clientes.map((c) => {
     const empresa = mapaVinculo.get(c.id) ?? null;
     return {
       pierClientId: c.id,
@@ -140,11 +154,10 @@ export async function listarCarteira(
     };
   });
 
-
   // Opções de filtro vêm da carteira completa (antes dos filtros) para o select ficar estável.
   const valoresUnicos = (selector: (l: CarteiraLinha) => string | null) =>
     Array.from(
-      new Set(linhas.map((l) => selector(l)?.trim()).filter((v): v is string => Boolean(v))),
+      new Set(todasAsLinhas.map((l) => selector(l)?.trim()).filter((v): v is string => Boolean(v))),
     ).sort((a, b) => a.localeCompare(b, "pt-BR"));
 
   const filtrosDisponiveis = {
@@ -152,6 +165,7 @@ export async function listarCarteira(
     statuses: valoresUnicos((l) => l.status),
   };
 
+  let linhas = todasAsLinhas;
   const busca = filtros.busca?.trim().toLowerCase();
   if (busca) {
     linhas = linhas.filter(
@@ -166,6 +180,8 @@ export async function listarCarteira(
   if (filtros.situacao === "NAO_VINCULADO") linhas = linhas.filter((l) => !l.vinculado);
   if (filtros.situacao === "REVISAO") linhas = linhas.filter((l) => Boolean(l.motivoRevisao));
 
+  const houveFiltro = linhas.length !== todasAsLinhas.length;
+
   const { data: ultima } = await ctx.db
     .from("sync_run")
     .select("id, status, started_at, finished_at, processed_items, failed_items, message")
@@ -178,13 +194,15 @@ export async function listarCarteira(
   return {
     linhas,
     resumo: {
-      total: linhas.length,
-      vinculados: linhas.filter((l) => l.vinculado).length,
-      naoVinculados: linhas.filter((l) => !l.vinculado).length,
-      emRevisao: linhas.filter((l) => Boolean(l.motivoRevisao)).length,
-      semDocumento: linhas.filter((l) => l.motivoRevisao === "SEM_DOCUMENTO").length,
-      documentosDuplicados: linhas.filter((l) => l.motivoRevisao === "DOCUMENTO_DUPLICADO").length,
-
+      // Cards sempre globais: usam a carteira inteira, nunca o subconjunto filtrado.
+      total: todasAsLinhas.length,
+      vinculados: todasAsLinhas.filter((l) => l.vinculado).length,
+      naoVinculados: todasAsLinhas.filter((l) => !l.vinculado).length,
+      emRevisao: todasAsLinhas.filter((l) => Boolean(l.motivoRevisao)).length,
+      semDocumento: todasAsLinhas.filter((l) => l.motivoRevisao === "SEM_DOCUMENTO").length,
+      documentosDuplicados: todasAsLinhas.filter((l) => l.motivoRevisao === "DOCUMENTO_DUPLICADO")
+        .length,
+      totalExibido: houveFiltro ? linhas.length : null,
       ultimaSincronizacao: ultima
         ? {
             id: ultima.id,
@@ -313,24 +331,16 @@ export async function vincularCarteiraAutomaticamente(
 ): Promise<ResumoVinculoAutomatico> {
   assertCanWrite(ctx);
 
-  const clientes = await (async () => {
-    const acc: { id: string; name: string; document: string | null }[] = [];
-    const TAMANHO = 1000;
-    for (let pagina = 0; pagina < 50; pagina++) {
-      const de = pagina * TAMANHO;
-      const { data, error } = await ctx.db
+  const clientes = await carregarTodas<{ id: string; name: string; document: string | null }>(
+    "a carteira",
+    (de, ate) =>
+      ctx.db
         .from("pier_client")
         .select("id, name, document")
         .eq("organization_id", ctx.organizationId)
         .order("name")
-        .range(de, de + TAMANHO - 1);
-      if (error)
-        throw new AppError("INESPERADO", "Não foi possível ler a carteira.", error.message);
-      acc.push(...(data ?? []));
-      if (!data || data.length < TAMANHO) break;
-    }
-    return acc;
-  })();
+        .range(de, ate),
+  );
 
   const ocorrencias = new Map<string, number>();
   for (const c of clientes) {
@@ -338,22 +348,36 @@ export async function vincularCarteiraAutomaticamente(
     if (digitos) ocorrencias.set(digitos, (ocorrencias.get(digitos) ?? 0) + 1);
   }
 
-  const { data: vinculosAtuais } = await ctx.db
-    .from("company_pier_link")
-    .select("pier_client_id")
-    .eq("organization_id", ctx.organizationId);
-  const jaVinculados = new Set((vinculosAtuais ?? []).map((v) => v.pier_client_id));
+  const vinculosAtuais = await carregarTodas("os vínculos", (de, ate) =>
+    ctx.db
+      .from("company_pier_link")
+      .select("pier_client_id")
+      .eq("organization_id", ctx.organizationId)
+      .order("pier_client_id")
+      .range(de, ate),
+  );
+  const jaVinculados = new Set(vinculosAtuais.map((v) => v.pier_client_id));
 
-  const { data: empresas } = await ctx.db
-    .from("company")
-    .select("id, document")
-    .eq("organization_id", ctx.organizationId);
-  // Um documento nunca aponta para duas empresas: a primeira encontrada é a canônica.
-  const empresaPorDocumento = new Map<string, string>();
-  for (const e of empresas ?? []) {
-    const digitos = normalizarDocumento(e.document);
-    if (digitos && !empresaPorDocumento.has(digitos)) empresaPorDocumento.set(digitos, e.id);
+  // Todas as empresas precisam estar carregadas ANTES de qualquer criação,
+  // senão o vínculo automático recria empresas que já existem além da 1000ª linha.
+  const empresas = await carregarTodas("as empresas", (de, ate) =>
+    ctx.db
+      .from("company")
+      .select("id, document_digits")
+      .eq("organization_id", ctx.organizationId)
+      .order("id")
+      .range(de, ate),
+  );
+  // Documento repetido entre empresas internas nunca escolhe "a primeira": vira conflito.
+  const empresasPorDocumento = new Map<string, string[]>();
+  for (const e of empresas) {
+    const digitos = e.document_digits ?? "";
+    if (!digitos) continue;
+    const atual = empresasPorDocumento.get(digitos);
+    if (atual) atual.push(e.id);
+    else empresasPorDocumento.set(digitos, [e.id]);
   }
+
 
   const resumo: ResumoVinculoAutomatico = {
     sincronizados: clientes.length,
@@ -396,7 +420,17 @@ export async function vincularCarteiraAutomaticamente(
     }
 
     const digitos = normalizarDocumento(cliente.document);
-    let empresaId = empresaPorDocumento.get(digitos) ?? null;
+    const candidatas = empresasPorDocumento.get(digitos) ?? [];
+    if (candidatas.length > 1) {
+      resumo.conflitos += 1;
+      eventos.push({
+        level: "WARNING",
+        message: `${cliente.name}: CNPJ presente em mais de uma empresa interna — revisão manual.`,
+      });
+      continue;
+    }
+
+    let empresaId = candidatas[0] ?? null;
 
     if (!empresaId) {
       const { data: nova, error } = await ctx.db
@@ -418,9 +452,10 @@ export async function vincularCarteiraAutomaticamente(
         continue;
       }
       empresaId = nova.id;
-      empresaPorDocumento.set(digitos, empresaId);
+      empresasPorDocumento.set(digitos, [empresaId]);
       resumo.criados += 1;
     }
+
 
     novosVinculos.push({
       organization_id: ctx.organizationId,
@@ -483,13 +518,23 @@ export async function vincularCliente(ctx: AppContext, pierClientId: string) {
   let empresaId: string | null = null;
 
   if (documento) {
-    const { data: empresas } = await ctx.db
+    // Consulta indexada por (organization_id, document_digits): nunca carrega a tabela inteira.
+    const { data: empresas, error } = await ctx.db
       .from("company")
-      .select("id, document")
-      .eq("organization_id", ctx.organizationId);
-    empresaId =
-      (empresas ?? []).find((e) => normalizarDocumento(e.document) === documento)?.id ?? null;
+      .select("id")
+      .eq("organization_id", ctx.organizationId)
+      .eq("document_digits", documento)
+      .limit(2);
+    if (error)
+      throw new AppError("INESPERADO", "Não foi possível consultar as empresas.", error.message);
+    if ((empresas ?? []).length > 1)
+      throw new AppError(
+        "REGRA_NEGOCIO",
+        "Este CNPJ está em mais de uma empresa interna. Resolva a duplicidade antes de vincular.",
+      );
+    empresaId = empresas?.[0]?.id ?? null;
   }
+
 
   if (!empresaId) {
     const { data: nova, error } = await ctx.db
