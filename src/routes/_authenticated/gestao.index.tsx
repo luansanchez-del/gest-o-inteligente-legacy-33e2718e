@@ -400,11 +400,11 @@ function GestaoPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {[
-          { rotulo: "Empresas no escopo", valor: dados?.totalEmpresas },
-          { rotulo: "Com vínculo interno", valor: dados?.totalComVinculo },
-          { rotulo: "Sem vínculo", valor: dados?.totalSemVinculo },
-          { rotulo: "Competência já aberta", valor: dados?.competenciasExistentes },
-          { rotulo: "Competências novas", valor: dados?.competenciasNovas },
+          { rotulo: "Solicitações no escopo", valor: dados?.totalEmpresas },
+          { rotulo: "Com documento interno", valor: dados?.totalComDocumento },
+          { rotulo: "Aguardando documento", valor: dados?.totalSemDocumento },
+          { rotulo: "Sem responsável", valor: dados?.totalSemResponsavel },
+          { rotulo: "Avisos cadastrais", valor: dados?.totalAvisosCadastrais },
         ].map((item) => (
           <Card key={item.rotulo} className="p-4">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">{item.rotulo}</p>
