@@ -245,6 +245,16 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
 
   if (filtro.statusFila) linhas = linhas.filter((l) => l.statusFila === filtro.statusFila);
 
+  const busca = (filtro.busca ?? "").trim().toLowerCase();
+  if (busca) {
+    const digitos = busca.replace(/\D/g, "");
+    linhas = linhas.filter(
+      (l) =>
+        l.clienteNome.toLowerCase().includes(busca) ||
+        (digitos.length >= 3 && normalizarDocumento(l.documento).includes(digitos)),
+    );
+  }
+
 
 
   linhas.sort((a, b) => a.clienteNome.localeCompare(b.clienteNome, "pt-BR"));
