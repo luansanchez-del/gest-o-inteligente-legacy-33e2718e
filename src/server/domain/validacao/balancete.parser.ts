@@ -16,6 +16,9 @@ export interface LinhaBalancete {
   movimento: number | null;
   saldoAtual: number;
   analitica: boolean;
+  /** Número interno de conta do sistema contábil, quando o layout traz. */
+  contaInterna: string | null;
+
   pagina: number;
   textoOriginal: string;
 }
