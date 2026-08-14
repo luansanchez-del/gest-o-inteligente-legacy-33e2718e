@@ -103,19 +103,18 @@ export function montarTextoDeItensEstruturados(itens: ItemEstruturado[]): string
 export async function extrairTextoPdf(bytes: Uint8Array): Promise<PdfExtraido> {
   const { extractText, extractTextItems } = await import("unpdf");
 
-  // A API pública estruturada é estável entre runtimes e preserva x/y por página.
-  const estruturado = await extractTextItems(new Uint8Array(bytes));
-  let paginas = estruturado.items.map((itens) =>
-    montarTextoDeItensEstruturados(itens as ItemEstruturado[]),
-  );
-
-  // Alguns PDFs fornecem texto, mas não posições úteis. Nesse caso usamos a
-  // extração textual oficial, que preserva as quebras de página.
-  if (paginas.every((pagina) => !pagina.trim())) {
-    const simples = await extractText(new Uint8Array(bytes), { mergePages: false });
-    paginas = Array.isArray(simples.text) ? simples.text : [simples.text];
-    return { paginas, totalPaginas: simples.totalPages };
+  // Fonte principal: o extrator textual oficial preserva as quebras de linha
+  // do relatório. Validado com o PDF real do piloto 35806843.
+  const simples = await extractText(new Uint8Array(bytes), { mergePages: false });
+  const paginasSimples = Array.isArray(simples.text) ? simples.text : [simples.text];
+  if (paginasSimples.some((pagina) => pagina.trim())) {
+    return { paginas: paginasSimples, totalPaginas: simples.totalPages };
   }
 
+  // Fallback para PDFs que só disponibilizam itens posicionados.
+  const estruturado = await extractTextItems(new Uint8Array(bytes));
+  const paginas = estruturado.items.map((itens) =>
+    montarTextoDeItensEstruturados(itens as ItemEstruturado[]),
+  );
   return { paginas, totalPaginas: estruturado.totalPages };
 }
