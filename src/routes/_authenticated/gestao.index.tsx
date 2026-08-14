@@ -464,7 +464,7 @@ function GestaoPage() {
                 <TableHead>Responsável</TableHead>
                 <TableHead>Status PIER</TableHead>
                 <TableHead>Anexo</TableHead>
-                <TableHead>Análise</TableHead>
+                <TableHead>Situação</TableHead>
                 <TableHead className="text-right">Ação</TableHead>
               </TableRow>
             </TableHeader>
