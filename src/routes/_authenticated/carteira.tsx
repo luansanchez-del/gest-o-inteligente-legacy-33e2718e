@@ -213,7 +213,7 @@ function CarteiraPage() {
         />
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="p-4">
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Clientes</p>
           <p className="text-2xl font-semibold tabular-nums">{resumo?.total ?? "—"}</p>
@@ -225,7 +225,15 @@ function CarteiraPage() {
         <Card className="p-4">
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Sem vínculo</p>
           <p className="text-2xl font-semibold tabular-nums">{resumo?.naoVinculados ?? "—"}</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Em revisão</p>
+          <p className="text-2xl font-semibold tabular-nums">{resumo?.emRevisao ?? "—"}</p>
           <p className="mt-1 text-[11px] text-muted-foreground">
+            Sem documento: {resumo?.semDocumento ?? 0} · CNPJ duplicado:{" "}
+            {resumo?.documentosDuplicados ?? 0}
+          </p>
+          <p className="text-[11px] text-muted-foreground">
             Última sincronização:{" "}
             {ultimaSincronizacao
               ? formatarDataHora(ultimaSincronizacao.finishedAt ?? ultimaSincronizacao.startedAt)
@@ -233,6 +241,7 @@ function CarteiraPage() {
           </p>
         </Card>
       </div>
+
 
       <Card className="overflow-hidden">
         <div className="flex flex-col gap-3 border-b border-border p-4 md:flex-row md:flex-wrap md:items-center">
