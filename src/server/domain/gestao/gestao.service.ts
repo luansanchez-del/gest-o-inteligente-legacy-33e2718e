@@ -336,65 +336,28 @@ export async function iniciarGestao(
   let erros = 0;
   let ignorados = 0;
 
+  // Nesta fase a gestão apenas REGISTRA o escopo operacional.
+  // Nenhuma empresa é criada e nenhum closing_period é aberto: a solicitação do PIER
+  // é a fonte operacional e a análise não depende de cadastro interno.
   for (const linha of linhas) {
-    if (!linha.empresaId) {
-      ignorados += 1;
-      await ctx.db.from("batch_item").insert({
-        organization_id: ctx.organizationId,
-        batch_execution_id: execucao.id,
-        company_id: null,
-        status: "SKIPPED",
-        attempts: 1,
-        message: `${linha.clienteNome}: cliente do PIER ainda sem vínculo com empresa interna.`,
-      });
-      continue;
-    }
-
-    const { data: periodo, error: periodoError } = await ctx.db
-      .from("closing_period")
-      .upsert(
-        {
-          organization_id: ctx.organizationId,
-          company_id: linha.empresaId,
-          reference_month: filtro.competencia,
-          type: filtro.tipo,
-          responsible_name: linha.responsavelNome,
-          responsible_external_id: linha.responsavelId,
-        },
-        { onConflict: "company_id,reference_month,type" },
-      )
-      .select("id")
-      .single();
-
     const semResponsavel = !linha.responsavelId;
-    const status = periodoError ? "ERROR" : semResponsavel ? "WARNING" : "COMPLETED";
-    if (periodoError) erros += 1;
-    else if (semResponsavel) alertas += 1;
+    if (semResponsavel) alertas += 1;
     else concluidos += 1;
 
-    await ctx.db.from("batch_item").upsert(
-      {
-        organization_id: ctx.organizationId,
-        batch_execution_id: execucao.id,
-        closing_period_id: periodo?.id ?? null,
-        company_id: linha.empresaId,
-        status,
-        attempts: 1,
-        message: periodoError
-          ? periodoError.message
-          : semResponsavel
-            ? "Solicitação sem responsável definido no PIER."
-            : null,
-      },
-      { onConflict: "batch_execution_id,closing_period_id" },
-    );
-
-    if (periodo?.id) {
-      await ctx.db
-        .from("request")
-        .update({ closing_period_id: periodo.id })
-        .eq("organization_id", ctx.organizationId)
-        .eq("external_id", linha.solicitacaoId);
+    const { error: itemError } = await ctx.db.from("batch_item").insert({
+      organization_id: ctx.organizationId,
+      batch_execution_id: execucao.id,
+      company_id: null,
+      status: semResponsavel ? "WARNING" : "COMPLETED",
+      attempts: 1,
+      message: semResponsavel
+        ? `${linha.clienteNome}: solicitação sem responsável definido no PIER.`
+        : `${linha.clienteNome}: solicitação ${linha.solicitacaoId}.`,
+    });
+    if (itemError) {
+      erros += 1;
+      if (semResponsavel) alertas -= 1;
+      else concluidos -= 1;
     }
   }
 
