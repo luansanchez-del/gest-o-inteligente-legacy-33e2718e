@@ -80,40 +80,51 @@ function classificarDocumento(
   return null;
 }
 
+const TAMANHO_PAGINA = 1000;
+
+/**
+ * PostgREST corta qualquer consulta em 1000 linhas. Este helper pagina por `range`
+ * até esgotar a tabela — obrigatório em toda leitura de carteira/vínculos/empresas.
+ */
+async function carregarTodas<T>(
+  rotulo: string,
+  buscarPagina: (de: number, ate: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<T[]> {
+  const acumulado: T[] = [];
+  for (let pagina = 0; pagina < 200; pagina++) {
+    const de = pagina * TAMANHO_PAGINA;
+    const { data, error } = await buscarPagina(de, de + TAMANHO_PAGINA - 1);
+    if (error) throw new AppError("INESPERADO", `Não foi possível carregar ${rotulo}.`, error.message);
+    acumulado.push(...(data ?? []));
+    if (!data || data.length < TAMANHO_PAGINA) break;
+  }
+  return acumulado;
+}
 
 export async function listarCarteira(
   ctx: AppContext,
   filtros: CarteiraFiltros,
 ): Promise<{ linhas: CarteiraLinha[]; resumo: CarteiraResumo }> {
-  // PostgREST corta em 1000 linhas por requisição: pagina até trazer a carteira completa.
-  const clientes: NonNullable<Awaited<ReturnType<typeof buscarPagina>>["data"]> = [];
-  const buscarPagina = (de: number, ate: number) =>
+  const clientes = await carregarTodas("a carteira", (de, ate) =>
     ctx.db
       .from("pier_client")
       .select("id, external_id, name, document, status, tax_regime, responsible_name, synced_at")
       .eq("organization_id", ctx.organizationId)
       .order("name")
-      .range(de, ate);
+      .range(de, ate),
+  );
 
-  const TAMANHO_PAGINA = 1000;
-  for (let pagina = 0; pagina < 50; pagina++) {
-    const de = pagina * TAMANHO_PAGINA;
-    const { data, error } = await buscarPagina(de, de + TAMANHO_PAGINA - 1);
-    if (error)
-      throw new AppError("INESPERADO", "Não foi possível carregar a carteira.", error.message);
-    clientes.push(...(data ?? []));
-    if (!data || data.length < TAMANHO_PAGINA) break;
-  }
-
-
-
-  const { data: vinculos } = await ctx.db
-    .from("company_pier_link")
-    .select("pier_client_id, company:company_id(id, name)")
-    .eq("organization_id", ctx.organizationId);
+  const vinculos = await carregarTodas("os vínculos", (de, ate) =>
+    ctx.db
+      .from("company_pier_link")
+      .select("pier_client_id, company:company_id(id, name)")
+      .eq("organization_id", ctx.organizationId)
+      .order("pier_client_id")
+      .range(de, ate),
+  );
 
   const mapaVinculo = new Map(
-    (vinculos ?? []).map((v) => [
+    vinculos.map((v) => [
       v.pier_client_id,
       v.company as unknown as { id: string; name: string } | null,
     ]),
@@ -125,7 +136,7 @@ export async function listarCarteira(
     if (digitos) ocorrenciasPorDocumento.set(digitos, (ocorrenciasPorDocumento.get(digitos) ?? 0) + 1);
   }
 
-  let linhas: CarteiraLinha[] = (clientes ?? []).map((c) => {
+  const todasAsLinhas: CarteiraLinha[] = clientes.map((c) => {
     const empresa = mapaVinculo.get(c.id) ?? null;
     return {
       pierClientId: c.id,
@@ -143,11 +154,10 @@ export async function listarCarteira(
     };
   });
 
-
   // Opções de filtro vêm da carteira completa (antes dos filtros) para o select ficar estável.
   const valoresUnicos = (selector: (l: CarteiraLinha) => string | null) =>
     Array.from(
-      new Set(linhas.map((l) => selector(l)?.trim()).filter((v): v is string => Boolean(v))),
+      new Set(todasAsLinhas.map((l) => selector(l)?.trim()).filter((v): v is string => Boolean(v))),
     ).sort((a, b) => a.localeCompare(b, "pt-BR"));
 
   const filtrosDisponiveis = {
@@ -155,6 +165,7 @@ export async function listarCarteira(
     statuses: valoresUnicos((l) => l.status),
   };
 
+  let linhas = todasAsLinhas;
   const busca = filtros.busca?.trim().toLowerCase();
   if (busca) {
     linhas = linhas.filter(
@@ -169,6 +180,8 @@ export async function listarCarteira(
   if (filtros.situacao === "NAO_VINCULADO") linhas = linhas.filter((l) => !l.vinculado);
   if (filtros.situacao === "REVISAO") linhas = linhas.filter((l) => Boolean(l.motivoRevisao));
 
+  const houveFiltro = linhas.length !== todasAsLinhas.length;
+
   const { data: ultima } = await ctx.db
     .from("sync_run")
     .select("id, status, started_at, finished_at, processed_items, failed_items, message")
@@ -181,13 +194,15 @@ export async function listarCarteira(
   return {
     linhas,
     resumo: {
-      total: linhas.length,
-      vinculados: linhas.filter((l) => l.vinculado).length,
-      naoVinculados: linhas.filter((l) => !l.vinculado).length,
-      emRevisao: linhas.filter((l) => Boolean(l.motivoRevisao)).length,
-      semDocumento: linhas.filter((l) => l.motivoRevisao === "SEM_DOCUMENTO").length,
-      documentosDuplicados: linhas.filter((l) => l.motivoRevisao === "DOCUMENTO_DUPLICADO").length,
-
+      // Cards sempre globais: usam a carteira inteira, nunca o subconjunto filtrado.
+      total: todasAsLinhas.length,
+      vinculados: todasAsLinhas.filter((l) => l.vinculado).length,
+      naoVinculados: todasAsLinhas.filter((l) => !l.vinculado).length,
+      emRevisao: todasAsLinhas.filter((l) => Boolean(l.motivoRevisao)).length,
+      semDocumento: todasAsLinhas.filter((l) => l.motivoRevisao === "SEM_DOCUMENTO").length,
+      documentosDuplicados: todasAsLinhas.filter((l) => l.motivoRevisao === "DOCUMENTO_DUPLICADO")
+        .length,
+      totalExibido: houveFiltro ? linhas.length : null,
       ultimaSincronizacao: ultima
         ? {
             id: ultima.id,
