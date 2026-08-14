@@ -275,16 +275,19 @@ export async function sincronizarCarteira(ctx: AppContext) {
       }
     }
 
+    // Vínculo automático por CNPJ logo após o upsert: a carteira já chega pronta para uso.
+    const vinculo = await vincularCarteiraAutomaticamente(ctx, run.id);
 
     await finalizar("COMPLETED", { total: clientes.length, processados, falhas });
     await audit(ctx, {
       action: "SINCRONIZAR_CARTEIRA",
       entity: "sync_run",
       entityId: run.id,
-      after: { total: clientes.length, processados, falhas },
+      after: { total: clientes.length, processados, falhas, ...vinculo },
     });
 
-    return { syncRunId: run.id, total: clientes.length, processados, falhas };
+    return { syncRunId: run.id, total: clientes.length, processados, falhas, vinculo };
+
   } catch (error) {
     const mensagem =
       error instanceof AppError ? error.userMessage : "Falha inesperada na sincronização.";
