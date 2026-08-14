@@ -449,7 +449,7 @@ function GestaoPage() {
             </TableHeader>
             <TableBody>
               {dados.empresas.map((linha) => {
-                const analise = ANALISE[linha.statusAnalise];
+                const analise = FILA[linha.statusFila] ?? FILA.AGUARDANDO_DOCUMENTO;
                 return (
                   <TableRow key={linha.solicitacaoId}>
                     <TableCell className="tabular-nums">{linha.numero ?? "—"}</TableCell>
