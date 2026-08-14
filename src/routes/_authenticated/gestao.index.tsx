@@ -476,13 +476,46 @@ function GestaoPage() {
             </p>
           </div>
           <Button
-            onClick={() => iniciar.mutate()}
-            disabled={iniciar.isPending || !dados || dados.totalEmpresas === 0}
+            onClick={() => setConfirmarProcessamento(true)}
+            disabled={
+              iniciar.isPending ||
+              processarLote.isPending ||
+              !dados ||
+              dados.totalEmpresas === 0
+            }
           >
-            <PlayCircle className={`mr-2 h-4 w-4 ${iniciar.isPending ? "animate-pulse" : ""}`} />
-            Iniciar gestão
+            <PlayCircle
+              className={`mr-2 h-4 w-4 ${iniciar.isPending || processarLote.isPending ? "animate-pulse" : ""}`}
+            />
+            {processarLote.isPending ? "Processando…" : "Iniciar gestão"}
           </Button>
         </div>
+
+        <Dialog open={confirmarProcessamento} onOpenChange={setConfirmarProcessamento}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Processar o escopo filtrado?</DialogTitle>
+              <DialogDescription>
+                {dados?.totalEmpresas ?? 0} solicitação(ões) do escopo atual serão processadas:
+                conferência do estado real no PIER, leitura do balancete e análise. A postagem
+                privada e a finalização só acontecem quando o resultado for aprovado sem erros nem
+                alertas.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setConfirmarProcessamento(false)}>
+                Cancelar
+              </Button>
+              <Button
+                onClick={() => processarLote.mutate()}
+                disabled={processarLote.isPending || !dados?.totalEmpresas}
+              >
+                Processar {dados?.totalEmpresas ?? 0} solicitação(ões)
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
 
         {dados?.responsaveis.length ? (
           <div className="flex flex-wrap gap-2">
