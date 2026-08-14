@@ -25,15 +25,15 @@ export interface EscopoFiltro {
   departamentoId?: string | null;
   /** ID externo do usuário responsável no PIER. Vazio = todos do departamento. */
   responsavelId?: string | null;
-  /** Seleção manual de empresas internas (reservado para etapas futuras). */
-  empresaIds?: string[];
   /** Filtro opcional pela fila operacional. */
   statusFila?: StatusFila | null;
 }
 
 export interface EscopoLinha {
+  /** external_id da solicitação no PIER — a chave operacional desta tela. */
   solicitacaoId: string;
   numero: string | null;
+  clienteExternalId: string | null;
   clienteNome: string;
   documento: string | null;
   regime: string | null;
@@ -41,10 +41,9 @@ export interface EscopoLinha {
   departamentoNome: string | null;
   responsavelId: string | null;
   responsavelNome: string | null;
-  empresaId: string | null;
-  vinculada: boolean;
   statusSolicitacao: string | null;
-  jaAberta: boolean;
+  /** Aviso cadastral: a ficha do cliente não tem responsável contábil. Nunca bloqueia. */
+  avisoCadastral: string | null;
   competencia: string | null;
   temAnexo: boolean;
   /** true quando o PDF já está armazenado internamente e pode ser analisado. */
