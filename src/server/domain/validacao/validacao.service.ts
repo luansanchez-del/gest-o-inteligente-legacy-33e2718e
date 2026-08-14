@@ -225,6 +225,18 @@ export async function detalharSolicitacao(
       em: a.created_at,
       dados: a.after_data,
     })),
+    processamento: processamento
+      ? {
+          situacao: processamento.outcome,
+          motivo: processamento.reason,
+          postagemId: processamento.pier_post_external_id,
+          postadaEm: processamento.posted_at,
+          finalizadaEm: processamento.finalized_at,
+          statusPier: processamento.pier_status,
+          execucaoId: processamento.execution_id,
+          atualizadoEm: processamento.updated_at,
+        }
+      : null,
     avisoPier: AVISO_PIER,
   });
 }
