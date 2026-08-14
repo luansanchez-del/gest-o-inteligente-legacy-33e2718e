@@ -83,14 +83,26 @@ function normalizarDocumento(value: string | null | undefined) {
 async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
   const typeExternalId = await resolverTipoSolicitacao(ctx, filtro.tipo);
 
-  const { data: solicitacoes, error } = await ctx.db
+  let consulta = ctx.db
     .from("request")
     .select(
       "id, external_id, number, description, status, client_external_id, client_name, client_document, responsible_external_id, responsible_name, department_external_id, has_attachment, reference_month",
     )
     .eq("organization_id", ctx.organizationId)
-    .eq("reference_month", filtro.competencia)
     .eq("type_external_id", typeExternalId);
+
+  if (filtro.revisaoCompetencia) {
+    // Sem competência interpretável: fila de revisão, nunca descarte.
+    consulta = consulta.is("reference_month", null);
+  } else if (filtro.competenciaFim && filtro.competenciaFim !== filtro.competencia) {
+    consulta = consulta
+      .gte("reference_month", filtro.competencia)
+      .lte("reference_month", filtro.competenciaFim);
+  } else {
+    consulta = consulta.eq("reference_month", filtro.competencia);
+  }
+
+  const { data: solicitacoes, error } = await consulta;
 
   if (error)
     throw new AppError("INESPERADO", "Não foi possível montar o escopo.", error.message);
