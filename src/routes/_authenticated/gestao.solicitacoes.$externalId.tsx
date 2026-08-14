@@ -47,6 +47,7 @@ import {
   obterResultadoValidacao,
   registrarDecisao,
 } from "@/lib/api/validacao.functions";
+import { processarSolicitacao } from "@/lib/api/processamento.functions";
 import { formatarCnpj } from "@/lib/formato";
 import { mensagemDeErro } from "@/lib/erros";
 
