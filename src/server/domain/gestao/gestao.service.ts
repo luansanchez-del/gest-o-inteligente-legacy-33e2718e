@@ -20,6 +20,8 @@ export type StatusFila =
 
 export interface EscopoFiltro {
   competencia: string;
+  /** Competência final do intervalo. Vazio = apenas a competência inicial. */
+  competenciaFim?: string | null;
   tipo: TipoFechamento;
   /** ID externo do departamento no PIER. Vazio = todos os departamentos contábeis. */
   departamentoId?: string | null;
@@ -27,6 +29,10 @@ export interface EscopoFiltro {
   responsavelId?: string | null;
   /** Filtro opcional pela fila operacional. */
   statusFila?: StatusFila | null;
+  /** Lista apenas solicitações sem competência interpretável (revisão de competência). */
+  revisaoCompetencia?: boolean;
+  /** Busca livre por nome ou CNPJ do cliente. */
+  busca?: string | null;
 }
 
 export interface EscopoLinha {
