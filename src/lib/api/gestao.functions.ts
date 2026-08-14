@@ -20,7 +20,7 @@ function validarEscopo(input: EscopoInput) {
 
 export const listarEquipe = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input?: { incluirInativos?: boolean }) => input ?? {})
+  .inputValidator((input?: { incluirInativos?: boolean; somenteContabeis?: boolean }) => input ?? {})
   .handler(async ({ data, context }) =>
     comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
       const service = await import("@/server/domain/gestao/escopo.service");
