@@ -4,8 +4,16 @@ import { AppError } from "../../lib/errors";
 import { erroSeguro, mascarar, mascararTexto } from "../../lib/mascara";
 import { pierAdapter } from "../../integrations/pier/pier.adapter";
 import { parseBalancete } from "./balancete.parser";
-import { validarBalancete, VALIDATOR_VERSION, type Achado } from "./balancete.validator";
-import { instrucaoEfetiva, interpretarTexto, type Instrucao } from "./instrucao";
+import {
+  validarBalancete,
+  VALIDATOR_VERSION,
+  type Achado,
+} from "./balancete.validator";
+import {
+  instrucaoEfetiva,
+  interpretarTexto,
+  type Instrucao,
+} from "./instrucao";
 
 const BUCKET = "request-attachments";
 const TAMANHO_MAXIMO = 25 * 1024 * 1024;
@@ -13,24 +21,34 @@ const TAMANHO_MAXIMO = 25 * 1024 * 1024;
 export type Severidade = "INFO" | "WARNING" | "ERROR" | "BLOCKER";
 
 /** Aviso fixo: esta etapa nunca escreve no PIER. */
-export const AVISO_PIER_SEM_PROCESSAMENTO = "Nenhum processamento automático executado.";
-export const AVISO_PIER_EM_REVISAO = "PIER não alterado — análise bloqueada para revisão.";
+export const AVISO_PIER_SEM_PROCESSAMENTO =
+  "Nenhum processamento automático executado.";
+export const AVISO_PIER_EM_REVISAO =
+  "PIER não alterado — análise bloqueada para revisão.";
 export const AVISO_PIER_FINALIZADO = "Finalizado no PIER.";
 
 /** Texto exibido na UI sobre o efeito real no PIER. */
 export function avisoPier(situacao?: string | null): string {
   if (!situacao) return AVISO_PIER_SEM_PROCESSAMENTO;
-  if (situacao === "FINALIZADO" || situacao === "JA_FINALIZADA") return AVISO_PIER_FINALIZADO;
+  if (situacao === "FINALIZADO" || situacao === "JA_FINALIZADA")
+    return AVISO_PIER_FINALIZADO;
   return AVISO_PIER_EM_REVISAO;
 }
 
 async function sha256(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", bytes as unknown as ArrayBuffer);
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    bytes as unknown as ArrayBuffer,
+  );
+  return [...new Uint8Array(digest)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 function base64ParaBytes(base64: string): Uint8Array {
-  const limpo = base64.includes(",") ? base64.slice(base64.indexOf(",") + 1) : base64;
+  const limpo = base64.includes(",")
+    ? base64.slice(base64.indexOf(",") + 1)
+    : base64;
   const binario = atob(limpo);
   const bytes = new Uint8Array(binario.length);
   for (let i = 0; i < binario.length; i++) bytes[i] = binario.charCodeAt(i);
@@ -41,14 +59,18 @@ export async function carregarSolicitacao(ctx: AppContext, externalId: string) {
   const { data, error } = await ctx.db
     .from("request")
     .select(
-      "id, external_id, number, description, type_name, status, reference_month, responsible_name, client_name, client_document, company_id, has_attachment, requested_at, deadline_at, finished_at",
+      "id, external_id, number, description, type_name, purpose, status, reference_month, responsible_name, client_name, client_document, company_id, has_attachment, requested_at, deadline_at, finished_at",
     )
     .eq("organization_id", ctx.organizationId)
     .eq("external_id", externalId)
     .maybeSingle();
 
   if (error)
-    throw new AppError("INESPERADO", "Não foi possível carregar a solicitação.", error.message);
+    throw new AppError(
+      "INESPERADO",
+      "Não foi possível carregar a solicitação.",
+      error.message,
+    );
   if (!data)
     throw new AppError(
       "REGRA_NEGOCIO",
@@ -62,17 +84,33 @@ async function sincronizarInstrucoes(
   ctx: AppContext,
   solicitacao: { id: string; external_id: string; description: string | null },
 ) {
-  const instrucoes: { source: "TITLE" | "POST"; id: string | null; texto: string; em: string | null }[] =
-    [];
+  const instrucoes: {
+    source: "TITLE" | "POST";
+    id: string | null;
+    texto: string;
+    em: string | null;
+  }[] = [];
 
   if (solicitacao.description)
-    instrucoes.push({ source: "TITLE", id: null, texto: solicitacao.description, em: null });
+    instrucoes.push({
+      source: "TITLE",
+      id: null,
+      texto: solicitacao.description,
+      em: null,
+    });
 
   try {
-    const postagens = await pierAdapter.listPosts({ requestExternalId: solicitacao.external_id });
+    const postagens = await pierAdapter.listPosts({
+      requestExternalId: solicitacao.external_id,
+    });
     for (const p of postagens) {
       if (!p.content?.trim()) continue;
-      instrucoes.push({ source: "POST", id: p.externalId, texto: p.content, em: p.postedAt });
+      instrucoes.push({
+        source: "POST",
+        id: p.externalId,
+        texto: p.content,
+        em: p.postedAt,
+      });
     }
   } catch (error) {
     console.error("[validacao] postagens indisponíveis:", erroSeguro(error));
@@ -84,8 +122,12 @@ async function sincronizarInstrucoes(
     .eq("organization_id", ctx.organizationId)
     .eq("request_id", solicitacao.id);
 
-  const jaSalvas = new Set((existentes ?? []).map((e) => `${e.source}|${e.source_external_id ?? ""}`));
-  const novas = instrucoes.filter((i) => !jaSalvas.has(`${i.source}|${i.id ?? ""}`));
+  const jaSalvas = new Set(
+    (existentes ?? []).map((e) => `${e.source}|${e.source_external_id ?? ""}`),
+  );
+  const novas = instrucoes.filter(
+    (i) => !jaSalvas.has(`${i.source}|${i.id ?? ""}`),
+  );
 
   if (novas.length) {
     await ctx.db.from("request_instruction").insert(
@@ -105,10 +147,15 @@ async function sincronizarInstrucoes(
   }
 }
 
-async function listarInstrucoes(ctx: AppContext, requestId: string): Promise<Instrucao[]> {
+async function listarInstrucoes(
+  ctx: AppContext,
+  requestId: string,
+): Promise<Instrucao[]> {
   const { data } = await ctx.db
     .from("request_instruction")
-    .select("source, source_external_id, occurred_at, text, interpreted, created_at")
+    .select(
+      "source, source_external_id, occurred_at, text, interpreted, created_at",
+    )
     .eq("organization_id", ctx.organizationId)
     .eq("request_id", requestId)
     .order("occurred_at", { ascending: false, nullsFirst: false });
@@ -118,7 +165,8 @@ async function listarInstrucoes(ctx: AppContext, requestId: string): Promise<Ins
     origemExternalId: i.source_external_id,
     ocorridoEm: i.occurred_at ?? i.created_at,
     texto: i.text,
-    interpretado: (i.interpreted ?? interpretarTexto(i.text)) as Instrucao["interpretado"],
+    interpretado: (i.interpreted ??
+      interpretarTexto(i.text)) as Instrucao["interpretado"],
   }));
 }
 
@@ -126,7 +174,10 @@ export async function detalharSolicitacao(
   ctx: AppContext,
   input: { solicitacaoExternalId: string; sincronizarPostagens?: boolean },
 ) {
-  const solicitacao = await carregarSolicitacao(ctx, input.solicitacaoExternalId);
+  const solicitacao = await carregarSolicitacao(
+    ctx,
+    input.solicitacaoExternalId,
+  );
 
   if (input.sincronizarPostagens !== false && ctx.canWrite) {
     await sincronizarInstrucoes(ctx, solicitacao);
@@ -144,37 +195,44 @@ export async function detalharSolicitacao(
     .eq("request_id", solicitacao.id)
     .maybeSingle();
 
-
-  const [{ data: anexos }, { data: execucoes }, { data: decisoes }, { data: auditoria }] =
-    await Promise.all([
-      ctx.db
-        .from("request_attachment")
-        .select("id, filename, mime_type, size_bytes, sha256, status, metadata, created_at")
-        .eq("organization_id", ctx.organizationId)
-        .eq("request_id", solicitacao.id)
-        .order("created_at", { ascending: false }),
-      ctx.db
-        .from("validation_execution")
-        .select(
-          "id, attachment_id, status, validator_version, result, summary, totals, error_message, started_at, finished_at, instruction_snapshot",
-        )
-        .eq("organization_id", ctx.organizationId)
-        .eq("request_id", solicitacao.id)
-        .order("created_at", { ascending: false }),
-      ctx.db
-        .from("request_decision")
-        .select("id, execution_id, decision, notes, decided_at, pier_action_status")
-        .eq("organization_id", ctx.organizationId)
-        .eq("request_id", solicitacao.id)
-        .order("decided_at", { ascending: false }),
-      ctx.db
-        .from("audit_log")
-        .select("id, action, entity, entity_id, created_at, after_data")
-        .eq("organization_id", ctx.organizationId)
-        .eq("correlation_id", solicitacao.external_id)
-        .order("created_at", { ascending: false })
-        .limit(50),
-    ]);
+  const [
+    { data: anexos },
+    { data: execucoes },
+    { data: decisoes },
+    { data: auditoria },
+  ] = await Promise.all([
+    ctx.db
+      .from("request_attachment")
+      .select(
+        "id, filename, mime_type, size_bytes, sha256, status, metadata, created_at",
+      )
+      .eq("organization_id", ctx.organizationId)
+      .eq("request_id", solicitacao.id)
+      .order("created_at", { ascending: false }),
+    ctx.db
+      .from("validation_execution")
+      .select(
+        "id, attachment_id, status, validator_version, result, summary, totals, error_message, started_at, finished_at, instruction_snapshot",
+      )
+      .eq("organization_id", ctx.organizationId)
+      .eq("request_id", solicitacao.id)
+      .order("created_at", { ascending: false }),
+    ctx.db
+      .from("request_decision")
+      .select(
+        "id, execution_id, decision, notes, decided_at, pier_action_status",
+      )
+      .eq("organization_id", ctx.organizationId)
+      .eq("request_id", solicitacao.id)
+      .order("decided_at", { ascending: false }),
+    ctx.db
+      .from("audit_log")
+      .select("id, action, entity, entity_id, created_at, after_data")
+      .eq("organization_id", ctx.organizationId)
+      .eq("correlation_id", solicitacao.external_id)
+      .order("created_at", { ascending: false })
+      .limit(50),
+  ]);
 
   return mascarar({
     solicitacao: {
@@ -183,6 +241,7 @@ export async function detalharSolicitacao(
       numero: solicitacao.number,
       descricao: solicitacao.description,
       tipoNome: solicitacao.type_name,
+      finalidade: solicitacao.purpose,
       status: solicitacao.status,
       competencia: solicitacao.reference_month,
       responsavelNome: solicitacao.responsible_name,
@@ -266,7 +325,9 @@ export async function salvarAnexoBytes(
     throw new AppError("VALIDACAO", "Envie um arquivo PDF válido.");
 
   const hash = await sha256(bytes);
-  const nome = input.filename.replace(/[^\w.\-() ]+/g, "_").slice(0, 120) || "documento.pdf";
+  const nome =
+    input.filename.replace(/[^\w.\-() ]+/g, "_").slice(0, 120) ||
+    "documento.pdf";
   const caminho = `${ctx.organizationId}/${solicitacao.id}/${hash}.pdf`;
 
   const { error: uploadError } = await ctx.db.storage
@@ -277,7 +338,11 @@ export async function salvarAnexoBytes(
     });
 
   if (uploadError)
-    throw new AppError("INESPERADO", "Não foi possível guardar o documento.", uploadError.message);
+    throw new AppError(
+      "INESPERADO",
+      "Não foi possível guardar o documento.",
+      uploadError.message,
+    );
 
   const { data: existente } = await ctx.db
     .from("request_attachment")
@@ -306,7 +371,11 @@ export async function salvarAnexoBytes(
     .single();
 
   if (error || !anexo)
-    throw new AppError("INESPERADO", "Não foi possível registrar o documento.", error?.message);
+    throw new AppError(
+      "INESPERADO",
+      "Não foi possível registrar o documento.",
+      error?.message,
+    );
 
   await audit(ctx, {
     action: "UPLOAD_DOCUMENTO",
@@ -329,23 +398,35 @@ export async function enviarAnexo(
   },
 ) {
   assertCanWrite(ctx);
-  const solicitacao = await carregarSolicitacao(ctx, input.solicitacaoExternalId);
+  const solicitacao = await carregarSolicitacao(
+    ctx,
+    input.solicitacaoExternalId,
+  );
 
   const bytes = base64ParaBytes(input.conteudoBase64);
   if (!bytes.length) throw new AppError("VALIDACAO", "Arquivo vazio.");
   if (bytes.length > TAMANHO_MAXIMO)
     throw new AppError("VALIDACAO", "Arquivo acima do limite de 25 MB.");
 
-  return salvarAnexoBytes(ctx, solicitacao, { filename: input.filename, bytes });
+  return salvarAnexoBytes(ctx, solicitacao, {
+    filename: input.filename,
+    bytes,
+  });
 }
-
 
 export async function executarValidacao(
   ctx: AppContext,
-  input: { solicitacaoExternalId: string; anexoId: string; reprocessar?: boolean },
+  input: {
+    solicitacaoExternalId: string;
+    anexoId: string;
+    reprocessar?: boolean;
+  },
 ) {
   assertCanWrite(ctx);
-  const solicitacao = await carregarSolicitacao(ctx, input.solicitacaoExternalId);
+  const solicitacao = await carregarSolicitacao(
+    ctx,
+    input.solicitacaoExternalId,
+  );
 
   const { data: anexo } = await ctx.db
     .from("request_attachment")
@@ -355,7 +436,11 @@ export async function executarValidacao(
     .eq("id", input.anexoId)
     .maybeSingle();
 
-  if (!anexo) throw new AppError("REGRA_NEGOCIO", "Documento não encontrado nesta solicitação.");
+  if (!anexo)
+    throw new AppError(
+      "REGRA_NEGOCIO",
+      "Documento não encontrado nesta solicitação.",
+    );
 
   // Idempotência: mesmo conteúdo + mesma versão do validador reaproveita a execução.
   const { data: anterior } = await ctx.db
@@ -392,19 +477,28 @@ export async function executarValidacao(
 
   const { data: execucao, error: execError } = await ctx.db
     .from("validation_execution")
-    .upsert(registro, { onConflict: "organization_id,content_hash,validator_version" })
+    .upsert(registro, {
+      onConflict: "organization_id,content_hash,validator_version",
+    })
     .select("id")
     .single();
 
   if (execError || !execucao)
-    throw new AppError("INESPERADO", "Não foi possível iniciar a análise.", execError?.message);
+    throw new AppError(
+      "INESPERADO",
+      "Não foi possível iniciar a análise.",
+      execError?.message,
+    );
 
   try {
     const { data: arquivo, error: downloadError } = await ctx.db.storage
       .from(BUCKET)
       .download(anexo.storage_path);
     if (downloadError || !arquivo)
-      throw new AppError("INESPERADO", "Documento indisponível no armazenamento.");
+      throw new AppError(
+        "INESPERADO",
+        "Documento indisponível no armazenamento.",
+      );
 
     const bytes = new Uint8Array(await arquivo.arrayBuffer());
     const { extrairTextoPdf } = await import("./pdf.server");
@@ -483,10 +577,17 @@ export async function executarValidacao(
       entity: "validation_execution",
       entityId: execucao.id,
       correlationId: solicitacao.external_id,
-      after: { resultado: relatorio.resultado, achados: relatorio.achados.length },
+      after: {
+        resultado: relatorio.resultado,
+        achados: relatorio.achados.length,
+      },
     });
 
-    return { execucaoId: execucao.id, reaproveitada: false, resultado: relatorio.resultado };
+    return {
+      execucaoId: execucao.id,
+      reaproveitada: false,
+      resultado: relatorio.resultado,
+    };
   } catch (error) {
     await ctx.db
       .from("validation_execution")
@@ -496,19 +597,32 @@ export async function executarValidacao(
         finished_at: new Date().toISOString(),
       })
       .eq("id", execucao.id);
-    await ctx.db.from("request_attachment").update({ status: "FAILED" }).eq("id", anexo.id);
+    await ctx.db
+      .from("request_attachment")
+      .update({ status: "FAILED" })
+      .eq("id", anexo.id);
     if (error instanceof AppError) throw error;
-    throw new AppError("INESPERADO", "Não foi possível analisar o documento.", erroSeguro(error));
+    throw new AppError(
+      "INESPERADO",
+      "Não foi possível analisar o documento.",
+      erroSeguro(error),
+    );
   }
 }
 
 export async function listarAchados(
   ctx: AppContext,
-  input: { execucaoId: string; severidade?: Severidade | null; busca?: string | null },
+  input: {
+    execucaoId: string;
+    severidade?: Severidade | null;
+    busca?: string | null;
+  },
 ) {
   let query = ctx.db
     .from("validation_finding")
-    .select("id, code, severity, title, detail, evidence, account_code, account_name, page, requires_human")
+    .select(
+      "id, code, severity, title, detail, evidence, account_code, account_name, page, requires_human",
+    )
     .eq("organization_id", ctx.organizationId)
     .eq("execution_id", input.execucaoId);
 
@@ -516,9 +630,18 @@ export async function listarAchados(
 
   const { data, error } = await query;
   if (error)
-    throw new AppError("INESPERADO", "Não foi possível carregar os achados.", error.message);
+    throw new AppError(
+      "INESPERADO",
+      "Não foi possível carregar os achados.",
+      error.message,
+    );
 
-  const ordem: Record<string, number> = { BLOCKER: 0, ERROR: 1, WARNING: 2, INFO: 3 };
+  const ordem: Record<string, number> = {
+    BLOCKER: 0,
+    ERROR: 1,
+    WARNING: 2,
+    INFO: 3,
+  };
   const termo = (input.busca ?? "").trim().toLowerCase();
 
   return mascarar(
@@ -556,7 +679,10 @@ export async function registrarDecisao(
   },
 ) {
   assertCanWrite(ctx);
-  const solicitacao = await carregarSolicitacao(ctx, input.solicitacaoExternalId);
+  const solicitacao = await carregarSolicitacao(
+    ctx,
+    input.solicitacaoExternalId,
+  );
 
   if (input.execucaoId) {
     const { data: exec } = await ctx.db
@@ -590,7 +716,11 @@ export async function registrarDecisao(
     .single();
 
   if (error || !decisao)
-    throw new AppError("INESPERADO", "Não foi possível registrar a decisão.", error?.message);
+    throw new AppError(
+      "INESPERADO",
+      "Não foi possível registrar a decisão.",
+      error?.message,
+    );
 
   await audit(ctx, {
     action: "REGISTRAR_DECISAO",
@@ -622,7 +752,11 @@ export async function obterResultadoValidacao(
     .maybeSingle();
 
   if (error)
-    throw new AppError("INESPERADO", "Não foi possível carregar a análise.", error.message);
+    throw new AppError(
+      "INESPERADO",
+      "Não foi possível carregar a análise.",
+      error.message,
+    );
   if (!execucao) throw new AppError("REGRA_NEGOCIO", "Análise não encontrada.");
 
   const achados = await listarAchados(ctx, { execucaoId: execucao.id });
