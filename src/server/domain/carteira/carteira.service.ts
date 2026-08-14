@@ -116,6 +116,12 @@ export async function listarCarteira(
     ]),
   );
 
+  const ocorrenciasPorDocumento = new Map<string, number>();
+  for (const c of clientes) {
+    const digitos = normalizarDocumento(c.document);
+    if (digitos) ocorrenciasPorDocumento.set(digitos, (ocorrenciasPorDocumento.get(digitos) ?? 0) + 1);
+  }
+
   let linhas: CarteiraLinha[] = (clientes ?? []).map((c) => {
     const empresa = mapaVinculo.get(c.id) ?? null;
     return {
@@ -130,8 +136,10 @@ export async function listarCarteira(
       empresaId: empresa?.id ?? null,
       empresaNome: empresa?.name ?? null,
       vinculado: Boolean(empresa),
+      motivoRevisao: empresa ? null : classificarDocumento(c.document, ocorrenciasPorDocumento),
     };
   });
+
 
   // Opções de filtro vêm da carteira completa (antes dos filtros) para o select ficar estável.
   const valoresUnicos = (selector: (l: CarteiraLinha) => string | null) =>
