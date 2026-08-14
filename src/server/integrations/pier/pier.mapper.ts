@@ -104,15 +104,17 @@ export function mapRequest(raw: Raw, typeName?: string | null): PierRequest {
   };
 }
 
+/** Mapeia PostagemPublic (/api/v2/solicitacoes/{id}/postagens). */
 export function mapPost(raw: Raw, requestExternalId: string): PierPost {
   return {
-    externalId: str(raw, "id", "externalId") ?? "",
+    externalId: str(raw, "idPostagem", "id", "externalId") ?? "",
     requestExternalId,
-    authorName: str(raw, "authorName", "autor", "usuario"),
-    content: str(raw, "content", "mensagem", "texto"),
-    postedAt: str(raw, "postedAt", "criadoEm", "data"),
+    authorName: str(raw, "nomeUsuario", "authorName", "autor", "usuario"),
+    content: str(raw, "postagemTexto", "content", "mensagem", "texto"),
+    postedAt: str(raw, "postadoEm", "postedAt", "criadoEm", "data"),
   };
 }
+
 
 /** Mapeia ArquivoPublic (/api/v2/arquivos). */
 export function mapFile(raw: Raw, requestExternalId: string | null): PierFile {
