@@ -61,11 +61,10 @@ export interface EscopoPreview {
   departamento: { id: string | null; nome: string };
   responsavel: { id: string | null; nome: string };
   totalEmpresas: number;
-  totalComVinculo: number;
-  totalSemVinculo: number;
   totalSemResponsavel: number;
-  competenciasExistentes: number;
-  competenciasNovas: number;
+  totalComDocumento: number;
+  totalSemDocumento: number;
+  totalAvisosCadastrais: number;
   solicitacoesEmCache: number;
   responsaveis: { id: string | null; nome: string; total: number }[];
   empresas: EscopoLinha[];
