@@ -518,13 +518,23 @@ export async function vincularCliente(ctx: AppContext, pierClientId: string) {
   let empresaId: string | null = null;
 
   if (documento) {
-    const { data: empresas } = await ctx.db
+    // Consulta indexada por (organization_id, document_digits): nunca carrega a tabela inteira.
+    const { data: empresas, error } = await ctx.db
       .from("company")
-      .select("id, document")
-      .eq("organization_id", ctx.organizationId);
-    empresaId =
-      (empresas ?? []).find((e) => normalizarDocumento(e.document) === documento)?.id ?? null;
+      .select("id")
+      .eq("organization_id", ctx.organizationId)
+      .eq("document_digits", documento)
+      .limit(2);
+    if (error)
+      throw new AppError("INESPERADO", "Não foi possível consultar as empresas.", error.message);
+    if ((empresas ?? []).length > 1)
+      throw new AppError(
+        "REGRA_NEGOCIO",
+        "Este CNPJ está em mais de uma empresa interna. Resolva a duplicidade antes de vincular.",
+      );
+    empresaId = empresas?.[0]?.id ?? null;
   }
+
 
   if (!empresaId) {
     const { data: nova, error } = await ctx.db
