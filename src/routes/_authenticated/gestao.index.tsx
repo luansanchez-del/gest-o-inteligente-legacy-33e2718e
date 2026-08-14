@@ -113,16 +113,20 @@ const FILA: Record<string, { rotulo: string; classe: string }> = {
   },
   ANALISANDO: { rotulo: "Analisando", classe: "text-warning-strong" },
   ANALISE_CONCLUIDA: {
-    rotulo: "Análise concluída",
+    rotulo: "Aprovada — pendente no PIER",
     classe: "text-success-strong",
   },
   REVISAO_NECESSARIA: {
-    rotulo: "Revisão necessária",
+    rotulo: "Aprovar com ressalva",
     classe: "text-warning-strong",
   },
-  ERRO: { rotulo: "Erro objetivo", classe: "text-destructive" },
+  BLOQUEADA: {
+    rotulo: "Bloqueada por erro contábil",
+    classe: "text-destructive",
+  },
+  ERRO: { rotulo: "Falha no processamento", classe: "text-destructive" },
   HISTORICO: {
-    rotulo: "Histórico/finalizada",
+    rotulo: "Finalizada no PIER",
     classe: "text-muted-foreground",
   },
 };
@@ -395,6 +399,25 @@ function GestaoPage() {
   }
 
   const dados = preview.data;
+  const totaisFila = useMemo<
+    Record<string, number> & { analisadas: number; percentual: number }
+  >(() => {
+    const totais: Record<string, number> = {};
+    for (const empresa of dados?.empresas ?? []) {
+      totais[empresa.statusFila] = (totais[empresa.statusFila] ?? 0) + 1;
+    }
+    const analisadas =
+      (totais.ANALISE_CONCLUIDA ?? 0) +
+      (totais.REVISAO_NECESSARIA ?? 0) +
+      (totais.BLOQUEADA ?? 0) +
+      (totais.HISTORICO ?? 0);
+    const total = dados?.totalEmpresas ?? 0;
+    return {
+      ...totais,
+      analisadas,
+      percentual: total ? Math.round((analisadas / total) * 100) : 0,
+    };
+  }, [dados]);
 
   return (
     <div className="space-y-6">
@@ -661,21 +684,50 @@ function GestaoPage() {
         />
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
         {[
-          { rotulo: "Solicitações no escopo", valor: dados?.totalEmpresas },
-          { rotulo: "Com documento interno", valor: dados?.totalComDocumento },
-          { rotulo: "Aguardando documento", valor: dados?.totalSemDocumento },
-          { rotulo: "Sem responsável", valor: dados?.totalSemResponsavel },
-          { rotulo: "Avisos cadastrais", valor: dados?.totalAvisosCadastrais },
+          {
+            rotulo: "No escopo",
+            valor: dados?.totalEmpresas,
+            detalhe: `${totaisFila.percentual}% analisadas`,
+          },
+          {
+            rotulo: "Aguardando documento",
+            valor: totaisFila["AGUARDANDO_DOCUMENTO"],
+          },
+          {
+            rotulo: "Prontas para validar",
+            valor: totaisFila["PRONTO_PARA_ANALISE"],
+          },
+          {
+            rotulo: "Em processamento",
+            valor: totaisFila["ANALISANDO"],
+          },
+          {
+            rotulo: "Aprovadas",
+            valor: totaisFila["ANALISE_CONCLUIDA"],
+          },
+          {
+            rotulo: "Com ressalvas",
+            valor: totaisFila["REVISAO_NECESSARIA"],
+          },
+          {
+            rotulo: "Bloqueadas / falhas",
+            valor: (totaisFila["BLOQUEADA"] ?? 0) + (totaisFila["ERRO"] ?? 0),
+            detalhe: `${totaisFila["BLOQUEADA"] ?? 0} contábeis · ${totaisFila["ERRO"] ?? 0} técnicas`,
+          },
+          { rotulo: "Finalizadas", valor: totaisFila["HISTORICO"] },
         ].map((item) => (
-          <Card key={item.rotulo} className="p-4">
+          <Card key={item.rotulo} className="p-3">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">
               {item.rotulo}
             </p>
             <p className="text-2xl font-semibold tabular-nums">
-              {item.valor ?? "—"}
+              {item.valor ?? 0}
             </p>
+            {"detalhe" in item && item.detalhe ? (
+              <p className="text-xs text-muted-foreground">{item.detalhe}</p>
+            ) : null}
           </Card>
         ))}
       </div>
@@ -688,9 +740,9 @@ function GestaoPage() {
               {dados?.responsavel.nome ?? "—"}
             </p>
             <p className="text-muted-foreground">
-              {dados?.solicitacoesEmCache ?? 0} solicitações de Fechamento
-              Contábil em cache para {competencia}. Sem responsável:{" "}
-              {dados?.totalSemResponsavel ?? 0}.
+              Exibindo {dados?.totalEmpresas ?? 0} de{" "}
+              {dados?.solicitacoesEmCache ?? 0} solicitações carregadas para{" "}
+              {competencia}. Sem responsável: {dados?.totalSemResponsavel ?? 0}.
             </p>
           </div>
           <Button
@@ -720,8 +772,9 @@ function GestaoPage() {
                 {dados?.totalEmpresas ?? 0} solicitação(ões) do escopo atual
                 serão processadas em lote. O sistema conferirá o estado real no
                 PIER e lerá os anexos conforme o tipo de solicitação
-                selecionado. A postagem privada e a finalização só acontecem
-                quando o resultado for aprovado sem erros nem alertas.
+                selecionado. Resultados sem apontamentos podem seguir o fluxo
+                automático; alertas ficam disponíveis para aprovação com
+                ressalva; erros contábeis permanecem bloqueados.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
@@ -817,7 +870,11 @@ function GestaoPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <span className={analise.classe}>{analise.rotulo}</span>
+                      <span
+                        className={`inline-flex rounded-full bg-muted px-2.5 py-1 text-xs font-medium ${analise.classe}`}
+                      >
+                        {analise.rotulo}
+                      </span>
                     </TableCell>
                     <TableCell className="text-right">
                       <Button variant="ghost" size="sm" asChild>
@@ -826,9 +883,15 @@ function GestaoPage() {
                           params={{ externalId: linha.solicitacaoId }}
                           aria-label={`Abrir solicitação de ${linha.clienteNome}`}
                         >
-                          {linha.statusAnalise === "NAO_ANALISADA"
-                            ? "Analisar"
-                            : "Ver análise"}
+                          {linha.statusFila === "AGUARDANDO_DOCUMENTO"
+                            ? "Ver pendência"
+                            : linha.statusFila === "PRONTO_PARA_ANALISE"
+                              ? "Analisar"
+                              : linha.statusFila === "REVISAO_NECESSARIA"
+                                ? "Decidir"
+                                : linha.statusFila === "BLOQUEADA"
+                                  ? "Ver impedimento"
+                                  : "Ver resultado"}
                           <ArrowRight className="ml-1 h-4 w-4" />
                         </Link>
                       </Button>
