@@ -17,9 +17,9 @@ import { Route as Char91DotwellKnownChar93OauthProtectedResourceRouteImport } fr
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedCarteiraRouteImport } from './routes/_authenticated/carteira'
 import { Route as AuthenticatedEquipeRouteImport } from './routes/_authenticated/equipe'
-import { Route as AuthenticatedGestaoRouteImport } from './routes/_authenticated/gestao'
 import { Route as DotlovableOauthConsentRouteImport } from './routes/[.]lovable.oauth.consent'
 import { Route as Char91DotmcpChar93InvokeToolToolRouteImport } from './routes/[.mcp]/invoke-tool/$tool'
+import { Route as AuthenticatedGestaoIndexRouteImport } from './routes/_authenticated/gestao.index'
 import { Route as AuthenticatedGestaoSolicitacoesExternalIdRouteImport } from './routes/_authenticated/gestao.solicitacoes.$externalId'
 
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
@@ -63,11 +63,6 @@ const AuthenticatedEquipeRoute = AuthenticatedEquipeRouteImport.update({
   path: '/equipe',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const AuthenticatedGestaoRoute = AuthenticatedGestaoRouteImport.update({
-  id: '/gestao',
-  path: '/gestao',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
 const DotlovableOauthConsentRoute = DotlovableOauthConsentRouteImport.update({
   id: '/.lovable/oauth/consent',
   path: '/.lovable/oauth/consent',
@@ -79,11 +74,17 @@ const Char91DotmcpChar93InvokeToolToolRoute =
     path: '/.mcp/invoke-tool/$tool',
     getParentRoute: () => rootRouteImport,
   } as any)
+const AuthenticatedGestaoIndexRoute =
+  AuthenticatedGestaoIndexRouteImport.update({
+    id: '/gestao/',
+    path: '/gestao/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedGestaoSolicitacoesExternalIdRoute =
   AuthenticatedGestaoSolicitacoesExternalIdRouteImport.update({
-    id: '/solicitacoes/$externalId',
-    path: '/solicitacoes/$externalId',
-    getParentRoute: () => AuthenticatedGestaoRoute,
+    id: '/gestao/solicitacoes/$externalId',
+    path: '/gestao/solicitacoes/$externalId',
+    getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -94,9 +95,9 @@ export interface FileRoutesByFullPath {
   '/.well-known/oauth-protected-resource': typeof Char91DotwellKnownChar93OauthProtectedResourceRoute
   '/carteira': typeof AuthenticatedCarteiraRoute
   '/equipe': typeof AuthenticatedEquipeRoute
-  '/gestao': typeof AuthenticatedGestaoRouteWithChildren
   '/.lovable/oauth/consent': typeof DotlovableOauthConsentRoute
   '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
+  '/gestao/': typeof AuthenticatedGestaoIndexRoute
   '/gestao/solicitacoes/$externalId': typeof AuthenticatedGestaoSolicitacoesExternalIdRoute
 }
 export interface FileRoutesByTo {
@@ -106,10 +107,10 @@ export interface FileRoutesByTo {
   '/.well-known/oauth-protected-resource': typeof Char91DotwellKnownChar93OauthProtectedResourceRoute
   '/carteira': typeof AuthenticatedCarteiraRoute
   '/equipe': typeof AuthenticatedEquipeRoute
-  '/gestao': typeof AuthenticatedGestaoRouteWithChildren
   '/': typeof AuthenticatedIndexRoute
   '/.lovable/oauth/consent': typeof DotlovableOauthConsentRoute
   '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
+  '/gestao': typeof AuthenticatedGestaoIndexRoute
   '/gestao/solicitacoes/$externalId': typeof AuthenticatedGestaoSolicitacoesExternalIdRoute
 }
 export interface FileRoutesById {
@@ -121,10 +122,10 @@ export interface FileRoutesById {
   '/.well-known/oauth-protected-resource': typeof Char91DotwellKnownChar93OauthProtectedResourceRoute
   '/_authenticated/carteira': typeof AuthenticatedCarteiraRoute
   '/_authenticated/equipe': typeof AuthenticatedEquipeRoute
-  '/_authenticated/gestao': typeof AuthenticatedGestaoRouteWithChildren
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/.lovable/oauth/consent': typeof DotlovableOauthConsentRoute
   '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
+  '/_authenticated/gestao/': typeof AuthenticatedGestaoIndexRoute
   '/_authenticated/gestao/solicitacoes/$externalId': typeof AuthenticatedGestaoSolicitacoesExternalIdRoute
 }
 export interface FileRouteTypes {
@@ -137,9 +138,9 @@ export interface FileRouteTypes {
     | '/.well-known/oauth-protected-resource'
     | '/carteira'
     | '/equipe'
-    | '/gestao'
     | '/.lovable/oauth/consent'
     | '/.mcp/invoke-tool/$tool'
+    | '/gestao/'
     | '/gestao/solicitacoes/$externalId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -149,10 +150,10 @@ export interface FileRouteTypes {
     | '/.well-known/oauth-protected-resource'
     | '/carteira'
     | '/equipe'
-    | '/gestao'
     | '/'
     | '/.lovable/oauth/consent'
     | '/.mcp/invoke-tool/$tool'
+    | '/gestao'
     | '/gestao/solicitacoes/$externalId'
   id:
     | '__root__'
@@ -163,10 +164,10 @@ export interface FileRouteTypes {
     | '/.well-known/oauth-protected-resource'
     | '/_authenticated/carteira'
     | '/_authenticated/equipe'
-    | '/_authenticated/gestao'
     | '/_authenticated/'
     | '/.lovable/oauth/consent'
     | '/.mcp/invoke-tool/$tool'
+    | '/_authenticated/gestao/'
     | '/_authenticated/gestao/solicitacoes/$externalId'
   fileRoutesById: FileRoutesById
 }
@@ -238,13 +239,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedEquipeRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/gestao': {
-      id: '/_authenticated/gestao'
-      path: '/gestao'
-      fullPath: '/gestao'
-      preLoaderRoute: typeof AuthenticatedGestaoRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
     '/.lovable/oauth/consent': {
       id: '/.lovable/oauth/consent'
       path: '/.lovable/oauth/consent'
@@ -259,40 +253,38 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof Char91DotmcpChar93InvokeToolToolRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/gestao/': {
+      id: '/_authenticated/gestao/'
+      path: '/gestao'
+      fullPath: '/gestao/'
+      preLoaderRoute: typeof AuthenticatedGestaoIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/gestao/solicitacoes/$externalId': {
       id: '/_authenticated/gestao/solicitacoes/$externalId'
-      path: '/solicitacoes/$externalId'
+      path: '/gestao/solicitacoes/$externalId'
       fullPath: '/gestao/solicitacoes/$externalId'
       preLoaderRoute: typeof AuthenticatedGestaoSolicitacoesExternalIdRouteImport
-      parentRoute: typeof AuthenticatedGestaoRoute
+      parentRoute: typeof AuthenticatedRouteRoute
     }
   }
 }
 
-interface AuthenticatedGestaoRouteChildren {
-  AuthenticatedGestaoSolicitacoesExternalIdRoute: typeof AuthenticatedGestaoSolicitacoesExternalIdRoute
-}
-
-const AuthenticatedGestaoRouteChildren: AuthenticatedGestaoRouteChildren = {
-  AuthenticatedGestaoSolicitacoesExternalIdRoute:
-    AuthenticatedGestaoSolicitacoesExternalIdRoute,
-}
-
-const AuthenticatedGestaoRouteWithChildren =
-  AuthenticatedGestaoRoute._addFileChildren(AuthenticatedGestaoRouteChildren)
-
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedCarteiraRoute: typeof AuthenticatedCarteiraRoute
   AuthenticatedEquipeRoute: typeof AuthenticatedEquipeRoute
-  AuthenticatedGestaoRoute: typeof AuthenticatedGestaoRouteWithChildren
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedGestaoIndexRoute: typeof AuthenticatedGestaoIndexRoute
+  AuthenticatedGestaoSolicitacoesExternalIdRoute: typeof AuthenticatedGestaoSolicitacoesExternalIdRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedCarteiraRoute: AuthenticatedCarteiraRoute,
   AuthenticatedEquipeRoute: AuthenticatedEquipeRoute,
-  AuthenticatedGestaoRoute: AuthenticatedGestaoRouteWithChildren,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedGestaoIndexRoute: AuthenticatedGestaoIndexRoute,
+  AuthenticatedGestaoSolicitacoesExternalIdRoute:
+    AuthenticatedGestaoSolicitacoesExternalIdRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =

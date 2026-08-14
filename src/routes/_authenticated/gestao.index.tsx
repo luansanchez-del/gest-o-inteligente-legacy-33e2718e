@@ -44,7 +44,7 @@ import {
 import { formatarCnpj } from "@/lib/formato";
 import { mensagemDeErro } from "@/lib/erros";
 
-export const Route = createFileRoute("/_authenticated/gestao")({
+export const Route = createFileRoute("/_authenticated/gestao/")({
   head: () => ({
     meta: [
       { title: "Gestão de fechamentos | Gestão Inteligente" },
