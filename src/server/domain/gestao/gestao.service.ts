@@ -30,6 +30,11 @@ export interface EscopoLinha {
   vinculada: boolean;
   statusSolicitacao: string | null;
   jaAberta: boolean;
+  competencia: string | null;
+  temAnexo: boolean;
+  /** Estado da análise interna do balancete desta solicitação. */
+  statusAnalise: "NAO_ANALISADA" | "ANALISANDO" | "CONCLUIDA" | "FALHOU";
+  resultadoAnalise: string | null;
 }
 
 export interface EscopoPreview {
