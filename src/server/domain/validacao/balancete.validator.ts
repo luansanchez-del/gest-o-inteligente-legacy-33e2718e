@@ -38,6 +38,8 @@ export interface TotaisBalancete {
   equacaoEsquerda: number;
   equacaoDireita: number;
   diferencaEquacao: number;
+  /** Quantidade de contas efetivamente extraídas do documento. */
+  totalContas: number;
 }
 
 export type ResultadoValidacao = "APROVADO" | "COM_ALERTAS" | "REPROVADO" | "REVISAO_HUMANA";
@@ -266,6 +268,7 @@ export function validarBalancete(
     equacaoEsquerda,
     equacaoDireita,
     diferencaEquacao,
+    totalContas: documento.linhas.length,
   };
 
   if (base.length) {
@@ -403,7 +406,7 @@ export function validarBalancete(
 
   return {
     resultado: classificar(achados),
-    resumo: montarResumo(achados, totais),
+    resumo: montarResumo(achados, totais, documento.linhas.length),
     totais,
     achados,
     periodoDocumento: { inicio: inicioDoc, fim: fimDoc },
@@ -417,9 +420,18 @@ export function classificar(achados: Achado[]): ResultadoValidacao {
   return alertas.some((a) => a.requiresHuman) ? "REVISAO_HUMANA" : "COM_ALERTAS";
 }
 
-function montarResumo(achados: Achado[], totais: TotaisBalancete) {
+function montarResumo(achados: Achado[], totais: TotaisBalancete, totalContas: number) {
   const bloqueios = achados.filter((a) => a.severity === "BLOCKER" || a.severity === "ERROR").length;
   const alertas = achados.filter((a) => a.severity === "WARNING").length;
+
+  // Sem contas extraídas não existe conferência matemática possível.
+  if (totalContas === 0)
+    return [
+      "Documento não lido: nenhuma conta foi extraída do PDF.",
+      "Totais não calculados.",
+      `${bloqueios} impedimento(s) e ${alertas} alerta(s) para revisão.`,
+    ].join(" ");
+
   const fecha = Math.abs(totais.diferencaEquacao) <= TOLERANCIA;
   return [
     fecha ? "Balancete fecha matematicamente." : "Balancete não fecha matematicamente.",
