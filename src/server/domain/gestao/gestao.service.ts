@@ -90,7 +90,7 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
   if (error)
     throw new AppError("INESPERADO", "Não foi possível montar o escopo.", error.message);
 
-  const [usuarios, { data: departamentos }, clientes, { data: aberturas }] = await Promise.all([
+  const [usuarios, { data: departamentos }, clientes] = await Promise.all([
     carregarUsuariosPier<{
       external_id: string;
       name: string;
@@ -101,26 +101,20 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
       .from("pier_department")
       .select("external_id, name")
       .eq("organization_id", ctx.organizationId),
-    carregarTodasAsLinhas<{ document: string | null; tax_regime: string | null }>(
-      ctx,
-      "pier_client",
-      "document, tax_regime",
-    ),
-    ctx.db
-      .from("closing_period")
-      .select("company_id")
-      .eq("organization_id", ctx.organizationId)
-      .eq("reference_month", filtro.competencia)
-      .eq("type", filtro.tipo),
+    carregarTodasAsLinhas<{
+      document: string | null;
+      tax_regime: string | null;
+      responsible_name: string | null;
+    }>(ctx, "pier_client", "document, tax_regime, responsible_name"),
   ]);
 
   const usuarioPorId = new Map(usuarios.map((u) => [u.external_id, u]));
 
   const deptoNome = new Map((departamentos ?? []).map((d) => [d.external_id, d.name]));
-  const regimePorDoc = new Map(
-    (clientes ?? []).map((c) => [normalizarDocumento(c.document), c.tax_regime]),
+  // Ficha do cliente é complementar: usada só para regime e aviso cadastral.
+  const fichaPorDoc = new Map(
+    (clientes ?? []).map((c) => [normalizarDocumento(c.document), c]),
   );
-  const abertas = new Set((aberturas ?? []).map((a) => a.company_id));
 
   // Estado da análise interna (a última execução por solicitação).
   const idsSolicitacoes = (solicitacoes ?? []).map((s) => s.id);
