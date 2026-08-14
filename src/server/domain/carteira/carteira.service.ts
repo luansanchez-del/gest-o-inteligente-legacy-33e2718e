@@ -229,6 +229,7 @@ export async function listarSolicitacoesDoCliente(
     reference_month: string | null;
     responsible_name: string | null;
     department_external_id: string | null;
+    client_external_id: string | null;
     client_document: string | null;
     has_attachment: boolean;
     requested_at: string | null;
