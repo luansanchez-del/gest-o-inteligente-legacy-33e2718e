@@ -8,7 +8,6 @@ type EscopoInput = {
   tipo: "CONTABIL" | "FISCAL" | "OUTRO";
   departamentoId?: string | null;
   responsavelId?: string | null;
-  empresaIds?: string[];
 };
 
 function validarEscopo(input: EscopoInput) {
