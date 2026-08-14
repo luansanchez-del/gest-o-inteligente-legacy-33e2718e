@@ -332,6 +332,25 @@ function GestaoPage() {
               </SelectContent>
             </Select>
           </div>
+          <div className="min-w-[190px] space-y-1">
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              Situação
+            </Label>
+            <Select value={fila} onValueChange={setFila}>
+              <SelectTrigger aria-label="Situação da fila">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="max-h-80">
+                <SelectItem value={TODAS_FILAS}>Todas as situações</SelectItem>
+                {Object.entries(FILA).map(([valor, info]) => (
+                  <SelectItem key={valor} value={valor}>
+                    {info.rotulo}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           <Button
             variant="outline"
             onClick={limparFiltros}
