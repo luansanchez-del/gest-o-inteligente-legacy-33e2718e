@@ -65,6 +65,13 @@ export const Route = createFileRoute("/_authenticated/gestao")({
   component: GestaoPage,
 });
 
+const ANALISE: Record<string, { rotulo: string; classe: string }> = {
+  NAO_ANALISADA: { rotulo: "Documento não carregado", classe: "text-muted-foreground" },
+  ANALISANDO: { rotulo: "Analisando", classe: "text-warning-strong" },
+  CONCLUIDA: { rotulo: "Análise concluída", classe: "text-success-strong" },
+  FALHOU: { rotulo: "Falha na análise", classe: "text-destructive" },
+};
+
 const TODOS_DEPARTAMENTOS = "__TODOS__";
 const TODOS_USUARIOS = "__TODOS_USUARIOS__";
 
