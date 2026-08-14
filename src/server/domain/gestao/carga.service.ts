@@ -282,7 +282,7 @@ export async function carregarCompetencia(
       erro: null,
     };
 
-    await registrarEvento(ctx, input.runId, "INFO", input.competencia, resumo);
+    await registrarEvento(ctx, input.runId, "INFO", input.competencia, { ...resumo });
     return resumo;
   } catch (error) {
     const mensagem =
