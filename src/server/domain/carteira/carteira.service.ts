@@ -5,10 +5,13 @@ import { pierAdapter } from "../../integrations/pier/pier.adapter";
 
 export interface CarteiraFiltros {
   busca?: string;
-  situacao?: "TODOS" | "VINCULADO" | "NAO_VINCULADO";
+  situacao?: "TODOS" | "VINCULADO" | "NAO_VINCULADO" | "REVISAO";
   status?: string;
   regime?: string;
 }
+
+/** Por que o cliente do PIER não pôde ser vinculado automaticamente. */
+export type MotivoRevisao = "SEM_DOCUMENTO" | "DOCUMENTO_INVALIDO" | "DOCUMENTO_DUPLICADO";
 
 export interface CarteiraLinha {
   pierClientId: string;
@@ -22,12 +25,17 @@ export interface CarteiraLinha {
   empresaId: string | null;
   empresaNome: string | null;
   vinculado: boolean;
+  /** Preenchido quando o vínculo automático não é possível e exige revisão humana. */
+  motivoRevisao: MotivoRevisao | null;
 }
 
 export interface CarteiraResumo {
   total: number;
   vinculados: number;
   naoVinculados: number;
+  emRevisao: number;
+  semDocumento: number;
+  documentosDuplicados: number;
   ultimaSincronizacao: {
     id: string;
     status: string;
@@ -41,9 +49,34 @@ export interface CarteiraResumo {
   filtrosDisponiveis: { regimes: string[]; statuses: string[] };
 }
 
+export interface ResumoVinculoAutomatico {
+  sincronizados: number;
+  vinculados: number;
+  criados: number;
+  conflitos: number;
+  semDocumento: number;
+}
+
 function normalizarDocumento(value: string | null | undefined) {
   return (value ?? "").replace(/\D/g, "");
 }
+
+/** Aceita CNPJ (14) e CPF (11); qualquer outro tamanho é documento inválido. */
+function documentoValido(digitos: string) {
+  return digitos.length === 14 || digitos.length === 11;
+}
+
+function classificarDocumento(
+  documento: string | null,
+  ocorrenciasPorDocumento: Map<string, number>,
+): MotivoRevisao | null {
+  const digitos = normalizarDocumento(documento);
+  if (!digitos) return "SEM_DOCUMENTO";
+  if (!documentoValido(digitos)) return "DOCUMENTO_INVALIDO";
+  if ((ocorrenciasPorDocumento.get(digitos) ?? 0) > 1) return "DOCUMENTO_DUPLICADO";
+  return null;
+}
+
 
 export async function listarCarteira(
   ctx: AppContext,
