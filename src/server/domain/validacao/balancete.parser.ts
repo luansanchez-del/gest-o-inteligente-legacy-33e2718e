@@ -146,6 +146,8 @@ export function parseBalancete(paginas: string[]): BalanceteDocumento {
   const linhas: LinhaBalancete[] = [];
   const naoInterpretadas: LinhaNaoInterpretada[] = [];
   const colunas = new Set<string>();
+  const marcadores = new Map<string, boolean | null>();
+
 
   let empresa: string | null = null;
   let cnpj: string | null = null;
