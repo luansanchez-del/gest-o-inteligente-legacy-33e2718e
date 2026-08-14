@@ -65,15 +65,20 @@ export const Route = createFileRoute("/_authenticated/gestao/")({
   component: GestaoPage,
 });
 
-const ANALISE: Record<string, { rotulo: string; classe: string }> = {
-  NAO_ANALISADA: { rotulo: "Documento não carregado", classe: "text-muted-foreground" },
-  ANALISANDO: { rotulo: "Analisando", classe: "text-warning-strong" },
-  CONCLUIDA: { rotulo: "Análise concluída", classe: "text-success-strong" },
-  FALHOU: { rotulo: "Falha na análise", classe: "text-destructive" },
-};
-
 const TODOS_DEPARTAMENTOS = "__TODOS__";
 const TODOS_USUARIOS = "__TODOS_USUARIOS__";
+const TODAS_FILAS = "__TODAS_FILAS__";
+
+/** Fila operacional do fechamento contábil. */
+const FILA: Record<string, { rotulo: string; classe: string }> = {
+  AGUARDANDO_DOCUMENTO: { rotulo: "Aguardando documento", classe: "text-muted-foreground" },
+  PRONTO_PARA_ANALISE: { rotulo: "Pronto para análise", classe: "text-primary" },
+  ANALISANDO: { rotulo: "Analisando", classe: "text-warning-strong" },
+  ANALISE_CONCLUIDA: { rotulo: "Análise concluída", classe: "text-success-strong" },
+  REVISAO_NECESSARIA: { rotulo: "Revisão necessária", classe: "text-warning-strong" },
+  ERRO: { rotulo: "Erro objetivo", classe: "text-destructive" },
+  HISTORICO: { rotulo: "Histórico/finalizada", classe: "text-muted-foreground" },
+};
 
 function competenciaAtual() {
   const hoje = new Date();
@@ -85,13 +90,14 @@ function GestaoPage() {
   const [competencia, setCompetencia] = useState(competenciaAtual);
   const [departamento, setDepartamento] = useState(TODOS_DEPARTAMENTOS);
   const [responsavel, setResponsavel] = useState(TODOS_USUARIOS);
+  const [fila, setFila] = useState(TODAS_FILAS);
   const [incluirInativos, setIncluirInativos] = useState(false);
   const [renomeando, setRenomeando] = useState(false);
   const [novoNomeDepartamento, setNovoNomeDepartamento] = useState("");
 
   const equipe = useQuery({
-    queryKey: ["equipe-pier", incluirInativos],
-    queryFn: () => listarEquipe({ data: { incluirInativos } }),
+    queryKey: ["equipe-pier", incluirInativos, "contabeis"],
+    queryFn: () => listarEquipe({ data: { incluirInativos, somenteContabeis: true } }),
   });
 
   const filtro = {
@@ -99,14 +105,22 @@ function GestaoPage() {
     tipo: "CONTABIL" as const,
     departamentoId: departamento === TODOS_DEPARTAMENTOS ? null : departamento,
     responsavelId: responsavel === TODOS_USUARIOS ? null : responsavel,
+    statusFila: fila === TODAS_FILAS ? null : (fila as never),
   };
 
   const preview = useQuery({
-    queryKey: ["preview-gestao", filtro.competencia, filtro.departamentoId, filtro.responsavelId],
+    queryKey: [
+      "preview-gestao",
+      filtro.competencia,
+      filtro.departamentoId,
+      filtro.responsavelId,
+      fila,
+    ],
     queryFn: () => montarPreview({ data: filtro }),
     enabled: /^\d{4}-\d{2}$/.test(competencia),
     placeholderData: (anterior) => anterior,
   });
+
 
   const sincEquipe = useMutation({
     mutationFn: () => sincronizarEquipe(),
