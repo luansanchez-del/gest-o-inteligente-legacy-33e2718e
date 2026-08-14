@@ -164,6 +164,7 @@ export async function listarCarteira(
   if (filtros.regime) linhas = linhas.filter((l) => (l.regime ?? "").trim() === filtros.regime);
   if (filtros.situacao === "VINCULADO") linhas = linhas.filter((l) => l.vinculado);
   if (filtros.situacao === "NAO_VINCULADO") linhas = linhas.filter((l) => !l.vinculado);
+  if (filtros.situacao === "REVISAO") linhas = linhas.filter((l) => Boolean(l.motivoRevisao));
 
   const { data: ultima } = await ctx.db
     .from("sync_run")
@@ -180,6 +181,10 @@ export async function listarCarteira(
       total: linhas.length,
       vinculados: linhas.filter((l) => l.vinculado).length,
       naoVinculados: linhas.filter((l) => !l.vinculado).length,
+      emRevisao: linhas.filter((l) => Boolean(l.motivoRevisao)).length,
+      semDocumento: linhas.filter((l) => l.motivoRevisao === "SEM_DOCUMENTO").length,
+      documentosDuplicados: linhas.filter((l) => l.motivoRevisao === "DOCUMENTO_DUPLICADO").length,
+
       ultimaSincronizacao: ultima
         ? {
             id: ultima.id,
