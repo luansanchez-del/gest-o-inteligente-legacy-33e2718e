@@ -98,8 +98,8 @@ function Painel() {
             {carteira.data?.resumo.total ?? "—"}
           </p>
           <p className="text-sm text-muted-foreground">
-            {carteira.data?.resumo.vinculados ?? 0} vinculados ·{" "}
-            {carteira.data?.resumo.naoVinculados ?? 0} sem vínculo
+            {carteira.data?.resumo.ativos ?? 0} ativos · {carteira.data?.resumo.inativos ?? 0}{" "}
+            inativos
           </p>
           <Button asChild variant="outline" size="sm">
             <Link to="/carteira">Abrir carteira</Link>

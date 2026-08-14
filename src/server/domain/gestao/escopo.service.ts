@@ -340,22 +340,9 @@ export async function sincronizarSolicitacoes(
       referenceMonth: input.competencia,
     });
 
-    // Documento -> empresa interna já vinculada na carteira.
-    const { data: vinculos } = await ctx.db
-      .from("company_pier_link")
-      .select("company:company_id(id, document), pier_client:pier_client_id(document)")
-      .eq("organization_id", ctx.organizationId);
+    // Sem leitura de company/company_pier_link: a carteira é apenas catálogo.
 
-    const empresaPorDocumento = new Map<string, string>();
-    for (const v of vinculos ?? []) {
-      const empresa = v.company as unknown as { id: string; document: string | null } | null;
-      const cliente = v.pier_client as unknown as { document: string | null } | null;
-      if (!empresa) continue;
-      for (const doc of [empresa.document, cliente?.document]) {
-        const chave = normalizarDocumento(doc);
-        if (chave) empresaPorDocumento.set(chave, empresa.id);
-      }
-    }
+
 
     const usuarios = await carregarUsuariosPier<{
       external_id: string;
@@ -390,7 +377,8 @@ export async function sincronizarSolicitacoes(
           client_external_id: s.clientExternalId,
           client_name: s.clientName,
           client_document: s.clientDocument,
-          company_id: empresaPorDocumento.get(normalizarDocumento(s.clientDocument)) ?? null,
+          // company_id deixou de ser preenchido: a solicitação do PIER é a fonte operacional
+          // e não depende de empresa interna nem de vínculo.
           requested_at: s.requestedAt,
           finished_at: s.finishedAt,
           deadline_at: s.deadlineAt,

@@ -25,15 +25,15 @@ export interface EscopoFiltro {
   departamentoId?: string | null;
   /** ID externo do usuário responsável no PIER. Vazio = todos do departamento. */
   responsavelId?: string | null;
-  /** Seleção manual de empresas internas (reservado para etapas futuras). */
-  empresaIds?: string[];
   /** Filtro opcional pela fila operacional. */
   statusFila?: StatusFila | null;
 }
 
 export interface EscopoLinha {
+  /** external_id da solicitação no PIER — a chave operacional desta tela. */
   solicitacaoId: string;
   numero: string | null;
+  clienteExternalId: string | null;
   clienteNome: string;
   documento: string | null;
   regime: string | null;
@@ -41,10 +41,9 @@ export interface EscopoLinha {
   departamentoNome: string | null;
   responsavelId: string | null;
   responsavelNome: string | null;
-  empresaId: string | null;
-  vinculada: boolean;
   statusSolicitacao: string | null;
-  jaAberta: boolean;
+  /** Aviso cadastral: a ficha do cliente não tem responsável contábil. Nunca bloqueia. */
+  avisoCadastral: string | null;
   competencia: string | null;
   temAnexo: boolean;
   /** true quando o PDF já está armazenado internamente e pode ser analisado. */
@@ -62,11 +61,10 @@ export interface EscopoPreview {
   departamento: { id: string | null; nome: string };
   responsavel: { id: string | null; nome: string };
   totalEmpresas: number;
-  totalComVinculo: number;
-  totalSemVinculo: number;
   totalSemResponsavel: number;
-  competenciasExistentes: number;
-  competenciasNovas: number;
+  totalComDocumento: number;
+  totalSemDocumento: number;
+  totalAvisosCadastrais: number;
   solicitacoesEmCache: number;
   responsaveis: { id: string | null; nome: string; total: number }[];
   empresas: EscopoLinha[];
@@ -82,7 +80,7 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
   const { data: solicitacoes, error } = await ctx.db
     .from("request")
     .select(
-      "id, external_id, number, description, status, client_name, client_document, company_id, responsible_external_id, responsible_name, department_external_id, has_attachment, reference_month",
+      "id, external_id, number, description, status, client_external_id, client_name, client_document, responsible_external_id, responsible_name, department_external_id, has_attachment, reference_month",
     )
     .eq("organization_id", ctx.organizationId)
     .eq("reference_month", filtro.competencia)
@@ -91,7 +89,7 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
   if (error)
     throw new AppError("INESPERADO", "Não foi possível montar o escopo.", error.message);
 
-  const [usuarios, { data: departamentos }, clientes, { data: aberturas }] = await Promise.all([
+  const [usuarios, { data: departamentos }, clientes] = await Promise.all([
     carregarUsuariosPier<{
       external_id: string;
       name: string;
@@ -102,26 +100,20 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
       .from("pier_department")
       .select("external_id, name")
       .eq("organization_id", ctx.organizationId),
-    carregarTodasAsLinhas<{ document: string | null; tax_regime: string | null }>(
-      ctx,
-      "pier_client",
-      "document, tax_regime",
-    ),
-    ctx.db
-      .from("closing_period")
-      .select("company_id")
-      .eq("organization_id", ctx.organizationId)
-      .eq("reference_month", filtro.competencia)
-      .eq("type", filtro.tipo),
+    carregarTodasAsLinhas<{
+      document: string | null;
+      tax_regime: string | null;
+      responsible_name: string | null;
+    }>(ctx, "pier_client", "document, tax_regime, responsible_name"),
   ]);
 
   const usuarioPorId = new Map(usuarios.map((u) => [u.external_id, u]));
 
   const deptoNome = new Map((departamentos ?? []).map((d) => [d.external_id, d.name]));
-  const regimePorDoc = new Map(
-    (clientes ?? []).map((c) => [normalizarDocumento(c.document), c.tax_regime]),
+  // Ficha do cliente é complementar: usada só para regime e aviso cadastral.
+  const fichaPorDoc = new Map(
+    (clientes ?? []).map((c) => [normalizarDocumento(c.document), c]),
   );
-  const abertas = new Set((aberturas ?? []).map((a) => a.company_id));
 
   // Estado da análise interna (a última execução por solicitação).
   const idsSolicitacoes = (solicitacoes ?? []).map((s) => s.id);
@@ -184,20 +176,26 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
               ? "PRONTO_PARA_ANALISE"
               : "AGUARDANDO_DOCUMENTO";
 
+    const ficha = fichaPorDoc.get(normalizarDocumento(s.client_document)) ?? null;
+
     return {
       solicitacaoId: s.external_id,
       numero: s.number,
+      clienteExternalId: s.client_external_id,
       clienteNome: s.client_name ?? "—",
       documento: s.client_document,
-      regime: regimePorDoc.get(normalizarDocumento(s.client_document)) ?? null,
+      regime: ficha?.tax_regime ?? null,
       departamentoId,
       departamentoNome: departamentoId ? (deptoNome.get(departamentoId) ?? null) : null,
       responsavelId: s.responsible_external_id,
       responsavelNome: s.responsible_name ?? usuario?.name ?? null,
-      empresaId: s.company_id,
-      vinculada: Boolean(s.company_id),
       statusSolicitacao: s.status,
-      jaAberta: Boolean(s.company_id && abertas.has(s.company_id)),
+      // Apenas aviso: a ficha do cliente pode estar incompleta e isso nunca bloqueia a análise.
+      avisoCadastral: !ficha
+        ? "Cliente não encontrado no catálogo do PIER."
+        : !ficha.responsible_name
+          ? "Ficha do cliente sem responsável contábil."
+          : null,
       competencia: s.reference_month,
       temAnexo: Boolean(s.has_attachment),
       documentoDisponivel,
@@ -229,10 +227,6 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
 
   if (filtro.statusFila) linhas = linhas.filter((l) => l.statusFila === filtro.statusFila);
 
-  if (filtro.empresaIds?.length) {
-    const set = new Set(filtro.empresaIds);
-    linhas = linhas.filter((l) => l.empresaId && set.has(l.empresaId));
-  }
 
 
   linhas.sort((a, b) => a.clienteNome.localeCompare(b.clienteNome, "pt-BR"));
@@ -279,11 +273,10 @@ export async function montarPreview(
     departamento: { id: filtro.departamentoId ?? null, nome: departamentoNome },
     responsavel: { id: filtro.responsavelId ?? null, nome: responsavelNome },
     totalEmpresas: linhas.length,
-    totalComVinculo: linhas.filter((l) => l.vinculada).length,
-    totalSemVinculo: linhas.filter((l) => !l.vinculada).length,
     totalSemResponsavel: linhas.filter((l) => !l.responsavelId).length,
-    competenciasExistentes: linhas.filter((l) => l.jaAberta).length,
-    competenciasNovas: linhas.filter((l) => !l.jaAberta).length,
+    totalComDocumento: linhas.filter((l) => l.documentoDisponivel).length,
+    totalSemDocumento: linhas.filter((l) => !l.documentoDisponivel).length,
+    totalAvisosCadastrais: linhas.filter((l) => Boolean(l.avisoCadastral)).length,
     solicitacoesEmCache: totalSolicitacoes,
     responsaveis: [...porResponsavel.values()].sort((a, b) => b.total - a.total),
     empresas: linhas,
@@ -337,65 +330,28 @@ export async function iniciarGestao(
   let erros = 0;
   let ignorados = 0;
 
+  // Nesta fase a gestão apenas REGISTRA o escopo operacional.
+  // Nenhuma empresa é criada e nenhum closing_period é aberto: a solicitação do PIER
+  // é a fonte operacional e a análise não depende de cadastro interno.
   for (const linha of linhas) {
-    if (!linha.empresaId) {
-      ignorados += 1;
-      await ctx.db.from("batch_item").insert({
-        organization_id: ctx.organizationId,
-        batch_execution_id: execucao.id,
-        company_id: null,
-        status: "SKIPPED",
-        attempts: 1,
-        message: `${linha.clienteNome}: cliente do PIER ainda sem vínculo com empresa interna.`,
-      });
-      continue;
-    }
-
-    const { data: periodo, error: periodoError } = await ctx.db
-      .from("closing_period")
-      .upsert(
-        {
-          organization_id: ctx.organizationId,
-          company_id: linha.empresaId,
-          reference_month: filtro.competencia,
-          type: filtro.tipo,
-          responsible_name: linha.responsavelNome,
-          responsible_external_id: linha.responsavelId,
-        },
-        { onConflict: "company_id,reference_month,type" },
-      )
-      .select("id")
-      .single();
-
     const semResponsavel = !linha.responsavelId;
-    const status = periodoError ? "ERROR" : semResponsavel ? "WARNING" : "COMPLETED";
-    if (periodoError) erros += 1;
-    else if (semResponsavel) alertas += 1;
+    if (semResponsavel) alertas += 1;
     else concluidos += 1;
 
-    await ctx.db.from("batch_item").upsert(
-      {
-        organization_id: ctx.organizationId,
-        batch_execution_id: execucao.id,
-        closing_period_id: periodo?.id ?? null,
-        company_id: linha.empresaId,
-        status,
-        attempts: 1,
-        message: periodoError
-          ? periodoError.message
-          : semResponsavel
-            ? "Solicitação sem responsável definido no PIER."
-            : null,
-      },
-      { onConflict: "batch_execution_id,closing_period_id" },
-    );
-
-    if (periodo?.id) {
-      await ctx.db
-        .from("request")
-        .update({ closing_period_id: periodo.id })
-        .eq("organization_id", ctx.organizationId)
-        .eq("external_id", linha.solicitacaoId);
+    const { error: itemError } = await ctx.db.from("batch_item").insert({
+      organization_id: ctx.organizationId,
+      batch_execution_id: execucao.id,
+      company_id: null,
+      status: semResponsavel ? "WARNING" : "COMPLETED",
+      attempts: 1,
+      message: semResponsavel
+        ? `${linha.clienteNome}: solicitação sem responsável definido no PIER.`
+        : `${linha.clienteNome}: solicitação ${linha.solicitacaoId}.`,
+    });
+    if (itemError) {
+      erros += 1;
+      if (semResponsavel) alertas -= 1;
+      else concluidos -= 1;
     }
   }
 

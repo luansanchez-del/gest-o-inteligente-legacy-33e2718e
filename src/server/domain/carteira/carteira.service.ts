@@ -2,26 +2,21 @@ import { audit } from "../../lib/audit";
 import { assertCanWrite, type AppContext } from "../../lib/context";
 import { AppError } from "../../lib/errors";
 import { pierAdapter } from "../../integrations/pier/pier.adapter";
-import {
-  documentoValido,
-  normalizarDocumento,
-  planejarVinculo,
-  resumirPlano,
-  type PlanoVinculo,
-  type ResumoVinculoAutomatico,
-} from "./vinculo.plan";
+import { departamentosContabeis, resolverTipoSolicitacao } from "../gestao/escopo.service";
 
-export type { ResumoVinculoAutomatico } from "./vinculo.plan";
+/**
+ * ARQUITETURA (decidida com o usuário):
+ * a carteira do PIER é apenas CACHE/CATÁLOGO para localizar clientes e suas solicitações.
+ * Este módulo NÃO lê nem escreve em `company` ou `company_pier_link`.
+ * As tabelas legadas continuam no banco (2.086 empresas e vínculos recentes) e serão
+ * tratadas em auditoria separada — nada é apagado nem alterado aqui.
+ */
 
 export interface CarteiraFiltros {
   busca?: string;
-  situacao?: "TODOS" | "VINCULADO" | "NAO_VINCULADO" | "REVISAO";
   status?: string;
   regime?: string;
 }
-
-/** Por que o cliente do PIER não pôde ser vinculado automaticamente. */
-export type MotivoRevisao = "SEM_DOCUMENTO" | "DOCUMENTO_INVALIDO" | "DOCUMENTO_DUPLICADO";
 
 export interface CarteiraLinha {
   pierClientId: string;
@@ -32,21 +27,14 @@ export interface CarteiraLinha {
   regime: string | null;
   responsavel: string | null;
   sincronizadoEm: string;
-  empresaId: string | null;
-  empresaNome: string | null;
-  vinculado: boolean;
-  /** Preenchido quando o vínculo automático não é possível e exige revisão humana. */
-  motivoRevisao: MotivoRevisao | null;
 }
 
 export interface CarteiraResumo {
   /** Totais globais da carteira — nunca afetados pelos filtros da tela. */
   total: number;
-  vinculados: number;
-  naoVinculados: number;
-  emRevisao: number;
-  semDocumento: number;
-  documentosDuplicados: number;
+  ativos: number;
+  inativos: number;
+  outrosStatus: number;
   /** Quantas linhas o filtro atual está exibindo (null quando não há filtro). */
   totalExibido: number | null;
   ultimaSincronizacao: {
@@ -62,22 +50,15 @@ export interface CarteiraResumo {
   filtrosDisponiveis: { regimes: string[]; statuses: string[] };
 }
 
-function classificarDocumento(
-  documento: string | null,
-  ocorrenciasPorDocumento: Map<string, number>,
-): MotivoRevisao | null {
-  const digitos = normalizarDocumento(documento);
-  if (!digitos) return "SEM_DOCUMENTO";
-  if (!documentoValido(digitos)) return "DOCUMENTO_INVALIDO";
-  if ((ocorrenciasPorDocumento.get(digitos) ?? 0) > 1) return "DOCUMENTO_DUPLICADO";
-  return null;
+function normalizarDocumento(value: string | null | undefined) {
+  return (value ?? "").replace(/\D/g, "");
 }
 
 const TAMANHO_PAGINA = 1000;
 
 /**
  * PostgREST corta qualquer consulta em 1000 linhas. Este helper pagina por `range`
- * até esgotar a tabela — obrigatório em toda leitura de carteira/vínculos/empresas.
+ * até esgotar a tabela — obrigatório em toda leitura da carteira.
  */
 async function carregarTodas<T>(
   rotulo: string,
@@ -110,45 +91,16 @@ export async function listarCarteira(
       .range(de, ate),
   );
 
-  const vinculos = await carregarTodas("os vínculos", (de, ate) =>
-    ctx.db
-      .from("company_pier_link")
-      .select("pier_client_id, company:company_id(id, name)")
-      .eq("organization_id", ctx.organizationId)
-      .order("pier_client_id")
-      .range(de, ate),
-  );
-
-  const mapaVinculo = new Map(
-    vinculos.map((v) => [
-      v.pier_client_id,
-      v.company as unknown as { id: string; name: string } | null,
-    ]),
-  );
-
-  const ocorrenciasPorDocumento = new Map<string, number>();
-  for (const c of clientes) {
-    const digitos = normalizarDocumento(c.document);
-    if (digitos) ocorrenciasPorDocumento.set(digitos, (ocorrenciasPorDocumento.get(digitos) ?? 0) + 1);
-  }
-
-  const todasAsLinhas: CarteiraLinha[] = clientes.map((c) => {
-    const empresa = mapaVinculo.get(c.id) ?? null;
-    return {
-      pierClientId: c.id,
-      externalId: c.external_id,
-      nome: c.name,
-      documento: c.document,
-      status: c.status,
-      regime: c.tax_regime,
-      responsavel: c.responsible_name,
-      sincronizadoEm: c.synced_at,
-      empresaId: empresa?.id ?? null,
-      empresaNome: empresa?.name ?? null,
-      vinculado: Boolean(empresa),
-      motivoRevisao: empresa ? null : classificarDocumento(c.document, ocorrenciasPorDocumento),
-    };
-  });
+  const todasAsLinhas: CarteiraLinha[] = clientes.map((c) => ({
+    pierClientId: c.id,
+    externalId: c.external_id,
+    nome: c.name,
+    documento: c.document,
+    status: c.status,
+    regime: c.tax_regime,
+    responsavel: c.responsible_name,
+    sincronizadoEm: c.synced_at,
+  }));
 
   // Opções de filtro vêm da carteira completa (antes dos filtros) para o select ficar estável.
   const valoresUnicos = (selector: (l: CarteiraLinha) => string | null) =>
@@ -172,9 +124,6 @@ export async function listarCarteira(
   }
   if (filtros.status) linhas = linhas.filter((l) => l.status === filtros.status);
   if (filtros.regime) linhas = linhas.filter((l) => (l.regime ?? "").trim() === filtros.regime);
-  if (filtros.situacao === "VINCULADO") linhas = linhas.filter((l) => l.vinculado);
-  if (filtros.situacao === "NAO_VINCULADO") linhas = linhas.filter((l) => !l.vinculado);
-  if (filtros.situacao === "REVISAO") linhas = linhas.filter((l) => Boolean(l.motivoRevisao));
 
   const houveFiltro = linhas.length !== todasAsLinhas.length;
 
@@ -187,17 +136,16 @@ export async function listarCarteira(
     .limit(1)
     .maybeSingle();
 
+  const ehAtivo = (s: string | null) => (s ?? "").trim().toLowerCase().startsWith("ativ");
+  const ehInativo = (s: string | null) => (s ?? "").trim().toLowerCase().startsWith("inativ");
+
   return {
     linhas,
     resumo: {
-      // Cards sempre globais: usam a carteira inteira, nunca o subconjunto filtrado.
       total: todasAsLinhas.length,
-      vinculados: todasAsLinhas.filter((l) => l.vinculado).length,
-      naoVinculados: todasAsLinhas.filter((l) => !l.vinculado).length,
-      emRevisao: todasAsLinhas.filter((l) => Boolean(l.motivoRevisao)).length,
-      semDocumento: todasAsLinhas.filter((l) => l.motivoRevisao === "SEM_DOCUMENTO").length,
-      documentosDuplicados: todasAsLinhas.filter((l) => l.motivoRevisao === "DOCUMENTO_DUPLICADO")
-        .length,
+      ativos: todasAsLinhas.filter((l) => ehAtivo(l.status)).length,
+      inativos: todasAsLinhas.filter((l) => ehInativo(l.status)).length,
+      outrosStatus: todasAsLinhas.filter((l) => !ehAtivo(l.status) && !ehInativo(l.status)).length,
       totalExibido: houveFiltro ? linhas.length : null,
       ultimaSincronizacao: ultima
         ? {
@@ -216,10 +164,146 @@ export async function listarCarteira(
   };
 }
 
+export interface SolicitacaoDoCliente {
+  externalId: string;
+  numero: string | null;
+  descricao: string | null;
+  status: string | null;
+  competencia: string | null;
+  responsavelNome: string | null;
+  departamentoId: string | null;
+  departamentoNome: string | null;
+  contabil: boolean;
+  temAnexoPier: boolean;
+  documentoDisponivel: boolean;
+  postagens: number;
+  solicitadaEm: string | null;
+  prazo: string | null;
+}
+
+/**
+ * Solicitações do cliente do PIER. Nesta fase, apenas Fechamento Contábil (117418).
+ * Não depende de company nem de vínculo — casa por client_external_id ou CNPJ.
+ */
+export async function listarSolicitacoesDoCliente(
+  ctx: AppContext,
+  entrada: { clientExternalId?: string | null; documento?: string | null },
+): Promise<SolicitacaoDoCliente[]> {
+  const externalId = entrada.clientExternalId?.trim() || null;
+  const digitos = normalizarDocumento(entrada.documento);
+  if (!externalId && !digitos)
+    throw new AppError("VALIDACAO", "Informe o cliente do PIER ou o CNPJ/CPF.");
+
+  const typeExternalId = await resolverTipoSolicitacao(ctx, "CONTABIL");
+
+  const colunas =
+    "id, external_id, number, description, status, reference_month, responsible_name, department_external_id, client_external_id, client_document, has_attachment, requested_at, deadline_at";
+
+  const consultas: PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>[] = [];
+  if (externalId)
+    consultas.push(
+      ctx.db
+        .from("request")
+        .select(colunas)
+        .eq("organization_id", ctx.organizationId)
+        .eq("type_external_id", typeExternalId)
+        .eq("client_external_id", externalId),
+    );
+  if (digitos)
+    // O CNPJ chega formatado do PIER ("12.345.678/0001-90"), então a comparação
+    // por dígitos é feita em memória sobre as solicitações do tipo contábil.
+    consultas.push(
+      ctx.db
+        .from("request")
+        .select(colunas)
+        .eq("organization_id", ctx.organizationId)
+        .eq("type_external_id", typeExternalId),
+    );
+
+  type LinhaRequest = {
+    id: string;
+    external_id: string;
+    number: string | null;
+    description: string | null;
+    status: string | null;
+    reference_month: string | null;
+    responsible_name: string | null;
+    department_external_id: string | null;
+    client_external_id: string | null;
+    client_document: string | null;
+    has_attachment: boolean;
+    requested_at: string | null;
+    deadline_at: string | null;
+  };
+
+  const resultados = await Promise.all(consultas);
+  const porId = new Map<string, LinhaRequest>();
+  for (const { data, error } of resultados) {
+    if (error)
+      throw new AppError("INESPERADO", "Não foi possível carregar as solicitações.", error.message);
+    for (const linha of (data ?? []) as LinhaRequest[]) {
+      const casaCliente = Boolean(externalId) && linha.client_external_id === externalId;
+      // O CNPJ do PIER pode vir formatado; conferimos pelos dígitos.
+      const casaDocumento =
+        Boolean(digitos) && normalizarDocumento(linha.client_document) === digitos;
+      if (!casaCliente && !casaDocumento) continue;
+      porId.set(linha.id, linha);
+    }
+  }
+
+  const linhas = [...porId.values()];
+  if (!linhas.length) return [];
+
+  const ids = linhas.map((l) => l.id);
+  const [{ data: departamentos }, { data: anexos }, { data: posts }, contabeis] = await Promise.all([
+    ctx.db
+      .from("pier_department")
+      .select("external_id, name")
+      .eq("organization_id", ctx.organizationId),
+    ctx.db
+      .from("request_attachment")
+      .select("request_id")
+      .eq("organization_id", ctx.organizationId)
+      .in("request_id", ids),
+    ctx.db
+      .from("post")
+      .select("request_id")
+      .eq("organization_id", ctx.organizationId)
+      .in("request_id", ids),
+    departamentosContabeis(ctx),
+  ]);
+
+  const deptoNome = new Map((departamentos ?? []).map((d) => [d.external_id, d.name]));
+  const comAnexoInterno = new Set((anexos ?? []).map((a) => a.request_id));
+  const postagens = new Map<string, number>();
+  for (const p of posts ?? []) postagens.set(p.request_id, (postagens.get(p.request_id) ?? 0) + 1);
+  const setContabeis = new Set(contabeis);
+
+  return linhas
+    .map((l) => ({
+      externalId: l.external_id,
+      numero: l.number,
+      descricao: l.description,
+      status: l.status,
+      competencia: l.reference_month,
+      responsavelNome: l.responsible_name,
+      departamentoId: l.department_external_id,
+      departamentoNome: l.department_external_id
+        ? (deptoNome.get(l.department_external_id) ?? null)
+        : null,
+      contabil: Boolean(l.department_external_id && setContabeis.has(l.department_external_id)),
+      temAnexoPier: Boolean(l.has_attachment),
+      documentoDisponivel: comAnexoInterno.has(l.id),
+      postagens: postagens.get(l.id) ?? 0,
+      solicitadaEm: l.requested_at,
+      prazo: l.deadline_at,
+    }))
+    .sort((a, b) => (b.competencia ?? "").localeCompare(a.competencia ?? ""));
+}
+
 /**
  * Sincronização sempre manual: só roda sob comando explícito do usuário.
- * NÃO executa vínculo automático — o vínculo é uma ação separada, com
- * pré-visualização e confirmação, para nunca estourar timeout no meio.
+ * Atualiza exclusivamente `pier_client` — nenhuma empresa ou vínculo é criado.
  */
 export async function sincronizarCarteira(ctx: AppContext) {
   assertCanWrite(ctx);
@@ -314,346 +398,4 @@ export async function sincronizarCarteira(ctx: AppContext) {
     });
     throw error;
   }
-}
-
-/** Lê o estado atual (paginado) necessário para planejar o vínculo automático. */
-async function carregarEstadoVinculo(ctx: AppContext) {
-  const clientes = await carregarTodas<{ id: string; name: string; document: string | null }>(
-    "a carteira",
-    (de, ate) =>
-      ctx.db
-        .from("pier_client")
-        .select("id, name, document")
-        .eq("organization_id", ctx.organizationId)
-        .order("id")
-        .range(de, ate),
-  );
-
-  const vinculos = await carregarTodas<{ pier_client_id: string }>("os vínculos", (de, ate) =>
-    ctx.db
-      .from("company_pier_link")
-      .select("pier_client_id")
-      .eq("organization_id", ctx.organizationId)
-      .order("pier_client_id")
-      .range(de, ate),
-  );
-
-  const empresas = await carregarTodas<{ id: string; document_digits: string | null }>(
-    "as empresas",
-    (de, ate) =>
-      ctx.db
-        .from("company")
-        .select("id, document_digits")
-        .eq("organization_id", ctx.organizationId)
-        .order("id")
-        .range(de, ate),
-  );
-
-  return {
-    clientes,
-    empresas,
-    clientesJaVinculados: vinculos.map((v) => v.pier_client_id),
-  };
-}
-
-/** Somente leitura: mostra o que a rotina faria, sem escrever nada. */
-export async function previsualizarVinculoAutomatico(
-  ctx: AppContext,
-): Promise<ResumoVinculoAutomatico> {
-  const estado = await carregarEstadoVinculo(ctx);
-  return resumirPlano(planejarVinculo(estado));
-}
-
-export interface ExecucaoVinculo extends ResumoVinculoAutomatico {
-  vinculados: number;
-  empresasCriadas: number;
-  falhas: number;
-  concluido: boolean;
-  /** Quando false, restaram itens: basta rodar de novo (a rotina é retomável). */
-  mensagem: string;
-}
-
-const LOTE_VINCULO = 200;
-const LOTE_EMPRESA = 100;
-
-/**
- * Vincula cada cliente do PIER a uma empresa interna pelo documento normalizado.
- * Idempotente e retomável: nunca apaga empresas, nunca cria empresa quando já
- * existe exatamente uma com o mesmo documento e grava os vínculos logo após
- * criar cada lote de empresas — um timeout no meio não perde progresso.
- */
-export async function vincularCarteiraAutomaticamente(
-  ctx: AppContext,
-  opcoes?: { syncRunId?: string; limiteEmpresas?: number },
-): Promise<ExecucaoVinculo> {
-  assertCanWrite(ctx);
-
-  const estado = await carregarEstadoVinculo(ctx);
-  const plano: PlanoVinculo = planejarVinculo(estado);
-  const resumo = resumirPlano(plano);
-
-  const { data: run } = await ctx.db
-    .from("sync_run")
-    .insert({
-      organization_id: ctx.organizationId,
-      kind: "VINCULO_CARTEIRA",
-      status: "RUNNING",
-      started_by: ctx.userId,
-      total_items: plano.vincularExistentes.length + plano.criarEmpresas.length,
-      scope: resumo as never,
-    })
-    .select("id")
-    .single();
-
-  const runId = run?.id ?? opcoes?.syncRunId ?? null;
-  let vinculados = 0;
-  let empresasCriadas = 0;
-  let falhas = 0;
-
-  const registrarProgresso = async () => {
-    if (!runId) return;
-    await ctx.db
-      .from("sync_run")
-      .update({ processed_items: vinculados, failed_items: falhas })
-      .eq("id", runId);
-  };
-
-  const gravarVinculos = async (
-    pares: { pierClientId: string; companyId: string }[],
-  ): Promise<void> => {
-    if (!pares.length) return;
-    const { error } = await ctx.db.from("company_pier_link").upsert(
-      pares.map((p) => ({
-        organization_id: ctx.organizationId,
-        company_id: p.companyId,
-        pier_client_id: p.pierClientId,
-        linked_by: ctx.userId,
-      })),
-      { onConflict: "organization_id,pier_client_id" },
-    );
-    if (error) falhas += pares.length;
-    else vinculados += pares.length;
-  };
-
-  // 1) Vincula primeiro tudo que já tem empresa (inclui as criadas por execuções interrompidas).
-  for (let i = 0; i < plano.vincularExistentes.length; i += LOTE_VINCULO) {
-    await gravarVinculos(plano.vincularExistentes.slice(i, i + LOTE_VINCULO));
-    await registrarProgresso();
-  }
-
-  // 2) Cria apenas empresas que ainda não existem, recarregando o estado a cada lote,
-  //    e grava o vínculo do mesmo lote imediatamente.
-  const limite = opcoes?.limiteEmpresas ?? plano.criarEmpresas.length;
-  const aCriar = plano.criarEmpresas.slice(0, limite);
-
-  for (let i = 0; i < aCriar.length; i += LOTE_EMPRESA) {
-    const lote = aCriar.slice(i, i + LOTE_EMPRESA);
-    const documentos = lote.map((c) => c.documento);
-
-    // Recarrega o estado deste lote: outra execução pode já ter criado estas empresas.
-    const { data: existentes, error: erroExistentes } = await ctx.db
-      .from("company")
-      .select("id, document_digits")
-      .eq("organization_id", ctx.organizationId)
-      .in("document_digits", documentos);
-    if (erroExistentes)
-      throw new AppError(
-        "INESPERADO",
-        "Não foi possível verificar as empresas existentes.",
-        erroExistentes.message,
-      );
-
-    const porDocumento = new Map<string, string[]>();
-    for (const e of existentes ?? []) {
-      const d = e.document_digits ?? "";
-      if (!d) continue;
-      const atual = porDocumento.get(d);
-      if (atual) atual.push(e.id);
-      else porDocumento.set(d, [e.id]);
-    }
-
-    const paresDoLote: { pierClientId: string; companyId: string }[] = [];
-    const novas = lote.filter((c) => {
-      const ids = porDocumento.get(c.documento) ?? [];
-      if (ids.length === 1) {
-        paresDoLote.push({ pierClientId: c.pierClientId, companyId: ids[0]! });
-        return false;
-      }
-      if (ids.length > 1) {
-        falhas += 1;
-        return false;
-      }
-      return true;
-    });
-
-    if (novas.length) {
-      const { data: criadas, error } = await ctx.db
-        .from("company")
-        .insert(
-          novas.map((c) => ({
-            organization_id: ctx.organizationId,
-            name: c.nome,
-            document: c.documentoOriginal,
-            active: true,
-          })),
-        )
-        .select("id, document_digits");
-
-      if (error || !criadas) {
-        falhas += novas.length;
-      } else {
-        empresasCriadas += criadas.length;
-        const mapaCriadas = new Map(
-          criadas.map((e) => [e.document_digits ?? "", e.id] as const),
-        );
-        for (const c of novas) {
-          const id = mapaCriadas.get(c.documento);
-          if (id) paresDoLote.push({ pierClientId: c.pierClientId, companyId: id });
-          else falhas += 1;
-        }
-      }
-    }
-
-    // Vínculo gravado imediatamente após a criação do lote: execução retomável.
-    await gravarVinculos(paresDoLote);
-    await registrarProgresso();
-  }
-
-  const concluido = aCriar.length === plano.criarEmpresas.length;
-  const mensagem = concluido
-    ? `Vínculo concluído: ${vinculados} vínculos, ${empresasCriadas} empresas criadas.`
-    : `Parcial: ${vinculados} vínculos. Execute novamente para continuar.`;
-
-  if (runId) {
-    await ctx.db
-      .from("sync_run")
-      .update({
-        status: falhas > 0 && vinculados === 0 ? "FAILED" : "COMPLETED",
-        processed_items: vinculados,
-        failed_items: falhas,
-        message: mensagem,
-        finished_at: new Date().toISOString(),
-      })
-      .eq("id", runId);
-  }
-
-  await audit(ctx, {
-    action: "VINCULAR_CARTEIRA_AUTOMATICO",
-    entity: "company_pier_link",
-    after: { ...resumo, vinculados, empresasCriadas, falhas } as never,
-  });
-
-  return { ...resumo, vinculados, empresasCriadas, falhas, concluido, mensagem };
-}
-
-/** Cria (ou reaproveita) a empresa interna e vincula ao cliente do PIER. */
-export async function vincularCliente(ctx: AppContext, pierClientId: string) {
-  assertCanWrite(ctx);
-
-  const { data: cliente } = await ctx.db
-    .from("pier_client")
-    .select("id, name, document")
-    .eq("organization_id", ctx.organizationId)
-    .eq("id", pierClientId)
-    .maybeSingle();
-
-  if (!cliente) throw new AppError("VALIDACAO", "Cliente não encontrado na carteira.");
-
-  const documento = normalizarDocumento(cliente.document);
-  let empresaId: string | null = null;
-
-  if (documento) {
-    // Consulta indexada por (organization_id, document_digits): nunca carrega a tabela inteira.
-    const { data: empresas, error } = await ctx.db
-      .from("company")
-      .select("id")
-      .eq("organization_id", ctx.organizationId)
-      .eq("document_digits", documento)
-      .limit(2);
-    if (error)
-      throw new AppError("INESPERADO", "Não foi possível consultar as empresas.", error.message);
-    if ((empresas ?? []).length > 1)
-      throw new AppError(
-        "REGRA_NEGOCIO",
-        "Este CNPJ está em mais de uma empresa interna. Resolva a duplicidade antes de vincular.",
-      );
-    empresaId = empresas?.[0]?.id ?? null;
-  }
-
-  if (!empresaId) {
-    const { data: nova, error } = await ctx.db
-      .from("company")
-      .insert({
-        organization_id: ctx.organizationId,
-        name: cliente.name,
-        document: cliente.document,
-      })
-      .select("id")
-      .single();
-    if (error || !nova)
-      throw new AppError("INESPERADO", "Não foi possível criar a empresa.", error?.message);
-    empresaId = nova.id;
-  }
-
-  const { error: linkError } = await ctx.db.from("company_pier_link").upsert(
-    {
-      organization_id: ctx.organizationId,
-      company_id: empresaId,
-      pier_client_id: cliente.id,
-      linked_by: ctx.userId,
-    },
-    { onConflict: "organization_id,pier_client_id" },
-  );
-
-  if (linkError)
-    throw new AppError("REGRA_NEGOCIO", "Não foi possível vincular este cliente.", linkError.message);
-
-  await audit(ctx, {
-    action: "VINCULAR_CLIENTE",
-    entity: "company_pier_link",
-    entityId: cliente.id,
-    after: { empresaId, pierClientId: cliente.id },
-  });
-
-  return { empresaId };
-}
-
-/** Vincula vários clientes de uma vez; erros por linha não abortam o lote. */
-export async function vincularClientesEmLote(ctx: AppContext, pierClientIds: string[]) {
-  assertCanWrite(ctx);
-  let vinculados = 0;
-  const falhas: { pierClientId: string; motivo: string }[] = [];
-
-  for (const id of pierClientIds) {
-    try {
-      await vincularCliente(ctx, id);
-      vinculados += 1;
-    } catch (error) {
-      falhas.push({
-        pierClientId: id,
-        motivo:
-          error instanceof AppError ? error.userMessage : "Falha inesperada ao vincular o cliente.",
-      });
-    }
-  }
-
-  return { vinculados, falhas };
-}
-
-export async function desvincularCliente(ctx: AppContext, pierClientId: string) {
-  assertCanWrite(ctx);
-  const { error } = await ctx.db
-    .from("company_pier_link")
-    .delete()
-    .eq("organization_id", ctx.organizationId)
-    .eq("pier_client_id", pierClientId);
-  if (error)
-    throw new AppError("INESPERADO", "Não foi possível desfazer o vínculo.", error.message);
-
-  await audit(ctx, {
-    action: "DESVINCULAR_CLIENTE",
-    entity: "company_pier_link",
-    entityId: pierClientId,
-  });
-  return { ok: true };
 }

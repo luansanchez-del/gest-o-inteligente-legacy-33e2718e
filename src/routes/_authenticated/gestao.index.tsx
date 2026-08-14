@@ -400,11 +400,11 @@ function GestaoPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {[
-          { rotulo: "Empresas no escopo", valor: dados?.totalEmpresas },
-          { rotulo: "Com vínculo interno", valor: dados?.totalComVinculo },
-          { rotulo: "Sem vínculo", valor: dados?.totalSemVinculo },
-          { rotulo: "Competência já aberta", valor: dados?.competenciasExistentes },
-          { rotulo: "Competências novas", valor: dados?.competenciasNovas },
+          { rotulo: "Solicitações no escopo", valor: dados?.totalEmpresas },
+          { rotulo: "Com documento interno", valor: dados?.totalComDocumento },
+          { rotulo: "Aguardando documento", valor: dados?.totalSemDocumento },
+          { rotulo: "Sem responsável", valor: dados?.totalSemResponsavel },
+          { rotulo: "Avisos cadastrais", valor: dados?.totalAvisosCadastrais },
         ].map((item) => (
           <Card key={item.rotulo} className="p-4">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">{item.rotulo}</p>
@@ -476,7 +476,17 @@ function GestaoPage() {
                 return (
                   <TableRow key={linha.solicitacaoId}>
                     <TableCell className="tabular-nums">{linha.numero ?? "—"}</TableCell>
-                    <TableCell className="font-medium">{linha.clienteNome}</TableCell>
+                    <TableCell className="font-medium">
+                      {linha.clienteNome}
+                      {linha.avisoCadastral ? (
+                        <span
+                          className="mt-0.5 block text-xs font-normal text-muted-foreground"
+                          title={linha.avisoCadastral}
+                        >
+                          {linha.avisoCadastral}
+                        </span>
+                      ) : null}
+                    </TableCell>
                     <TableCell className="tabular-nums">{formatarCnpj(linha.documento)}</TableCell>
                     <TableCell className="tabular-nums">{linha.competencia ?? "—"}</TableCell>
                     <TableCell>{linha.responsavelNome ?? "Sem responsável"}</TableCell>
