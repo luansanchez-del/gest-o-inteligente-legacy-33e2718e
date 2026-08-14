@@ -16,6 +16,16 @@ import { toast } from "sonner";
 
 import { PageHeader } from "@/components/common/PageHeader";
 import { CarregandoTabela, ErroConsulta, EstadoVazio } from "@/components/common/EstadoConsulta";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -37,6 +47,7 @@ import {
   obterResultadoValidacao,
   registrarDecisao,
 } from "@/lib/api/validacao.functions";
+import { processarSolicitacao } from "@/lib/api/processamento.functions";
 import { formatarCnpj } from "@/lib/formato";
 import { mensagemDeErro } from "@/lib/erros";
 
@@ -103,6 +114,7 @@ function SolicitacaoPage() {
   const [busca, setBusca] = useState("");
   const [notas, setNotas] = useState("");
   const [expandido, setExpandido] = useState<string | null>(null);
+  const [confirmarProcessar, setConfirmarProcessar] = useState(false);
 
   const detalhe = useQuery({
     queryKey: ["solicitacao", id],
@@ -111,6 +123,7 @@ function SolicitacaoPage() {
 
   const dados = detalhe.data;
   const ultimaExecucao = dados?.execucoes?.[0] ?? null;
+  const processamento = dados?.processamento ?? null;
 
   const resultado = useQuery({
     queryKey: ["validacao", ultimaExecucao?.id],
@@ -160,6 +173,19 @@ function SolicitacaoPage() {
     },
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
+
+  const processar = useMutation({
+    mutationFn: () => processarSolicitacao({ data: { solicitacaoExternalId: id } }),
+    onSuccess: (r) => {
+      setConfirmarProcessar(false);
+      if (r.situacao === "FINALIZADO") toast.success(r.motivo);
+      else if (r.situacao === "ERRO") toast.error(r.motivo);
+      else toast.warning(r.motivo);
+      invalidar();
+    },
+    onError: (e) => toast.error(mensagemDeErro(e)),
+  });
+
 
   const decidir = useMutation({
     mutationFn: (decisao: "APPROVED" | "RETURNED" | "NEEDS_REVIEW") =>
@@ -232,6 +258,14 @@ function SolicitacaoPage() {
                 e.target.value = "";
               }}
             />
+            <Button
+              variant="outline"
+              onClick={() => setConfirmarProcessar(true)}
+              disabled={processar.isPending}
+            >
+              <ShieldAlert className={`mr-2 h-4 w-4 ${processar.isPending ? "animate-pulse" : ""}`} />
+              {processar.isPending ? "Processando no PIER…" : "Processar no PIER"}
+            </Button>
             <Button onClick={() => inputArquivo.current?.click()} disabled={upload.isPending}>
               <FileUp className={`mr-2 h-4 w-4 ${upload.isPending ? "animate-pulse" : ""}`} />
               {upload.isPending ? "Analisando…" : "Enviar balancete (PDF)"}
@@ -240,10 +274,59 @@ function SolicitacaoPage() {
         }
       />
 
-      <Card className="border-warning/40 bg-warning-soft p-3 text-sm text-warning-strong">
-        <ShieldAlert className="mr-2 inline h-4 w-4" />
-        {dados?.avisoPier ?? "PIER não alterado — decisão interna."}
-      </Card>
+      <AlertDialog open={confirmarProcessar} onOpenChange={setConfirmarProcessar}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Processar esta solicitação no PIER?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O sistema vai conferir o estado real no PIER, baixar o balancete, executar a análise e
+              — somente se o resultado for aprovado sem erro nem alerta — publicar a postagem privada
+              e finalizar a solicitação. Com qualquer alerta, a solicitação fica em revisão.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => processar.mutate()}>
+              Processar agora
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {processamento ? (
+        <Card
+          className={`space-y-1 p-4 text-sm ${
+            processamento.situacao === "FINALIZADO"
+              ? "border-success/40 bg-success-soft text-success-strong"
+              : processamento.situacao === "EM_REVISAO" || processamento.situacao === "PENDENTE"
+                ? "border-warning/40 bg-warning-soft text-warning-strong"
+                : "border-border"
+          }`}
+        >
+          <p className="font-medium">
+            {processamento.situacao === "FINALIZADO"
+              ? "Finalizado no PIER"
+              : processamento.situacao === "JA_FINALIZADA"
+                ? "Já finalizada no PIER"
+                : processamento.situacao === "EM_REVISAO"
+                  ? "Em revisão — não finalizada"
+                  : processamento.situacao === "ERRO"
+                    ? "Erro no processamento"
+                    : "Pendência — não finalizada"}
+          </p>
+          <p>{processamento.motivo}</p>
+          <p className="text-xs opacity-80">
+            Status PIER: {processamento.statusPier ?? "—"} · Postagem:{" "}
+            {processamento.postagemId ?? "—"} · Finalizada em: {dataHora(processamento.finalizadaEm)}{" "}
+            · Atualizado em {dataHora(processamento.atualizadoEm)}
+          </p>
+        </Card>
+      ) : (
+        <Card className="border-warning/40 bg-warning-soft p-3 text-sm text-warning-strong">
+          <ShieldAlert className="mr-2 inline h-4 w-4" />
+          Nenhum processamento automático executado nesta solicitação.
+        </Card>
+      )}
 
       <Card className="space-y-2 p-4">
         <div className="flex flex-wrap items-center gap-2">

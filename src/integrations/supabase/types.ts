@@ -1255,6 +1255,89 @@ export type Database = {
           },
         ]
       }
+      request_processing: {
+        Row: {
+          attachment_id: string | null
+          content_hash: string | null
+          created_at: string
+          execution_id: string | null
+          finalized_at: string | null
+          id: string
+          organization_id: string
+          outcome: string
+          pier_post_external_id: string | null
+          pier_status: string | null
+          posted_at: string | null
+          processed_by: string | null
+          reason: string | null
+          request_id: string
+          updated_at: string
+        }
+        Insert: {
+          attachment_id?: string | null
+          content_hash?: string | null
+          created_at?: string
+          execution_id?: string | null
+          finalized_at?: string | null
+          id?: string
+          organization_id: string
+          outcome?: string
+          pier_post_external_id?: string | null
+          pier_status?: string | null
+          posted_at?: string | null
+          processed_by?: string | null
+          reason?: string | null
+          request_id: string
+          updated_at?: string
+        }
+        Update: {
+          attachment_id?: string | null
+          content_hash?: string | null
+          created_at?: string
+          execution_id?: string | null
+          finalized_at?: string | null
+          id?: string
+          organization_id?: string
+          outcome?: string
+          pier_post_external_id?: string | null
+          pier_status?: string | null
+          posted_at?: string | null
+          processed_by?: string | null
+          reason?: string | null
+          request_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "request_processing_attachment_id_fkey"
+            columns: ["attachment_id"]
+            isOneToOne: false
+            referencedRelation: "request_attachment"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_processing_execution_id_fkey"
+            columns: ["execution_id"]
+            isOneToOne: false
+            referencedRelation: "validation_execution"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_processing_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organization"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_processing_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "request"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       review_task: {
         Row: {
           assigned_to: string | null

@@ -51,6 +51,17 @@ export interface PierPost {
   postedAt: string | null;
 }
 
+/** Arquivo anexado a uma solicitação (/api/v2/arquivos). */
+export interface PierFile {
+  externalId: string;
+  requestExternalId: string | null;
+  name: string | null;
+  category: string | null;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  createdAt: string | null;
+}
+
 export interface PierAdapter {
   /** Informa se a integração está configurada e utilizável. */
   status(): Promise<{ available: boolean; reason?: string }>;
@@ -64,4 +75,18 @@ export interface PierAdapter {
     incluirSemCompetencia?: boolean;
   }): Promise<PierRequest[]>;
   listPosts(input: { requestExternalId: string }): Promise<PierPost[]>;
+  /** Estado real da solicitação — sempre consultado antes de qualquer ação. */
+  getRequest(input: { requestExternalId: string }): Promise<PierRequest>;
+  /** Anexos da solicitação, paginados. */
+  listFiles(input: { requestExternalId: string }): Promise<PierFile[]>;
+  /** Baixa o conteúdo do arquivo. A URL temporária nunca é devolvida nem persistida. */
+  downloadFile(input: { fileExternalId: string }): Promise<Uint8Array>;
+  /** Publica postagem (privada por padrão) e devolve o ID gerado pelo PIER. */
+  createPost(input: {
+    requestExternalId: string;
+    mensagem: string;
+    privada?: boolean;
+  }): Promise<{ externalId: string | null }>;
+  /** Finaliza a solicitação. Só pode ser chamada após a postagem confirmada. */
+  finalizeRequest(input: { requestExternalId: string }): Promise<void>;
 }

@@ -28,7 +28,7 @@ function base64ParaBytes(base64: string): Uint8Array {
   return bytes;
 }
 
-async function carregarSolicitacao(ctx: AppContext, externalId: string) {
+export async function carregarSolicitacao(ctx: AppContext, externalId: string) {
   const { data, error } = await ctx.db
     .from("request")
     .select(
@@ -126,6 +126,16 @@ export async function detalharSolicitacao(
   const instrucoes = await listarInstrucoes(ctx, solicitacao.id);
   const efetiva = instrucaoEfetiva(instrucoes);
 
+  const { data: processamento } = await ctx.db
+    .from("request_processing")
+    .select(
+      "outcome, reason, pier_post_external_id, posted_at, finalized_at, pier_status, execution_id, updated_at",
+    )
+    .eq("organization_id", ctx.organizationId)
+    .eq("request_id", solicitacao.id)
+    .maybeSingle();
+
+
   const [{ data: anexos }, { data: execucoes }, { data: decisoes }, { data: auditoria }] =
     await Promise.all([
       ctx.db
@@ -215,21 +225,32 @@ export async function detalharSolicitacao(
       em: a.created_at,
       dados: a.after_data,
     })),
+    processamento: processamento
+      ? {
+          situacao: processamento.outcome,
+          motivo: processamento.reason,
+          postagemId: processamento.pier_post_external_id,
+          postadaEm: processamento.posted_at,
+          finalizadaEm: processamento.finalized_at,
+          statusPier: processamento.pier_status,
+          execucaoId: processamento.execution_id,
+          atualizadoEm: processamento.updated_at,
+        }
+      : null,
     avisoPier: AVISO_PIER,
   });
 }
 
-export async function enviarAnexo(
+/**
+ * Guarda um PDF na solicitação (armazenamento + registro), com idempotência por hash.
+ * Usado tanto pelo upload manual quanto pelo processamento automático do PIER.
+ */
+export async function salvarAnexoBytes(
   ctx: AppContext,
-  input: { solicitacaoExternalId: string; filename: string; mimeType: string; conteudoBase64: string },
+  solicitacao: { id: string; external_id: string },
+  input: { filename: string; bytes: Uint8Array },
 ) {
-  assertCanWrite(ctx);
-  const solicitacao = await carregarSolicitacao(ctx, input.solicitacaoExternalId);
-
-  const bytes = base64ParaBytes(input.conteudoBase64);
-  if (!bytes.length) throw new AppError("VALIDACAO", "Arquivo vazio.");
-  if (bytes.length > TAMANHO_MAXIMO)
-    throw new AppError("VALIDACAO", "Arquivo acima do limite de 25 MB.");
+  const bytes = input.bytes;
 
   const assinatura = String.fromCharCode(...bytes.slice(0, 5));
   if (!assinatura.startsWith("%PDF"))
@@ -288,6 +309,27 @@ export async function enviarAnexo(
 
   return { anexoId: anexo.id, reaproveitado: false, hash };
 }
+
+export async function enviarAnexo(
+  ctx: AppContext,
+  input: {
+    solicitacaoExternalId: string;
+    filename: string;
+    mimeType: string;
+    conteudoBase64: string;
+  },
+) {
+  assertCanWrite(ctx);
+  const solicitacao = await carregarSolicitacao(ctx, input.solicitacaoExternalId);
+
+  const bytes = base64ParaBytes(input.conteudoBase64);
+  if (!bytes.length) throw new AppError("VALIDACAO", "Arquivo vazio.");
+  if (bytes.length > TAMANHO_MAXIMO)
+    throw new AppError("VALIDACAO", "Arquivo acima do limite de 25 MB.");
+
+  return salvarAnexoBytes(ctx, solicitacao, { filename: input.filename, bytes });
+}
+
 
 export async function executarValidacao(
   ctx: AppContext,
