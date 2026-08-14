@@ -219,17 +219,16 @@ export async function detalharSolicitacao(
   });
 }
 
-export async function enviarAnexo(
+/**
+ * Guarda um PDF na solicitação (armazenamento + registro), com idempotência por hash.
+ * Usado tanto pelo upload manual quanto pelo processamento automático do PIER.
+ */
+export async function salvarAnexoBytes(
   ctx: AppContext,
-  input: { solicitacaoExternalId: string; filename: string; mimeType: string; conteudoBase64: string },
+  solicitacao: { id: string; external_id: string },
+  input: { filename: string; bytes: Uint8Array },
 ) {
-  assertCanWrite(ctx);
-  const solicitacao = await carregarSolicitacao(ctx, input.solicitacaoExternalId);
-
-  const bytes = base64ParaBytes(input.conteudoBase64);
-  if (!bytes.length) throw new AppError("VALIDACAO", "Arquivo vazio.");
-  if (bytes.length > TAMANHO_MAXIMO)
-    throw new AppError("VALIDACAO", "Arquivo acima do limite de 25 MB.");
+  const bytes = input.bytes;
 
   const assinatura = String.fromCharCode(...bytes.slice(0, 5));
   if (!assinatura.startsWith("%PDF"))
