@@ -261,18 +261,26 @@ export function parseBalancete(paginas: string[]): BalanceteDocumento {
         credito,
         movimento,
         saldoAtual,
-        analitica: true,
+        analitica: sintetica === null ? true : !sintetica,
+        contaInterna,
         pagina: numeroPagina,
         textoOriginal: texto.slice(0, 240),
       });
+      marcadores.set(codigo, sintetica);
     });
   });
 
-  // Sintética = existe outra conta cujo código começa com "codigo."
+  // Marcador "S" do próprio arquivo vence; sem marcador, infere-se por filhos.
   const codigos = linhas.map((l) => l.codigo);
   for (const linha of linhas) {
+    const marcador = marcadores.get(linha.codigo) ?? null;
+    if (marcador !== null) {
+      linha.analitica = !marcador;
+      continue;
+    }
     linha.analitica = !codigos.some((c) => c !== linha.codigo && c.startsWith(`${linha.codigo}.`));
   }
+
 
   return {
     empresa,
