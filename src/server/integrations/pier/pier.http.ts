@@ -258,3 +258,94 @@ export async function pierGet<T>(
 
   throw integracaoFalhou("Não foi possível falar com o PIER agora.", lastDetail);
 }
+
+/**
+ * POST autenticado no PIER. Não faz retry cego: um POST repetido pode duplicar
+ * postagem ou finalização. Só repete quando o token precisou ser renovado (401).
+ */
+export async function pierPost<T>(path: string, body?: unknown): Promise<T> {
+  const resolved = readPierConfig();
+  if (!resolved.ok) throw integracaoIndisponivel(resolved.reason);
+  const { config } = resolved;
+
+  const url = `${config.baseUrl}${path}`;
+  let renovou = false;
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const token = await autenticar(config, renovou);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        signal: controller.signal,
+      });
+
+      if (response.status === 401 && !renovou && attempt === 1) {
+        renovou = true;
+        cache = null;
+        continue;
+      }
+
+      if (response.status === 401 || response.status === 403) {
+        throw integracaoIndisponivel(
+          "O PIER recusou a credencial configurada para esta ação.",
+        );
+      }
+
+      if (!response.ok) {
+        throw integracaoFalhou(
+          `O PIER respondeu com erro em ${path}.`,
+          `HTTP ${response.status}: ${await safeResponseText(response)}`,
+        );
+      }
+
+      const texto = await response.text();
+      if (!texto.trim()) return null as T;
+      try {
+        return JSON.parse(texto) as T;
+      } catch {
+        return texto as unknown as T;
+      }
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error) throw error;
+      throw integracaoFalhou(
+        `Não foi possível concluir a ação no PIER (${path}).`,
+        error instanceof Error ? error.message : String(error),
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  throw integracaoFalhou(`Não foi possível concluir a ação no PIER (${path}).`);
+}
+
+/** Baixa um arquivo por URL temporária. A URL nunca é registrada em log/auditoria. */
+export async function pierDownload(url: string): Promise<Uint8Array> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS * 3);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok)
+      throw integracaoFalhou(
+        "Não foi possível baixar o arquivo da solicitação.",
+        `HTTP ${response.status}`,
+      );
+    return new Uint8Array(await response.arrayBuffer());
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error) throw error;
+    throw integracaoFalhou(
+      "Não foi possível baixar o arquivo da solicitação.",
+      error instanceof Error ? error.message : String(error),
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+}
