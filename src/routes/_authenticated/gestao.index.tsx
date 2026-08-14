@@ -174,6 +174,23 @@ function GestaoPage() {
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
 
+  const processarLote = useMutation({
+    mutationFn: async () => {
+      await iniciar.mutateAsync();
+      const solicitacoes = (preview.data?.empresas ?? []).map((e) => e.solicitacaoId);
+      return processarEscopo({ data: { solicitacoes } });
+    },
+    onSuccess: (r) => {
+      setConfirmarProcessamento(false);
+      toast.success(
+        `${r.total} processadas: ${r.finalizadas} finalizadas, ${r.emRevisao} em revisão, ${r.pendentes} pendentes, ${r.jaFinalizadas} já finalizadas, ${r.erros} com erro.`,
+      );
+      void queryClient.invalidateQueries({ queryKey: ["preview-gestao"] });
+    },
+    onError: (e) => toast.error(mensagemDeErro(e)),
+  });
+
+
   const renomear = useMutation({
     mutationFn: () =>
       renomearDepartamento({
