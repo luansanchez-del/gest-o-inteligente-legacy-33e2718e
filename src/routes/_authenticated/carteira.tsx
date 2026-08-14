@@ -98,9 +98,8 @@ function CarteiraPage() {
   const sincronizar = useMutation({
     mutationFn: () => sincronizarCarteira(),
     onSuccess: (r) => {
-      const v = r.vinculo;
       toast.success(
-        `Sincronizados ${v.sincronizados} · vinculados ${v.vinculados} · empresas criadas ${v.criados} · conflitos ${v.conflitos} · sem documento ${v.semDocumento}`,
+        `Sincronizados ${r.total} clientes · ${r.processados} processados · ${r.falhas} falhas. Use “Pré-visualizar vínculo” para vincular.`,
         { duration: 9000 },
       );
       void queryClient.invalidateQueries({ queryKey: ["carteira"] });
@@ -108,17 +107,22 @@ function CarteiraPage() {
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
 
+  const previa = useMutation({
+    mutationFn: () => previsualizarVinculoAutomatico(),
+    onSuccess: (p) => setPreview(p),
+    onError: (e) => toast.error(mensagemDeErro(e)),
+  });
+
   const vincularAuto = useMutation({
     mutationFn: () => vincularCarteiraAutomaticamente(),
     onSuccess: (v) => {
-      toast.success(
-        `Vínculo automático: ${v.vinculados} vinculados · ${v.criados} empresas criadas · ${v.conflitos} conflitos · ${v.semDocumento} sem documento`,
-        { duration: 9000 },
-      );
+      setPreview(null);
+      toast.success(v.mensagem, { duration: 9000 });
       void queryClient.invalidateQueries({ queryKey: ["carteira"] });
     },
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
+
 
 
   const diagnosticar = useMutation({
