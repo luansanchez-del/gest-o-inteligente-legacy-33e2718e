@@ -10,6 +10,15 @@ type Filtros = {
   regime?: string;
 };
 
+export const previsualizarVinculoAutomatico = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) =>
+    comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
+      const service = await import("@/server/domain/carteira/carteira.service");
+      return service.previsualizarVinculoAutomatico(ctx);
+    }),
+  );
+
 export const vincularCarteiraAutomaticamente = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) =>
