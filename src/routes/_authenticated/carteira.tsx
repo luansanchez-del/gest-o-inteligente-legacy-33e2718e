@@ -233,13 +233,14 @@ function CarteiraPage() {
             </Button>
             <Button
               variant="outline"
-              onClick={() => vincularAuto.mutate()}
-              disabled={vincularAuto.isPending}
-              title="Vincular por CNPJ os clientes ainda sem empresa interna"
+              onClick={() => previa.mutate()}
+              disabled={previa.isPending || vincularAuto.isPending}
+              title="Simular o vínculo automático sem gravar nada"
             >
-              <Link2 className={`mr-2 h-4 w-4 ${vincularAuto.isPending ? "animate-pulse" : ""}`} />
-              Vincular automaticamente
+              <Link2 className={`mr-2 h-4 w-4 ${previa.isPending ? "animate-pulse" : ""}`} />
+              {previa.isPending ? "Analisando…" : "Pré-visualizar vínculo"}
             </Button>
+
 
             <Button onClick={() => sincronizar.mutate()} disabled={sincronizar.isPending}>
               <RefreshCw
