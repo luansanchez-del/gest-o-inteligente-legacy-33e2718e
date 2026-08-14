@@ -234,8 +234,31 @@ function SolicitacaoPage() {
 
       <Card className="border-warning/40 bg-warning-soft p-3 text-sm text-warning-strong">
         <ShieldAlert className="mr-2 inline h-4 w-4" />
-        {dados?.avisoPier}
+        {dados?.avisoPier ?? "PIER não alterado — decisão interna."}
       </Card>
+
+      <Card className="space-y-2 p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge className={estadoAnalise.classe}>{estadoAnalise.rotulo}</Badge>
+          <span className="text-sm text-muted-foreground">
+            Status PIER: {dados?.solicitacao.status ?? "—"} · Responsável:{" "}
+            {dados?.solicitacao.responsavelNome ?? "—"}
+          </span>
+        </div>
+        {!dados?.anexos.length && dados?.solicitacao.possuiAnexo ? (
+          <p className="text-sm text-warning-strong">
+            Anexo identificado no PIER, mas conteúdo ainda não importado. Envie o PDF do balancete
+            manualmente para analisar no piloto.
+          </p>
+        ) : null}
+        {!dados?.anexos.length && !dados?.solicitacao.possuiAnexo ? (
+          <p className="text-sm text-muted-foreground">
+            Nenhum documento vinculado a esta solicitação. Envie o PDF do balancete para iniciar a
+            análise.
+          </p>
+        ) : null}
+      </Card>
+
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="space-y-3 p-4 lg:col-span-2">
