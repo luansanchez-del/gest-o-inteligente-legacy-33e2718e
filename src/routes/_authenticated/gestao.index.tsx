@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   Download,
@@ -86,6 +86,20 @@ const TODOS_DEPARTAMENTOS = "__TODOS__";
 const TODOS_USUARIOS = "__TODOS_USUARIOS__";
 const TODAS_FILAS = "__TODAS_FILAS__";
 const TODOS_ANEXOS = "__TODOS_ANEXOS__";
+const CHAVE_FILTROS_GESTAO = "gestao-inteligente:filtros-gestao";
+
+interface FiltrosGestaoSalvos {
+  competencia: string;
+  tipo: "CONTABIL" | "MOVIMENTO_FINANCEIRO";
+  competenciaFim: string;
+  busca: string;
+  revisaoCompetencia: boolean;
+  departamento: string;
+  responsavel: string;
+  fila: string;
+  anexo: string;
+  incluirInativos: boolean;
+}
 
 /** Fila operacional do fechamento contábil. */
 const FILA: Record<string, { rotulo: string; classe: string }> = {
@@ -118,23 +132,100 @@ function competenciaAtual() {
   return `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}`;
 }
 
+function filtrosPadrao(): FiltrosGestaoSalvos {
+  return {
+    competencia: competenciaAtual(),
+    tipo: "CONTABIL",
+    competenciaFim: "",
+    busca: "",
+    revisaoCompetencia: false,
+    departamento: TODOS_DEPARTAMENTOS,
+    responsavel: TODOS_USUARIOS,
+    fila: TODAS_FILAS,
+    anexo: TODOS_ANEXOS,
+    incluirInativos: false,
+  };
+}
+
+function carregarFiltrosGestao(): FiltrosGestaoSalvos {
+  const padrao = filtrosPadrao();
+  if (typeof window === "undefined") return padrao;
+  try {
+    const salvo = JSON.parse(
+      window.sessionStorage.getItem(CHAVE_FILTROS_GESTAO) ?? "null",
+    ) as Partial<FiltrosGestaoSalvos> | null;
+    if (!salvo) return padrao;
+    return {
+      ...padrao,
+      ...salvo,
+      competencia: /^\d{4}-\d{2}$/.test(salvo.competencia ?? "")
+        ? salvo.competencia!
+        : padrao.competencia,
+      tipo:
+        salvo.tipo === "MOVIMENTO_FINANCEIRO"
+          ? "MOVIMENTO_FINANCEIRO"
+          : "CONTABIL",
+    };
+  } catch {
+    return padrao;
+  }
+}
+
 function GestaoPage() {
   const queryClient = useQueryClient();
-  const [competencia, setCompetencia] = useState(competenciaAtual);
+  const [filtrosIniciais] = useState(carregarFiltrosGestao);
+  const [competencia, setCompetencia] = useState(filtrosIniciais.competencia);
   const [tipo, setTipo] = useState<"CONTABIL" | "MOVIMENTO_FINANCEIRO">(
-    "CONTABIL",
+    filtrosIniciais.tipo,
   );
-  const [competenciaFim, setCompetenciaFim] = useState("");
-  const [busca, setBusca] = useState("");
-  const [revisaoCompetencia, setRevisaoCompetencia] = useState(false);
-  const [departamento, setDepartamento] = useState(TODOS_DEPARTAMENTOS);
-  const [responsavel, setResponsavel] = useState(TODOS_USUARIOS);
-  const [fila, setFila] = useState(TODAS_FILAS);
-  const [anexo, setAnexo] = useState(TODOS_ANEXOS);
-  const [incluirInativos, setIncluirInativos] = useState(false);
+  const [competenciaFim, setCompetenciaFim] = useState(
+    filtrosIniciais.competenciaFim,
+  );
+  const [busca, setBusca] = useState(filtrosIniciais.busca);
+  const [revisaoCompetencia, setRevisaoCompetencia] = useState(
+    filtrosIniciais.revisaoCompetencia,
+  );
+  const [departamento, setDepartamento] = useState(
+    filtrosIniciais.departamento,
+  );
+  const [responsavel, setResponsavel] = useState(filtrosIniciais.responsavel);
+  const [fila, setFila] = useState(filtrosIniciais.fila);
+  const [anexo, setAnexo] = useState(filtrosIniciais.anexo);
+  const [incluirInativos, setIncluirInativos] = useState(
+    filtrosIniciais.incluirInativos,
+  );
   const [renomeando, setRenomeando] = useState(false);
   const [confirmarProcessamento, setConfirmarProcessamento] = useState(false);
   const [novoNomeDepartamento, setNovoNomeDepartamento] = useState("");
+
+  useEffect(() => {
+    window.sessionStorage.setItem(
+      CHAVE_FILTROS_GESTAO,
+      JSON.stringify({
+        competencia,
+        tipo,
+        competenciaFim,
+        busca,
+        revisaoCompetencia,
+        departamento,
+        responsavel,
+        fila,
+        anexo,
+        incluirInativos,
+      } satisfies FiltrosGestaoSalvos),
+    );
+  }, [
+    anexo,
+    busca,
+    competencia,
+    competenciaFim,
+    departamento,
+    fila,
+    incluirInativos,
+    responsavel,
+    revisaoCompetencia,
+    tipo,
+  ]);
 
   const equipe = useQuery({
     queryKey: ["equipe-pier", incluirInativos, "contabeis"],
