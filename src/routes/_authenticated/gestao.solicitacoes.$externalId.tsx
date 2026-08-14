@@ -219,6 +219,8 @@ function SolicitacaoPage() {
 
   const totais = (resultado.data?.totais ?? {}) as Record<string, unknown>;
   const documento = (totais["documento"] ?? {}) as Record<string, unknown>;
+  const totalContas = Number(totais["totalContas"] ?? documento["contas"] ?? 0);
+
   const instrucao = dados?.instrucaoEfetiva ?? null;
 
   const estadoAnalise = !ultimaExecucao
