@@ -228,10 +228,6 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
 
   if (filtro.statusFila) linhas = linhas.filter((l) => l.statusFila === filtro.statusFila);
 
-  if (filtro.empresaIds?.length) {
-    const set = new Set(filtro.empresaIds);
-    linhas = linhas.filter((l) => l.empresaId && set.has(l.empresaId));
-  }
 
 
   linhas.sort((a, b) => a.clienteNome.localeCompare(b.clienteNome, "pt-BR"));
