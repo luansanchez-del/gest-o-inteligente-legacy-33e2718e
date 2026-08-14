@@ -98,6 +98,7 @@ function GestaoPage() {
   const [fila, setFila] = useState(TODAS_FILAS);
   const [incluirInativos, setIncluirInativos] = useState(false);
   const [renomeando, setRenomeando] = useState(false);
+  const [confirmarProcessamento, setConfirmarProcessamento] = useState(false);
   const [novoNomeDepartamento, setNovoNomeDepartamento] = useState("");
 
   const equipe = useQuery({
