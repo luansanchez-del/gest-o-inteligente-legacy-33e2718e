@@ -219,6 +219,8 @@ function SolicitacaoPage() {
 
   const totais = (resultado.data?.totais ?? {}) as Record<string, unknown>;
   const documento = (totais["documento"] ?? {}) as Record<string, unknown>;
+  const totalContas = Number(totais["totalContas"] ?? documento["contas"] ?? 0);
+
   const instrucao = dados?.instrucaoEfetiva ?? null;
 
   const estadoAnalise = !ultimaExecucao
@@ -429,29 +431,42 @@ function SolicitacaoPage() {
       </div>
 
       {resultado.data ? (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-          {[
-            { rotulo: "Ativo", valor: totais["ativo"] },
-            { rotulo: "Passivo + PL", valor: totais["passivoPl"] },
-            { rotulo: "Receitas", valor: totais["receitas"] },
-            { rotulo: "Despesas", valor: totais["despesas"] },
-            { rotulo: "Resultado", valor: totais["resultado"] },
-          ].map((item) => (
-            <Card key={item.rotulo} className="p-4">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">{item.rotulo}</p>
-              <p className="text-lg font-semibold tabular-nums">{moeda(item.valor)}</p>
-            </Card>
-          ))}
-          <Card className="p-4 sm:col-span-2 xl:col-span-5">
-            <p className="text-xs text-muted-foreground">
-              Débitos {moeda(totais["totalDebitos"])} · Créditos {moeda(totais["totalCreditos"])} ·
-              Diferença da equação {moeda(totais["diferencaEquacao"])} ·{" "}
-              {String(documento["contas"] ?? 0)} contas em {String(documento["paginas"] ?? 0)}{" "}
-              página(s). {String(totais["metodoTotais"] ?? "")}
+        totalContas === 0 ? (
+          <Card className="border-warning/40 bg-warning-soft p-4 text-sm text-warning-strong">
+            <p className="font-medium">Documento não lido — totais não calculados</p>
+            <p className="text-xs">
+              Nenhuma conta foi extraída do PDF, portanto não há conferência matemática do
+              balancete. Envie a versão em texto do documento ou reprocesse a análise.
             </p>
           </Card>
-        </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            {[
+              { rotulo: "Ativo", valor: totais["ativo"] },
+              { rotulo: "Passivo + PL", valor: totais["passivoPl"] },
+              { rotulo: "Receitas", valor: totais["receitas"] },
+              { rotulo: "Despesas", valor: totais["despesas"] },
+              { rotulo: "Resultado", valor: totais["resultado"] },
+            ].map((item) => (
+              <Card key={item.rotulo} className="p-4">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                  {item.rotulo}
+                </p>
+                <p className="text-lg font-semibold tabular-nums">{moeda(item.valor)}</p>
+              </Card>
+            ))}
+            <Card className="p-4 sm:col-span-2 xl:col-span-5">
+              <p className="text-xs text-muted-foreground">
+                Débitos {moeda(totais["totalDebitos"])} · Créditos {moeda(totais["totalCreditos"])} ·
+                Diferença da equação {moeda(totais["diferencaEquacao"])} ·{" "}
+                {String(documento["contas"] ?? 0)} contas em {String(documento["paginas"] ?? 0)}{" "}
+                página(s). {String(totais["metodoTotais"] ?? "")}
+              </p>
+            </Card>
+          </div>
+        )
       ) : null}
+
 
       <Card className="space-y-4 p-4">
         <div className="flex flex-wrap items-end gap-3">
