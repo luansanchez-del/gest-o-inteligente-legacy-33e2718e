@@ -70,7 +70,7 @@ export const pierAdapter: PierAdapter = {
    * Busca as solicitações de um tipo para a competência. O PIER não filtra por
    * competência, então usamos `busca` com MM/AAAA e conferimos a descrição.
    */
-  async listRequestsByType({ typeExternalId, referenceMonth }) {
+  async listRequestsByType({ typeExternalId, referenceMonth, incluirSemCompetencia }) {
     const [ano, mes] = referenceMonth.split("-");
     const termo = `${mes}/${ano}`;
     const resultados: PierRequest[] = [];
