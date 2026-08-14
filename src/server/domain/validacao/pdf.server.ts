@@ -90,8 +90,11 @@ export function montarTextoDeItensEstruturados(itens: ItemEstruturado[]): string
       str: item.str,
       hasEOL: item.hasEOL,
       transform:
-        Number.isFinite(item.x) && Number.isFinite(item.y)
-          ? [1, 0, 0, 1, Number(item.x), Number(item.y)]
+        typeof item.x === "number" &&
+        Number.isFinite(item.x) &&
+        typeof item.y === "number" &&
+        Number.isFinite(item.y)
+          ? [1, 0, 0, 1, item.x, item.y]
           : undefined,
     })),
   );
