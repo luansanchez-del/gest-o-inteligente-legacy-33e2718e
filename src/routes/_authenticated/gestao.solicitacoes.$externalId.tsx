@@ -16,7 +16,11 @@ import {
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/common/PageHeader";
-import { CarregandoTabela, ErroConsulta, EstadoVazio } from "@/components/common/EstadoConsulta";
+import {
+  CarregandoTabela,
+  ErroConsulta,
+  EstadoVazio,
+} from "@/components/common/EstadoConsulta";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -48,11 +52,16 @@ import {
   obterResultadoValidacao,
   registrarDecisao,
 } from "@/lib/api/validacao.functions";
-import { notificarRevisaoPier, processarSolicitacao } from "@/lib/api/processamento.functions";
+import {
+  notificarRevisaoPier,
+  processarSolicitacao,
+} from "@/lib/api/processamento.functions";
 import { formatarCnpj } from "@/lib/formato";
 import { mensagemDeErro } from "@/lib/erros";
 
-export const Route = createFileRoute("/_authenticated/gestao/solicitacoes/$externalId")({
+export const Route = createFileRoute(
+  "/_authenticated/gestao/solicitacoes/$externalId",
+)({
   head: () => ({
     meta: [
       { title: "Análise da solicitação | Gestão Inteligente" },
@@ -61,10 +70,14 @@ export const Route = createFileRoute("/_authenticated/gestao/solicitacoes/$exter
         content:
           "Instrução efetiva, documentos recebidos, validação do balancete e decisão registrada da solicitação de fechamento contábil.",
       },
-      { property: "og:title", content: "Análise da solicitação | Gestão Inteligente" },
+      {
+        property: "og:title",
+        content: "Análise da solicitação | Gestão Inteligente",
+      },
       {
         property: "og:description",
-        content: "Motor de validação de balancete com evidências e trilha de auditoria.",
+        content:
+          "Motor de validação de balancete com evidências e trilha de auditoria.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -76,17 +89,32 @@ export const Route = createFileRoute("/_authenticated/gestao/solicitacoes/$exter
 const TODAS = "__TODAS__";
 
 const SEVERIDADES: Record<string, { rotulo: string; classe: string }> = {
-  BLOCKER: { rotulo: "Impedimento", classe: "bg-destructive/10 text-destructive" },
+  BLOCKER: {
+    rotulo: "Impedimento",
+    classe: "bg-destructive/10 text-destructive",
+  },
   ERROR: { rotulo: "Erro", classe: "bg-destructive/10 text-destructive" },
   WARNING: { rotulo: "Alerta", classe: "bg-warning-soft text-warning-strong" },
   INFO: { rotulo: "Informação", classe: "bg-muted text-muted-foreground" },
 };
 
 const RESULTADOS: Record<string, { rotulo: string; classe: string }> = {
-  APROVADO: { rotulo: "Aprovado", classe: "bg-success-soft text-success-strong" },
-  COM_ALERTAS: { rotulo: "Com alertas", classe: "bg-warning-soft text-warning-strong" },
-  REVISAO_HUMANA: { rotulo: "Revisão humana", classe: "bg-warning-soft text-warning-strong" },
-  REPROVADO: { rotulo: "Reprovado", classe: "bg-destructive/10 text-destructive" },
+  APROVADO: {
+    rotulo: "Aprovado",
+    classe: "bg-success-soft text-success-strong",
+  },
+  COM_ALERTAS: {
+    rotulo: "Com alertas",
+    classe: "bg-warning-soft text-warning-strong",
+  },
+  REVISAO_HUMANA: {
+    rotulo: "Revisão humana",
+    classe: "bg-warning-soft text-warning-strong",
+  },
+  REPROVADO: {
+    rotulo: "Reprovado",
+    classe: "bg-destructive/10 text-destructive",
+  },
 };
 
 function moeda(valor: unknown) {
@@ -129,7 +157,8 @@ function SolicitacaoPage() {
 
   const resultado = useQuery({
     queryKey: ["validacao", ultimaExecucao?.id],
-    queryFn: () => obterResultadoValidacao({ data: { execucaoId: ultimaExecucao!.id } }),
+    queryFn: () =>
+      obterResultadoValidacao({ data: { execucaoId: ultimaExecucao!.id } }),
     enabled: Boolean(ultimaExecucao?.id),
   });
 
@@ -177,7 +206,8 @@ function SolicitacaoPage() {
   });
 
   const processar = useMutation({
-    mutationFn: () => processarSolicitacao({ data: { solicitacaoExternalId: id } }),
+    mutationFn: () =>
+      processarSolicitacao({ data: { solicitacaoExternalId: id } }),
     onSuccess: (r) => {
       setConfirmarProcessar(false);
       if (r.situacao === "FINALIZADO") toast.success(r.motivo);
@@ -188,9 +218,9 @@ function SolicitacaoPage() {
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
 
-
   const notificarRevisao = useMutation({
-    mutationFn: () => notificarRevisaoPier({ data: { solicitacaoExternalId: id } }),
+    mutationFn: () =>
+      notificarRevisaoPier({ data: { solicitacaoExternalId: id } }),
     onSuccess: (r) => {
       setConfirmarNotificacao(false);
       if (r.jaEnviada) toast.info(r.mensagem);
@@ -199,7 +229,6 @@ function SolicitacaoPage() {
     },
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
-
 
   const decidir = useMutation({
     mutationFn: (decisao: "APPROVED" | "RETURNED" | "NEEDS_REVIEW") =>
@@ -238,16 +267,241 @@ function SolicitacaoPage() {
   const instrucao = dados?.instrucaoEfetiva ?? null;
 
   const estadoAnalise = !ultimaExecucao
-    ? { rotulo: "Documento não carregado", classe: "bg-muted text-muted-foreground" }
+    ? {
+        rotulo: "Documento não carregado",
+        classe: "bg-muted text-muted-foreground",
+      }
     : ultimaExecucao.status === "COMPLETED"
-      ? { rotulo: "Análise concluída", classe: "bg-success-soft text-success-strong" }
+      ? {
+          rotulo: "Análise concluída",
+          classe: "bg-success-soft text-success-strong",
+        }
       : ultimaExecucao.status === "FAILED"
-        ? { rotulo: "Falha na análise", classe: "bg-destructive/10 text-destructive" }
-        : { rotulo: "Analisando", classe: "bg-warning-soft text-warning-strong" };
+        ? {
+            rotulo: "Falha na análise",
+            classe: "bg-destructive/10 text-destructive",
+          }
+        : {
+            rotulo: "Analisando",
+            classe: "bg-warning-soft text-warning-strong",
+          };
 
   if (detalhe.isLoading) return <CarregandoTabela linhas={8} />;
   if (detalhe.isError)
-    return <ErroConsulta error={detalhe.error} onRetry={() => void detalhe.refetch()} />;
+    return (
+      <ErroConsulta
+        error={detalhe.error}
+        onRetry={() => void detalhe.refetch()}
+      />
+    );
+
+  const ehMovimentoFinanceiro =
+    dados?.solicitacao.finalidade === "MONTHLY_FINANCIAL_MOVEMENT" ||
+    /movimento financeiro/i.test(dados?.solicitacao.tipoNome ?? "");
+  const eventoMovimento = dados?.auditoria.find(
+    (evento) => evento.acao === "ANALISAR_MOVIMENTO_FINANCEIRO",
+  );
+  const conferencia = (eventoMovimento?.dados ?? null) as Record<
+    string,
+    unknown
+  > | null;
+  const lista = (chave: string) =>
+    Array.isArray(conferencia?.[chave])
+      ? (conferencia?.[chave] as string[])
+      : [];
+
+  if (ehMovimentoFinanceiro) {
+    const liberado = conferencia?.["situacao"] === "LIBERADO";
+    const semMovimento = conferencia?.["semMovimentoDeclarado"] === true;
+    const itens = [
+      {
+        rotulo: "Extrato bancário",
+        arquivos: lista("extratosBancarios"),
+        obrigatorio: true,
+      },
+      {
+        rotulo: "Extrato de aplicações",
+        arquivos: lista("extratosAplicacoes"),
+        obrigatorio: false,
+      },
+      {
+        rotulo: "Comprovante Receita/e-CAC",
+        arquivos: lista("comprovantesEcac"),
+        obrigatorio: false,
+      },
+    ];
+
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          titulo={dados?.solicitacao.clienteNome ?? "Solicitação"}
+          descricao={`Movimento Financeiro Mensal · Solicitação ${dados?.solicitacao.numero ?? id} · ${formatarCnpj(dados?.solicitacao.documento ?? null)}`}
+          acoes={
+            <div className="flex flex-wrap gap-2">
+              <Button variant="ghost" asChild>
+                <Link to="/gestao">
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  Voltar à gestão
+                </Link>
+              </Button>
+              <Button
+                onClick={() => setConfirmarProcessar(true)}
+                disabled={processar.isPending}
+              >
+                <ShieldAlert
+                  className={`mr-2 h-4 w-4 ${processar.isPending ? "animate-pulse" : ""}`}
+                />
+                {processar.isPending
+                  ? "Verificando…"
+                  : "Verificar documentação no PIER"}
+              </Button>
+            </div>
+          }
+        />
+
+        <AlertDialog
+          open={confirmarProcessar}
+          onOpenChange={setConfirmarProcessar}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                Verificar o Movimento Financeiro Mensal?
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                O sistema lerá postagens e anexos do PIER. Com extrato bancário
+                ou declaração de empresa sem movimento, publicará uma
+                confirmação privada e finalizará esta solicitação. Sem essa
+                evidência, manterá aberta para regularização.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={() => processar.mutate()}>
+                Verificar agora
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog
+          open={confirmarNotificacao}
+          onOpenChange={setConfirmarNotificacao}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                Notificar a responsável no PIER?
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                Será enviada uma postagem privada solicitando o extrato bancário
+                ou a declaração de empresa sem movimento. A solicitação
+                continuará aberta.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={() => notificarRevisao.mutate()}>
+                Enviar notificação
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {processamento ? (
+          <Card
+            className={`space-y-1 p-4 text-sm ${processamento.situacao === "FINALIZADO" ? "border-success/40 bg-success-soft text-success-strong" : "border-warning/40 bg-warning-soft text-warning-strong"}`}
+          >
+            <p className="font-medium">
+              {processamento.situacao === "FINALIZADO"
+                ? "Concluído — fechamento liberado"
+                : "Pendente — fechamento bloqueado"}
+            </p>
+            <p>{processamento.motivo}</p>
+            <p className="text-xs opacity-80">
+              Status PIER: {processamento.statusPier ?? "—"} · Atualizado em{" "}
+              {dataHora(processamento.atualizadoEm)}
+            </p>
+          </Card>
+        ) : (
+          <Card className="border-warning/40 bg-warning-soft p-4 text-sm text-warning-strong">
+            Clique em “Verificar documentação no PIER” para iniciar a
+            conferência.
+          </Card>
+        )}
+
+        <Card className="space-y-4 p-4">
+          <div>
+            <p className="font-medium">
+              Documentação da competência{" "}
+              {dados?.solicitacao.competencia ?? "—"}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Responsável: {dados?.solicitacao.responsavelNome ?? "—"}
+            </p>
+          </div>
+          {conferencia ? (
+            <div className="grid gap-3 md:grid-cols-3">
+              {itens.map((item) => (
+                <Card key={item.rotulo} className="p-4">
+                  <div className="flex items-center gap-2">
+                    {item.arquivos.length ? (
+                      <CheckCircle2 className="h-4 w-4 text-success-strong" />
+                    ) : (
+                      <AlertTriangle className="h-4 w-4 text-warning-strong" />
+                    )}
+                    <p className="text-sm font-medium">{item.rotulo}</p>
+                  </div>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {item.arquivos.length
+                      ? `${item.arquivos.length} arquivo(s) identificado(s)`
+                      : item.obrigatorio && !semMovimento
+                        ? "Não identificado — bloqueia o fechamento"
+                        : "Não identificado — atenção"}
+                  </p>
+                  {item.arquivos.map((nome) => (
+                    <p key={nome} className="mt-1 truncate text-xs">
+                      {nome}
+                    </p>
+                  ))}
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <EstadoVazio
+              titulo="Conferência ainda não executada."
+              descricao="A verificação utiliza os anexos e as postagens existentes no PIER."
+            />
+          )}
+
+          {semMovimento ? (
+            <p className="rounded-md bg-success-soft p-3 text-sm text-success-strong">
+              Empresa declarada sem movimento na competência.
+            </p>
+          ) : null}
+          {conferencia ? (
+            <p
+              className={`rounded-md p-3 text-sm font-medium ${liberado ? "bg-success-soft text-success-strong" : "bg-destructive/10 text-destructive"}`}
+            >
+              {liberado
+                ? "Documentação mínima atendida: fechamento contábil liberado."
+                : "Falta extrato bancário ou declaração sem movimento: fechamento contábil bloqueado."}
+            </p>
+          ) : null}
+          {processamento?.situacao === "EM_REVISAO" ? (
+            <Button
+              variant="outline"
+              onClick={() => setConfirmarNotificacao(true)}
+              disabled={notificarRevisao.isPending}
+            >
+              <BellRing className="mr-2 h-4 w-4" />
+              Notificar responsável no PIER
+            </Button>
+          ) : null}
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -279,25 +533,40 @@ function SolicitacaoPage() {
               onClick={() => setConfirmarProcessar(true)}
               disabled={processar.isPending}
             >
-              <ShieldAlert className={`mr-2 h-4 w-4 ${processar.isPending ? "animate-pulse" : ""}`} />
-              {processar.isPending ? "Processando no PIER…" : "Processar no PIER"}
+              <ShieldAlert
+                className={`mr-2 h-4 w-4 ${processar.isPending ? "animate-pulse" : ""}`}
+              />
+              {processar.isPending
+                ? "Processando no PIER…"
+                : "Processar no PIER"}
             </Button>
-            <Button onClick={() => inputArquivo.current?.click()} disabled={upload.isPending}>
-              <FileUp className={`mr-2 h-4 w-4 ${upload.isPending ? "animate-pulse" : ""}`} />
+            <Button
+              onClick={() => inputArquivo.current?.click()}
+              disabled={upload.isPending}
+            >
+              <FileUp
+                className={`mr-2 h-4 w-4 ${upload.isPending ? "animate-pulse" : ""}`}
+              />
               {upload.isPending ? "Analisando…" : "Enviar balancete (PDF)"}
             </Button>
           </div>
         }
       />
 
-      <AlertDialog open={confirmarProcessar} onOpenChange={setConfirmarProcessar}>
+      <AlertDialog
+        open={confirmarProcessar}
+        onOpenChange={setConfirmarProcessar}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Processar esta solicitação no PIER?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Processar esta solicitação no PIER?
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              O sistema vai conferir o estado real no PIER, baixar o balancete, executar a análise e
-              — somente se o resultado for aprovado sem erro nem alerta — publicar a postagem privada
-              e finalizar a solicitação. Com qualquer alerta, a solicitação fica em revisão.
+              O sistema vai conferir o estado real no PIER, baixar o balancete,
+              executar a análise e — somente se o resultado for aprovado sem
+              erro nem alerta — publicar a postagem privada e finalizar a
+              solicitação. Com qualquer alerta, a solicitação fica em revisão.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -309,13 +578,19 @@ function SolicitacaoPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={confirmarNotificacao} onOpenChange={setConfirmarNotificacao}>
+      <AlertDialog
+        open={confirmarNotificacao}
+        onOpenChange={setConfirmarNotificacao}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Notificar a responsável no PIER?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Notificar a responsável no PIER?
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Será publicada uma mensagem privada com os alertas e as evidências da análise atual.
-              A solicitação continuará aberta e não será finalizada nem devolvida ao cliente.
+              Será publicada uma mensagem privada com os alertas e as evidências
+              da análise atual. A solicitação continuará aberta e não será
+              finalizada nem devolvida ao cliente.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -335,7 +610,8 @@ function SolicitacaoPage() {
           className={`space-y-1 p-4 text-sm ${
             processamento.situacao === "FINALIZADO"
               ? "border-success/40 bg-success-soft text-success-strong"
-              : processamento.situacao === "EM_REVISAO" || processamento.situacao === "PENDENTE"
+              : processamento.situacao === "EM_REVISAO" ||
+                  processamento.situacao === "PENDENTE"
                 ? "border-warning/40 bg-warning-soft text-warning-strong"
                 : "border-border"
           }`}
@@ -354,8 +630,9 @@ function SolicitacaoPage() {
           <p>{processamento.motivo}</p>
           <p className="text-xs opacity-80">
             Status PIER: {processamento.statusPier ?? "—"} · Postagem:{" "}
-            {processamento.postagemId ?? "—"} · Finalizada em: {dataHora(processamento.finalizadaEm)}{" "}
-            · Atualizado em {dataHora(processamento.atualizadoEm)}
+            {processamento.postagemId ?? "—"} · Finalizada em:{" "}
+            {dataHora(processamento.finalizadaEm)} · Atualizado em{" "}
+            {dataHora(processamento.atualizadoEm)}
           </p>
         </Card>
       ) : (
@@ -375,18 +652,17 @@ function SolicitacaoPage() {
         </div>
         {!dados?.anexos.length && dados?.solicitacao.possuiAnexo ? (
           <p className="text-sm text-warning-strong">
-            Anexo identificado no PIER, mas conteúdo ainda não importado. Envie o PDF do balancete
-            manualmente para analisar no piloto.
+            Anexo identificado no PIER, mas conteúdo ainda não importado. Envie
+            o PDF do balancete manualmente para analisar no piloto.
           </p>
         ) : null}
         {!dados?.anexos.length && !dados?.solicitacao.possuiAnexo ? (
           <p className="text-sm text-muted-foreground">
-            Nenhum documento vinculado a esta solicitação. Envie o PDF do balancete para iniciar a
-            análise.
+            Nenhum documento vinculado a esta solicitação. Envie o PDF do
+            balancete para iniciar a análise.
           </p>
         ) : null}
       </Card>
-
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="space-y-3 p-4 lg:col-span-2">
@@ -394,22 +670,29 @@ function SolicitacaoPage() {
             <p className="text-sm font-medium">Instrução da solicitação</p>
             {instrucao ? (
               <Badge variant="secondary">
-                {instrucao.origem === "POST" ? "Postagem mais recente" : "Título"}
+                {instrucao.origem === "POST"
+                  ? "Postagem mais recente"
+                  : "Título"}
               </Badge>
             ) : null}
           </div>
           <div className="space-y-1 text-sm">
-            <p className="text-muted-foreground">Título: {dados?.solicitacao.descricao ?? "—"}</p>
+            <p className="text-muted-foreground">
+              Título: {dados?.solicitacao.descricao ?? "—"}
+            </p>
             <p>
               Instrução efetiva:{" "}
-              <span className="font-medium">{instrucao?.texto ?? "sem instrução registrada"}</span>
+              <span className="font-medium">
+                {instrucao?.texto ?? "sem instrução registrada"}
+              </span>
             </p>
             <p className="text-muted-foreground">
               Período interpretado:{" "}
               {instrucao?.interpretado.inicio
                 ? `${instrucao.interpretado.inicio} a ${instrucao.interpretado.fim}`
                 : "indefinido"}{" "}
-              · Competência da solicitação: {dados?.solicitacao.competencia ?? "—"}
+              · Competência da solicitação:{" "}
+              {dados?.solicitacao.competencia ?? "—"}
             </p>
           </div>
           {dados?.instrucoes.length ? (
@@ -434,16 +717,22 @@ function SolicitacaoPage() {
           {ultimaExecucao ? (
             <>
               <Badge
-                className={RESULTADOS[String(resultado.data?.resultado ?? "")]?.classe ?? "bg-muted"}
+                className={
+                  RESULTADOS[String(resultado.data?.resultado ?? "")]?.classe ??
+                  "bg-muted"
+                }
               >
                 {RESULTADOS[String(resultado.data?.resultado ?? "")]?.rotulo ??
-                  (ultimaExecucao.status === "FAILED" ? "Falha na análise" : "Em processamento")}
+                  (ultimaExecucao.status === "FAILED"
+                    ? "Falha na análise"
+                    : "Em processamento")}
               </Badge>
               <p className="text-sm text-muted-foreground">
                 {resultado.data?.resumo ?? ultimaExecucao.erro ?? "—"}
               </p>
               <p className="text-xs text-muted-foreground">
-                Versão {ultimaExecucao.versao} · {dataHora(ultimaExecucao.finalizadaEm)}
+                Versão {ultimaExecucao.versao} ·{" "}
+                {dataHora(ultimaExecucao.finalizadaEm)}
               </p>
               {ultimaExecucao.anexoId ? (
                 <Button
@@ -468,10 +757,13 @@ function SolicitacaoPage() {
       {resultado.data ? (
         totalContas === 0 ? (
           <Card className="border-warning/40 bg-warning-soft p-4 text-sm text-warning-strong">
-            <p className="font-medium">Documento não lido — totais não calculados</p>
+            <p className="font-medium">
+              Documento não lido — totais não calculados
+            </p>
             <p className="text-xs">
-              Nenhuma conta foi extraída do PDF, portanto não há conferência matemática do
-              balancete. Envie a versão em texto do documento ou reprocesse a análise.
+              Nenhuma conta foi extraída do PDF, portanto não há conferência
+              matemática do balancete. Envie a versão em texto do documento ou
+              reprocesse a análise.
             </p>
           </Card>
         ) : (
@@ -487,21 +779,24 @@ function SolicitacaoPage() {
                 <p className="text-xs uppercase tracking-wide text-muted-foreground">
                   {item.rotulo}
                 </p>
-                <p className="text-lg font-semibold tabular-nums">{moeda(item.valor)}</p>
+                <p className="text-lg font-semibold tabular-nums">
+                  {moeda(item.valor)}
+                </p>
               </Card>
             ))}
             <Card className="p-4 sm:col-span-2 xl:col-span-5">
               <p className="text-xs text-muted-foreground">
-                Débitos {moeda(totais["totalDebitos"])} · Créditos {moeda(totais["totalCreditos"])} ·
-                Diferença da equação {moeda(totais["diferencaEquacao"])} ·{" "}
-                {String(documento["contas"] ?? 0)} contas em {String(documento["paginas"] ?? 0)}{" "}
-                página(s). {String(totais["metodoTotais"] ?? "")}
+                Débitos {moeda(totais["totalDebitos"])} · Créditos{" "}
+                {moeda(totais["totalCreditos"])} · Diferença da equação{" "}
+                {moeda(totais["diferencaEquacao"])} ·{" "}
+                {String(documento["contas"] ?? 0)} contas em{" "}
+                {String(documento["paginas"] ?? 0)} página(s).{" "}
+                {String(totais["metodoTotais"] ?? "")}
               </p>
             </Card>
           </div>
         )
       ) : null}
-
 
       <Card className="space-y-4 p-4">
         <div className="flex flex-wrap items-end gap-3">
@@ -558,7 +853,9 @@ function SolicitacaoPage() {
                         ) : null}
                       </div>
                       {a.detalhe ? (
-                        <p className="text-sm text-muted-foreground">{a.detalhe}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {a.detalhe}
+                        </p>
                       ) : null}
                       <p className="text-xs text-muted-foreground">
                         {a.contaCodigo ? `Conta ${a.contaCodigo} · ` : ""}
@@ -598,7 +895,9 @@ function SolicitacaoPage() {
           <div className="flex flex-wrap gap-2">
             <Button
               onClick={() => decidir.mutate("APPROVED")}
-              disabled={decidir.isPending || resultado.data?.resultado === "REPROVADO"}
+              disabled={
+                decidir.isPending || resultado.data?.resultado === "REPROVADO"
+              }
             >
               <CheckCircle2 className="mr-2 h-4 w-4" />
               Aprovar
@@ -636,7 +935,8 @@ function SolicitacaoPage() {
           </div>
           {resultado.data?.resultado === "REPROVADO" ? (
             <p className="text-xs text-destructive">
-              Há impedimentos objetivos: aprovação bloqueada até o documento ser corrigido.
+              Há impedimentos objetivos: aprovação bloqueada até o documento ser
+              corrigido.
             </p>
           ) : null}
           <p className="text-xs text-muted-foreground">
@@ -650,7 +950,10 @@ function SolicitacaoPage() {
           <ul className="space-y-2 text-sm">
             {dados?.anexos.length ? (
               dados.anexos.map((a) => (
-                <li key={a.id} className="flex flex-wrap items-center justify-between gap-2">
+                <li
+                  key={a.id}
+                  className="flex flex-wrap items-center justify-between gap-2"
+                >
                   <span>
                     {a.nome}{" "}
                     <span className="text-xs text-muted-foreground">
@@ -669,7 +972,9 @@ function SolicitacaoPage() {
                 </li>
               ))
             ) : (
-              <li className="text-sm text-muted-foreground">Nenhum documento enviado.</li>
+              <li className="text-sm text-muted-foreground">
+                Nenhum documento enviado.
+              </li>
             )}
           </ul>
           <Separator />
