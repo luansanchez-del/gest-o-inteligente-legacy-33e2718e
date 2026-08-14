@@ -40,7 +40,7 @@ import {
 import { formatarCnpj } from "@/lib/formato";
 import { mensagemDeErro } from "@/lib/erros";
 
-export const Route = createFileRoute("/_authenticated/solicitacao/$id")({
+export const Route = createFileRoute("/_authenticated/gestao/solicitacoes/$externalId")({
   head: () => ({
     meta: [
       { title: "Análise da solicitação | Gestão Inteligente" },
@@ -96,7 +96,7 @@ async function arquivoParaBase64(arquivo: File) {
 }
 
 function SolicitacaoPage() {
-  const { id } = Route.useParams();
+  const { externalId: id } = Route.useParams();
   const queryClient = useQueryClient();
   const inputArquivo = useRef<HTMLInputElement>(null);
   const [severidade, setSeveridade] = useState(TODAS);
