@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { montarTextoDaPagina, normalizarTransform } from "../pdf.server";
 import { parseBalancete } from "../balancete.parser";
 import { validarBalancete } from "../balancete.validator";
+import { PAGINAS_PILOTO, TITULO_PILOTO } from "./balancete.fixture";
 
 /** Item como o pdf.js entrega: transform [a,b,c,d,x,y]. */
 function item(str: string, x: number, y: number, tipo: "array" | "typed" | "arraylike" = "array") {
@@ -63,6 +64,35 @@ describe("segurança: documento sem contas", () => {
     expect(relatorio.resumo).not.toContain("fecha matematicamente");
     expect(relatorio.resumo).toContain("Documento não lido");
     expect(relatorio.achados.map((a) => a.code)).toContain("ARQUIVO_SEM_CONTEUDO");
+    expect(relatorio.resultado).not.toBe("APROVADO");
+  });
+});
+
+describe("PDF textual da solicitação 35806843", () => {
+  it("extrai contas e valores mesmo com transform Float32Array", () => {
+    const linhas = PAGINAS_PILOTO[0]!.split("\n");
+    const itens = linhas.flatMap((linha, indice) =>
+      linha
+        .split(" ")
+        .map((palavra, coluna) =>
+          item(palavra, 10 + coluna * 30, 800 - indice * 12, "typed"),
+        ),
+    );
+
+    const texto = montarTextoDaPagina(itens);
+    expect(texto.split("\n")).toHaveLength(linhas.length);
+
+    const documento = parseBalancete([texto]);
+    expect(documento.linhas.length).toBeGreaterThan(0);
+    expect(documento.cnpj).toBe("54876405000117");
+
+    const relatorio = validarBalancete(documento, {
+      cnpjSolicitacao: "54876405000117",
+      tituloSolicitacao: TITULO_PILOTO,
+    });
+    expect(relatorio.totais.totalContas).toBe(documento.linhas.length);
+    expect(relatorio.totais.totalDebitos).toBeGreaterThan(0);
+    // Há alertas contábeis: nunca pode ser aprovado automaticamente.
     expect(relatorio.resultado).not.toBe("APROVADO");
   });
 });
