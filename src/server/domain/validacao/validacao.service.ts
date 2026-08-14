@@ -13,7 +13,16 @@ const TAMANHO_MAXIMO = 25 * 1024 * 1024;
 export type Severidade = "INFO" | "WARNING" | "ERROR" | "BLOCKER";
 
 /** Aviso fixo: esta etapa nunca escreve no PIER. */
-export const AVISO_PIER = "PIER não alterado — aguardando integração de escrita.";
+export const AVISO_PIER_SEM_PROCESSAMENTO = "Nenhum processamento automático executado.";
+export const AVISO_PIER_EM_REVISAO = "PIER não alterado — análise bloqueada para revisão.";
+export const AVISO_PIER_FINALIZADO = "Finalizado no PIER.";
+
+/** Texto exibido na UI sobre o efeito real no PIER. */
+export function avisoPier(situacao?: string | null): string {
+  if (!situacao) return AVISO_PIER_SEM_PROCESSAMENTO;
+  if (situacao === "FINALIZADO" || situacao === "JA_FINALIZADA") return AVISO_PIER_FINALIZADO;
+  return AVISO_PIER_EM_REVISAO;
+}
 
 async function sha256(bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", bytes as unknown as ArrayBuffer);
@@ -237,7 +246,7 @@ export async function detalharSolicitacao(
           atualizadoEm: processamento.updated_at,
         }
       : null,
-    avisoPier: AVISO_PIER,
+    avisoPier: avisoPier(processamento?.outcome ?? null),
   });
 }
 
@@ -591,7 +600,11 @@ export async function registrarDecisao(
     after: { decisao: input.decisao, notas, pier: "NOT_SENT" },
   });
 
-  return { decisaoId: decisao.id, decididaEm: decisao.decided_at, avisoPier: AVISO_PIER };
+  return {
+    decisaoId: decisao.id,
+    decididaEm: decisao.decided_at,
+    avisoPier: AVISO_PIER_EM_REVISAO,
+  };
 }
 
 /** Resultado consolidado de uma execução (usado pela UI e pelo MCP). */
@@ -626,6 +639,6 @@ export async function obterResultadoValidacao(
     finalizadaEm: execucao.finished_at,
     instrucaoUsada: execucao.instruction_snapshot,
     achados,
-    avisoPier: AVISO_PIER,
+    avisoPier: AVISO_PIER_EM_REVISAO,
   });
 }
