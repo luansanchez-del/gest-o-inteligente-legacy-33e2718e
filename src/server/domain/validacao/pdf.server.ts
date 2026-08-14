@@ -85,19 +85,66 @@ export function montarTextoDaPagina(itens: ItemTexto[]): string {
 
 /** Converte a estrutura pública do unpdf no formato do reconstrutor de linhas. */
 export function montarTextoDeItensEstruturados(itens: ItemEstruturado[]): string {
-  return montarTextoDaPagina(
-    itens.map((item) => ({
-      str: item.str,
-      hasEOL: item.hasEOL,
-      transform:
-        typeof item.x === "number" &&
-        Number.isFinite(item.x) &&
-        typeof item.y === "number" &&
-        Number.isFinite(item.y)
-          ? [1, 0, 0, 1, item.x, item.y]
-          : undefined,
-    })),
+  const posicionados = itens.filter(
+    (item): item is ItemEstruturado & { str: string; x: number; y: number } =>
+      typeof item.str === "string" &&
+      item.str.length > 0 &&
+      typeof item.x === "number" &&
+      Number.isFinite(item.x) &&
+      typeof item.y === "number" &&
+      Number.isFinite(item.y),
   );
+
+  if (!posicionados.length) {
+    return montarTextoDaPagina(itens.map((item) => ({ str: item.str, hasEOL: item.hasEOL })));
+  }
+
+  const contarGruposDeLinha = (eixo: "x" | "y") => {
+    const grupos = new Map<number, number>();
+    for (const item of posicionados) {
+      const coordenada = Math.round(item[eixo] * 2) / 2;
+      grupos.set(coordenada, (grupos.get(coordenada) ?? 0) + 1);
+    }
+    return [...grupos.values()].filter((quantidade) => quantidade >= 3).length;
+  };
+
+  // Em PDFs rotacionados em 90 graus, o pdf.js troca o papel prático dos
+  // eixos: as células de uma mesma linha compartilham X, e não Y.
+  const eixoDaLinha: "x" | "y" =
+    contarGruposDeLinha("x") > contarGruposDeLinha("y") ? "x" : "y";
+  const eixoDaColuna: "x" | "y" = eixoDaLinha === "x" ? "y" : "x";
+  const porLinha = new Map<number, typeof posicionados>();
+
+  for (const item of posicionados) {
+    const coordenada = Math.round(item[eixoDaLinha] * 2) / 2;
+    const lista = porLinha.get(coordenada);
+    if (lista) lista.push(item);
+    else porLinha.set(coordenada, [item]);
+  }
+
+  const direcaoDasLinhas = eixoDaLinha === "x" ? 1 : -1;
+  return [...porLinha.entries()]
+    .sort((a, b) => (a[0] - b[0]) * direcaoDasLinhas)
+    .map(([, linha]) =>
+      linha
+        .sort((a, b) => a[eixoDaColuna] - b[eixoDaColuna])
+        .map((item) => item.str)
+        .join(" ")
+        .replace(/\s{2,}/g, " ")
+        .trim(),
+    )
+    .filter(Boolean)
+    .join("\n");
+}
+
+function textoTemColunasInvertidas(paginas: string[]): boolean {
+  return paginas.some((pagina) => {
+    const cabecalho = pagina
+      .split(/\r?\n/)
+      .find((linha) => /conta cont[áa]bil/i.test(linha) && /saldo (atual|final)/i.test(linha));
+    if (!cabecalho) return false;
+    return cabecalho.search(/saldo (atual|final)/i) < cabecalho.search(/conta cont[áa]bil/i);
+  });
 }
 
 export async function extrairTextoPdf(bytes: Uint8Array): Promise<PdfExtraido> {
@@ -107,7 +154,10 @@ export async function extrairTextoPdf(bytes: Uint8Array): Promise<PdfExtraido> {
   // do relatório. Validado com o PDF real do piloto 35806843.
   const simples = await extractText(new Uint8Array(bytes), { mergePages: false });
   const paginasSimples = Array.isArray(simples.text) ? simples.text : [simples.text];
-  if (paginasSimples.some((pagina) => pagina.trim())) {
+  if (
+    paginasSimples.some((pagina) => pagina.trim()) &&
+    !textoTemColunasInvertidas(paginasSimples)
+  ) {
     return { paginas: paginasSimples, totalPaginas: simples.totalPages };
   }
 
