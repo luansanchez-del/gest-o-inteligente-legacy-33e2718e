@@ -30,9 +30,20 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   desvincularCliente,
   diagnosticarConexaoPier,
   listarCarteira,
+  previsualizarVinculoAutomatico,
   sincronizarCarteira,
   vincularCarteiraAutomaticamente,
 
@@ -80,6 +91,14 @@ function CarteiraPage() {
   const [regime, setRegime] = useState<string>(TODOS_REGIMES);
   const [situacao, setSituacao] = useState<SituacaoFiltro>("TODOS");
   const [selecionados, setSelecionados] = useState<string[]>([]);
+  const [preview, setPreview] = useState<{
+    total: number;
+    jaVinculados: number;
+    reutilizarEmpresas: number;
+    criarEmpresas: number;
+    conflitos: number;
+    semDocumento: number;
+  } | null>(null);
 
   const consulta = useQuery({
     queryKey: ["carteira", busca, status, regime, situacao],
@@ -98,9 +117,8 @@ function CarteiraPage() {
   const sincronizar = useMutation({
     mutationFn: () => sincronizarCarteira(),
     onSuccess: (r) => {
-      const v = r.vinculo;
       toast.success(
-        `Sincronizados ${v.sincronizados} · vinculados ${v.vinculados} · empresas criadas ${v.criados} · conflitos ${v.conflitos} · sem documento ${v.semDocumento}`,
+        `Sincronizados ${r.total} clientes · ${r.processados} processados · ${r.falhas} falhas. Use “Pré-visualizar vínculo” para vincular.`,
         { duration: 9000 },
       );
       void queryClient.invalidateQueries({ queryKey: ["carteira"] });
@@ -108,17 +126,22 @@ function CarteiraPage() {
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
 
+  const previa = useMutation({
+    mutationFn: () => previsualizarVinculoAutomatico(),
+    onSuccess: (p) => setPreview(p),
+    onError: (e) => toast.error(mensagemDeErro(e)),
+  });
+
   const vincularAuto = useMutation({
     mutationFn: () => vincularCarteiraAutomaticamente(),
     onSuccess: (v) => {
-      toast.success(
-        `Vínculo automático: ${v.vinculados} vinculados · ${v.criados} empresas criadas · ${v.conflitos} conflitos · ${v.semDocumento} sem documento`,
-        { duration: 9000 },
-      );
+      setPreview(null);
+      toast.success(v.mensagem, { duration: 9000 });
       void queryClient.invalidateQueries({ queryKey: ["carteira"] });
     },
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
+
 
 
   const diagnosticar = useMutation({
@@ -210,13 +233,14 @@ function CarteiraPage() {
             </Button>
             <Button
               variant="outline"
-              onClick={() => vincularAuto.mutate()}
-              disabled={vincularAuto.isPending}
-              title="Vincular por CNPJ os clientes ainda sem empresa interna"
+              onClick={() => previa.mutate()}
+              disabled={previa.isPending || vincularAuto.isPending}
+              title="Simular o vínculo automático sem gravar nada"
             >
-              <Link2 className={`mr-2 h-4 w-4 ${vincularAuto.isPending ? "animate-pulse" : ""}`} />
-              Vincular automaticamente
+              <Link2 className={`mr-2 h-4 w-4 ${previa.isPending ? "animate-pulse" : ""}`} />
+              {previa.isPending ? "Analisando…" : "Pré-visualizar vínculo"}
             </Button>
+
 
             <Button onClick={() => sincronizar.mutate()} disabled={sincronizar.isPending}>
               <RefreshCw
@@ -227,6 +251,59 @@ function CarteiraPage() {
           </div>
         }
       />
+
+      <AlertDialog
+        open={preview !== null}
+        onOpenChange={(aberto) => {
+          if (!aberto && !vincularAuto.isPending) setPreview(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar vínculo automático</AlertDialogTitle>
+            <AlertDialogDescription>
+              Nada foi gravado ainda. Estes são os números da pré-visualização:
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {preview ? (
+            <ul className="space-y-1 text-sm">
+              <li>
+                Clientes na carteira: <strong className="tabular-nums">{preview.total}</strong>
+              </li>
+              <li>
+                Já vinculados: <strong className="tabular-nums">{preview.jaVinculados}</strong>
+              </li>
+              <li>
+                Empresas existentes a reutilizar:{" "}
+                <strong className="tabular-nums">{preview.reutilizarEmpresas}</strong>
+              </li>
+              <li>
+                Empresas a criar: <strong className="tabular-nums">{preview.criarEmpresas}</strong>
+              </li>
+              <li>
+                Conflitos: <strong className="tabular-nums">{preview.conflitos}</strong>
+              </li>
+              <li>
+                Sem documento: <strong className="tabular-nums">{preview.semDocumento}</strong>
+              </li>
+            </ul>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={vincularAuto.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                if (!vincularAuto.isPending) vincularAuto.mutate();
+              }}
+              disabled={vincularAuto.isPending}
+            >
+              {vincularAuto.isPending ? "Vinculando…" : "Confirmar e vincular"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+
 
       {resumo && !resumo.integracao.available ? (
         <Card className="border-warning/40 bg-warning-soft p-4 text-sm text-warning-strong">
