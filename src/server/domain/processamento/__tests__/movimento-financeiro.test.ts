@@ -24,6 +24,16 @@ describe("Movimento Financeiro Mensal", () => {
     expect(resultado.semMovimentoDeclarado).toBe(true);
   });
 
+  it("não confunde uma orientação condicional com declaração sem movimento", async () => {
+    const resultado = await conferirMovimentoFinanceiro(
+      [],
+      "Se a empresa não teve movimentação, informe na solicitação.",
+      baixarVazio,
+    );
+    expect(resultado.situacao).toBe("BLOQUEADO");
+    expect(resultado.semMovimentoDeclarado).toBe(false);
+  });
+
   it("libera com extrato bancário e identifica aplicações e e-CAC", async () => {
     const resultado = await conferirMovimentoFinanceiro(
       [
