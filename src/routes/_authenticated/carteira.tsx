@@ -34,6 +34,8 @@ import {
   diagnosticarConexaoPier,
   listarCarteira,
   sincronizarCarteira,
+  vincularCarteiraAutomaticamente,
+
   vincularCliente,
   vincularClientesEmLote,
 } from "@/lib/api/carteira.functions";
