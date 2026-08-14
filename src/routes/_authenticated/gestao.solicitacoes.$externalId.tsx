@@ -195,6 +195,14 @@ function SolicitacaoPage() {
   const documento = (totais["documento"] ?? {}) as Record<string, unknown>;
   const instrucao = dados?.instrucaoEfetiva ?? null;
 
+  const estadoAnalise = !ultimaExecucao
+    ? { rotulo: "Documento não carregado", classe: "bg-muted text-muted-foreground" }
+    : ultimaExecucao.status === "COMPLETED"
+      ? { rotulo: "Análise concluída", classe: "bg-success-soft text-success-strong" }
+      : ultimaExecucao.status === "FAILED"
+        ? { rotulo: "Falha na análise", classe: "bg-destructive/10 text-destructive" }
+        : { rotulo: "Analisando", classe: "bg-warning-soft text-warning-strong" };
+
   if (detalhe.isLoading) return <CarregandoTabela linhas={8} />;
   if (detalhe.isError)
     return <ErroConsulta error={detalhe.error} onRetry={() => void detalhe.refetch()} />;
