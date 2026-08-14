@@ -420,7 +420,17 @@ export async function vincularCarteiraAutomaticamente(
     }
 
     const digitos = normalizarDocumento(cliente.document);
-    let empresaId = empresaPorDocumento.get(digitos) ?? null;
+    const candidatas = empresasPorDocumento.get(digitos) ?? [];
+    if (candidatas.length > 1) {
+      resumo.conflitos += 1;
+      eventos.push({
+        level: "WARNING",
+        message: `${cliente.name}: CNPJ presente em mais de uma empresa interna — revisão manual.`,
+      });
+      continue;
+    }
+
+    let empresaId = candidatas[0] ?? null;
 
     if (!empresaId) {
       const { data: nova, error } = await ctx.db
@@ -442,9 +452,10 @@ export async function vincularCarteiraAutomaticamente(
         continue;
       }
       empresaId = nova.id;
-      empresaPorDocumento.set(digitos, empresaId);
+      empresasPorDocumento.set(digitos, [empresaId]);
       resumo.criados += 1;
     }
+
 
     novosVinculos.push({
       organization_id: ctx.organizationId,
