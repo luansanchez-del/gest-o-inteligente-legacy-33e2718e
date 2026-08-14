@@ -7,7 +7,11 @@
  * geram WARNING com requires_human — nunca reprovam sozinhos.
  */
 
-import { formatarBR, type BalanceteDocumento, type LinhaBalancete } from "./balancete.parser";
+import {
+  formatarBR,
+  type BalanceteDocumento,
+  type LinhaBalancete,
+} from "./balancete.parser";
 import { competenciaDaData, type Instrucao } from "./instrucao";
 
 export const VALIDATOR_VERSION = "balancete-v1";
@@ -42,7 +46,8 @@ export interface TotaisBalancete {
   totalContas: number;
 }
 
-export type ResultadoValidacao = "APROVADO" | "COM_ALERTAS" | "REPROVADO" | "REVISAO_HUMANA";
+export type ResultadoValidacao =
+  "APROVADO" | "COM_ALERTAS" | "REPROVADO" | "REVISAO_HUMANA";
 
 export interface RelatorioValidacao {
   resultado: ResultadoValidacao;
@@ -89,6 +94,41 @@ function naturezaDaRaiz(linha: LinhaBalancete): Natureza {
   }
 }
 
+function mapearNaturezaPorRaiz(documento: BalanceteDocumento) {
+  const naturezas = new Map<string, Natureza>();
+  for (const linha of documento.linhas.filter((item) => item.nivel === 1)) {
+    const natureza = naturezaDaRaiz(linha);
+    if (natureza !== "OUTRO") naturezas.set(linha.raiz, natureza);
+  }
+  return naturezas;
+}
+
+/**
+ * A natureza dos descendentes vem do grupo raiz do plano apresentado no
+ * próprio documento. Isso evita assumir que, por exemplo, o grupo 4 sempre é
+ * despesa: em alguns planos ele é o grupo de receitas.
+ */
+function naturezaDaConta(
+  linha: LinhaBalancete,
+  naturezaPorRaiz: Map<string, Natureza>,
+): Natureza {
+  return naturezaPorRaiz.get(linha.raiz) ?? naturezaDaRaiz(linha);
+}
+
+/** Contas explicitamente redutoras podem ter saldo negativo sem inversão. */
+function contaRedutora(linha: LinhaBalancete): boolean {
+  const nome = linha.nome.toUpperCase().replace(/\s+/g, " ").trim();
+  return (
+    /^\(-\)/.test(nome) ||
+    /\bPREJU[ÍI]ZOS? ACUMULADOS?\b/.test(nome) ||
+    /\bCAPITAL A INTEGRALIZAR\b/.test(nome) ||
+    /\bAÇÕES EM TESOURARIA\b/.test(nome) ||
+    /\b(DEPRECIAÇÃO|AMORTIZAÇÃO|EXAUSTÃO).*ACUMULAD/.test(nome) ||
+    /\bAJUSTE A VALOR PRESENTE\b/.test(nome) ||
+    /\b(PERDAS ESTIMADAS|PROVISÃO PARA PERDAS)\b/.test(nome)
+  );
+}
+
 function arredondar(valor: number) {
   return Math.round(valor * 100) / 100;
 }
@@ -109,6 +149,7 @@ export function validarBalancete(
 ): RelatorioValidacao {
   const achados: Achado[] = [];
   const materialidade = contexto.materialidade ?? MATERIALIDADE_PADRAO;
+  const naturezaPorRaiz = mapearNaturezaPorRaiz(documento);
 
   // 1. Integridade do arquivo -------------------------------------------------
   if (documento.paginas === 0 || documento.linhas.length === 0) {
@@ -213,7 +254,11 @@ export function validarBalancete(
 
   // 5. Totais pelos grupos raiz ----------------------------------------------
   const raizes = documento.linhas.filter((l) => l.nivel === 1);
-  const base = raizes.length ? raizes : documento.linhas.filter((l) => l.nivel === Math.min(...documento.linhas.map((x) => x.nivel)));
+  const base = raizes.length
+    ? raizes
+    : documento.linhas.filter(
+        (l) => l.nivel === Math.min(...documento.linhas.map((x) => x.nivel)),
+      );
 
   let ativo = 0;
   let passivoPl = 0;
@@ -274,26 +319,44 @@ export function validarBalancete(
   if (base.length) {
     const diferenca = arredondar(totalDebitos - totalCreditos);
     achados.push({
-      code: Math.abs(diferenca) <= TOLERANCIA ? "PARTIDAS_DOBRADAS_OK" : "PARTIDAS_DOBRADAS_DIVERGENTE",
+      code:
+        Math.abs(diferenca) <= TOLERANCIA
+          ? "PARTIDAS_DOBRADAS_OK"
+          : "PARTIDAS_DOBRADAS_DIVERGENTE",
       severity: Math.abs(diferenca) <= TOLERANCIA ? "INFO" : "BLOCKER",
       title:
         Math.abs(diferenca) <= TOLERANCIA
           ? "Total de débitos igual ao total de créditos"
           : "Total de débitos diferente do total de créditos",
       detail: `Débitos R$ ${formatarBR(totalDebitos)} · Créditos R$ ${formatarBR(totalCreditos)} · Diferença R$ ${formatarBR(diferenca)}. Método: ${totais.metodoTotais}`,
-      evidence: { totalDebitos, totalCreditos, diferenca, metodo: totais.metodoTotais },
+      evidence: {
+        totalDebitos,
+        totalCreditos,
+        diferenca,
+        metodo: totais.metodoTotais,
+      },
     });
 
     achados.push({
       code:
-        Math.abs(diferencaEquacao) <= TOLERANCIA ? "EQUACAO_PATRIMONIAL_OK" : "EQUACAO_PATRIMONIAL_DIVERGENTE",
+        Math.abs(diferencaEquacao) <= TOLERANCIA
+          ? "EQUACAO_PATRIMONIAL_OK"
+          : "EQUACAO_PATRIMONIAL_DIVERGENTE",
       severity: Math.abs(diferencaEquacao) <= TOLERANCIA ? "INFO" : "BLOCKER",
       title:
         Math.abs(diferencaEquacao) <= TOLERANCIA
           ? "Equação patrimonial fecha (resultado ainda não encerrado)"
           : "Equação patrimonial não fecha",
       detail: `Ativo (R$ ${formatarBR(ativo)}) + Despesas (R$ ${formatarBR(despesas)}) = R$ ${formatarBR(equacaoEsquerda)} · Passivo/PL (R$ ${formatarBR(passivoPl)}) + Receitas (R$ ${formatarBR(receitas)}) = R$ ${formatarBR(equacaoDireita)}`,
-      evidence: { ativo, despesas, passivoPl, receitas, equacaoEsquerda, equacaoDireita, diferencaEquacao },
+      evidence: {
+        ativo,
+        despesas,
+        passivoPl,
+        receitas,
+        equacaoEsquerda,
+        equacaoDireita,
+        diferencaEquacao,
+      },
     });
 
     achados.push({
@@ -314,10 +377,13 @@ export function validarBalancete(
 
   for (const linha of analiticas) {
     const nome = linha.nome.toUpperCase();
-    const natureza = naturezaDaRaiz(linha);
+    const natureza = naturezaDaConta(linha, naturezaPorRaiz);
 
     // Investimento analítico com saldo credor/negativo
-    if (/INVESTIMENT|PARTICIPA[ÇC]|EMPREENDIMENT/.test(nome) || linha.codigo.startsWith("1.2.3")) {
+    if (
+      /INVESTIMENT|PARTICIPA[ÇC]|EMPREENDIMENT/.test(nome) ||
+      linha.codigo.startsWith("1.2.3")
+    ) {
       if (linha.saldoAtual < 0) {
         jaAlertadas.add(linha.codigo);
         achados.push({
@@ -325,7 +391,11 @@ export function validarBalancete(
           severity: "WARNING",
           title: "Investimento com saldo credor",
           detail: `${linha.nome}: R$ ${formatarBR(linha.saldoAtual)}. Conta de investimento com saldo credor exige conferência do registro (equivalência, aporte ou baixa).`,
-          evidence: { codigo: linha.codigo, saldo: linha.saldoAtual, pagina: linha.pagina },
+          evidence: {
+            codigo: linha.codigo,
+            saldo: linha.saldoAtual,
+            pagina: linha.pagina,
+          },
           accountCode: linha.codigo,
           accountName: linha.nome,
           page: linha.pagina,
@@ -343,7 +413,11 @@ export function validarBalancete(
           severity: "WARNING",
           title: "Caixa com saldo material e sem movimento no período",
           detail: `${linha.nome}: R$ ${formatarBR(linha.saldoAtual)} sem débitos nem créditos.`,
-          evidence: { codigo: linha.codigo, saldo: linha.saldoAtual, pagina: linha.pagina },
+          evidence: {
+            codigo: linha.codigo,
+            saldo: linha.saldoAtual,
+            pagina: linha.pagina,
+          },
           accountCode: linha.codigo,
           accountName: linha.nome,
           page: linha.pagina,
@@ -354,14 +428,21 @@ export function validarBalancete(
 
     // Adiantamentos / distribuição de lucros
     const materialAbs = Math.abs(linha.saldoAtual) >= materialidade;
-    if (materialAbs && /(ADIANTAMENT|DISTRIBUI).*LUCRO|LUCRO.*(ADIANTAMENT|DISTRIBU)/.test(nome)) {
+    if (
+      materialAbs &&
+      /(ADIANTAMENT|DISTRIBUI).*LUCRO|LUCRO.*(ADIANTAMENT|DISTRIBU)/.test(nome)
+    ) {
       jaAlertadas.add(linha.codigo);
       achados.push({
         code: "ADIANTAMENTO_LUCROS",
         severity: "WARNING",
         title: "Adiantamento/distribuição de lucros material",
         detail: `${linha.nome}: R$ ${formatarBR(Math.abs(linha.saldoAtual))}. Exige revisão documental (lucro disponível, ata/contrato e reflexo fiscal).`,
-        evidence: { codigo: linha.codigo, saldo: linha.saldoAtual, pagina: linha.pagina },
+        evidence: {
+          codigo: linha.codigo,
+          saldo: linha.saldoAtual,
+          pagina: linha.pagina,
+        },
         accountCode: linha.codigo,
         accountName: linha.nome,
         page: linha.pagina,
@@ -374,7 +455,11 @@ export function validarBalancete(
         severity: "WARNING",
         title: "Adiantamento material em aberto",
         detail: `${linha.nome}: R$ ${formatarBR(Math.abs(linha.saldoAtual))}. Confirmar a documentação de suporte e a baixa esperada.`,
-        evidence: { codigo: linha.codigo, saldo: linha.saldoAtual, pagina: linha.pagina },
+        evidence: {
+          codigo: linha.codigo,
+          saldo: linha.saldoAtual,
+          pagina: linha.pagina,
+        },
         accountCode: linha.codigo,
         accountName: linha.nome,
         page: linha.pagina,
@@ -383,11 +468,17 @@ export function validarBalancete(
     }
 
     // Natureza potencialmente invertida
-    if (!jaAlertadas.has(linha.codigo) && Math.abs(linha.saldoAtual) >= materialidade) {
+    if (
+      !jaAlertadas.has(linha.codigo) &&
+      !contaRedutora(linha) &&
+      Math.abs(linha.saldoAtual) >= materialidade
+    ) {
       const esperadoDevedor = natureza === "ATIVO" || natureza === "DESPESA";
-      const esperadoCredor = natureza === "PASSIVO_PL" || natureza === "RECEITA";
+      const esperadoCredor =
+        natureza === "PASSIVO_PL" || natureza === "RECEITA";
       const invertido =
-        (esperadoDevedor && linha.saldoAtual < 0) || (esperadoCredor && linha.saldoAtual < 0);
+        (esperadoDevedor && linha.saldoAtual < 0) ||
+        (esperadoCredor && linha.saldoAtual < 0);
       if (invertido) {
         achados.push({
           code: "NATUREZA_INVERTIDA",
@@ -414,14 +505,23 @@ export function validarBalancete(
 }
 
 export function classificar(achados: Achado[]): ResultadoValidacao {
-  if (achados.some((a) => a.severity === "BLOCKER" || a.severity === "ERROR")) return "REPROVADO";
+  if (achados.some((a) => a.severity === "BLOCKER" || a.severity === "ERROR"))
+    return "REPROVADO";
   const alertas = achados.filter((a) => a.severity === "WARNING");
   if (!alertas.length) return "APROVADO";
-  return alertas.some((a) => a.requiresHuman) ? "REVISAO_HUMANA" : "COM_ALERTAS";
+  return alertas.some((a) => a.requiresHuman)
+    ? "REVISAO_HUMANA"
+    : "COM_ALERTAS";
 }
 
-function montarResumo(achados: Achado[], totais: TotaisBalancete, totalContas: number) {
-  const bloqueios = achados.filter((a) => a.severity === "BLOCKER" || a.severity === "ERROR").length;
+function montarResumo(
+  achados: Achado[],
+  totais: TotaisBalancete,
+  totalContas: number,
+) {
+  const bloqueios = achados.filter(
+    (a) => a.severity === "BLOCKER" || a.severity === "ERROR",
+  ).length;
   const alertas = achados.filter((a) => a.severity === "WARNING").length;
 
   // Sem contas extraídas não existe conferência matemática possível.
@@ -434,7 +534,9 @@ function montarResumo(achados: Achado[], totais: TotaisBalancete, totalContas: n
 
   const fecha = Math.abs(totais.diferencaEquacao) <= TOLERANCIA;
   return [
-    fecha ? "Balancete fecha matematicamente." : "Balancete não fecha matematicamente.",
+    fecha
+      ? "Balancete fecha matematicamente."
+      : "Balancete não fecha matematicamente.",
     `Ativo R$ ${formatarBR(totais.ativo)} · Passivo/PL R$ ${formatarBR(totais.passivoPl)} · Resultado R$ ${formatarBR(totais.resultado)}.`,
     `${bloqueios} impedimento(s) e ${alertas} alerta(s) para revisão.`,
   ].join(" ");
