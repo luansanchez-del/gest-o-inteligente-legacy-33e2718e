@@ -232,6 +232,14 @@ function SolicitacaoPage() {
                 e.target.value = "";
               }}
             />
+            <Button
+              variant="outline"
+              onClick={() => setConfirmarProcessar(true)}
+              disabled={processar.isPending}
+            >
+              <ShieldAlert className={`mr-2 h-4 w-4 ${processar.isPending ? "animate-pulse" : ""}`} />
+              {processar.isPending ? "Processando no PIER…" : "Processar no PIER"}
+            </Button>
             <Button onClick={() => inputArquivo.current?.click()} disabled={upload.isPending}>
               <FileUp className={`mr-2 h-4 w-4 ${upload.isPending ? "animate-pulse" : ""}`} />
               {upload.isPending ? "Analisando…" : "Enviar balancete (PDF)"}
@@ -240,10 +248,59 @@ function SolicitacaoPage() {
         }
       />
 
-      <Card className="border-warning/40 bg-warning-soft p-3 text-sm text-warning-strong">
-        <ShieldAlert className="mr-2 inline h-4 w-4" />
-        {dados?.avisoPier ?? "PIER não alterado — decisão interna."}
-      </Card>
+      <AlertDialog open={confirmarProcessar} onOpenChange={setConfirmarProcessar}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Processar esta solicitação no PIER?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O sistema vai conferir o estado real no PIER, baixar o balancete, executar a análise e
+              — somente se o resultado for aprovado sem erro nem alerta — publicar a postagem privada
+              e finalizar a solicitação. Com qualquer alerta, a solicitação fica em revisão.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => processar.mutate()}>
+              Processar agora
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {processamento ? (
+        <Card
+          className={`space-y-1 p-4 text-sm ${
+            processamento.situacao === "FINALIZADO"
+              ? "border-success/40 bg-success-soft text-success-strong"
+              : processamento.situacao === "EM_REVISAO" || processamento.situacao === "PENDENTE"
+                ? "border-warning/40 bg-warning-soft text-warning-strong"
+                : "border-border"
+          }`}
+        >
+          <p className="font-medium">
+            {processamento.situacao === "FINALIZADO"
+              ? "Finalizado no PIER"
+              : processamento.situacao === "JA_FINALIZADA"
+                ? "Já finalizada no PIER"
+                : processamento.situacao === "EM_REVISAO"
+                  ? "Em revisão — não finalizada"
+                  : processamento.situacao === "ERRO"
+                    ? "Erro no processamento"
+                    : "Pendência — não finalizada"}
+          </p>
+          <p>{processamento.motivo}</p>
+          <p className="text-xs opacity-80">
+            Status PIER: {processamento.statusPier ?? "—"} · Postagem:{" "}
+            {processamento.postagemId ?? "—"} · Finalizada em: {dataHora(processamento.finalizadaEm)}{" "}
+            · Atualizado em {dataHora(processamento.atualizadoEm)}
+          </p>
+        </Card>
+      ) : (
+        <Card className="border-warning/40 bg-warning-soft p-3 text-sm text-warning-strong">
+          <ShieldAlert className="mr-2 inline h-4 w-4" />
+          Nenhum processamento automático executado nesta solicitação.
+        </Card>
+      )}
 
       <Card className="space-y-2 p-4">
         <div className="flex flex-wrap items-center gap-2">
