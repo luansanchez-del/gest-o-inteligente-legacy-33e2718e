@@ -1,4 +1,11 @@
-import type { PierClient, PierFile, PierPost, PierRequest, PierUser } from "./pier.types";
+import type {
+  PierClient,
+  PierFile,
+  PierPost,
+  PierRequest,
+  PierRequestType,
+  PierUser,
+} from "./pier.types";
 
 type Raw = Record<string, unknown>;
 
@@ -23,9 +30,21 @@ const bool = (raw: Raw, ...keys: string[]): boolean => {
 function inferPurpose(typeName: string | null): PierRequest["purpose"] {
   const value = (typeName ?? "").toLowerCase();
   if (!value) return "UNMAPPED";
-  if (value.includes("contábil") || value.includes("contabil")) return "ACCOUNTING_CLOSING";
-  if (value.includes("fiscal") || value.includes("tribut")) return "TAX_CLOSING";
+  if (value.includes("movimento") && value.includes("financeiro"))
+    return "MONTHLY_FINANCIAL_MOVEMENT";
+  if (value.includes("contábil") || value.includes("contabil"))
+    return "ACCOUNTING_CLOSING";
+  if (value.includes("fiscal") || value.includes("tribut"))
+    return "TAX_CLOSING";
   return "OTHER";
+}
+
+export function mapRequestType(raw: Raw): PierRequestType {
+  return {
+    externalId: str(raw, "id", "idTipoSolicitacao", "externalId") ?? "",
+    name: str(raw, "nome", "name", "descricao") ?? "Sem nome",
+    status: str(raw, "status", "situacao"),
+  };
 }
 
 /**
@@ -46,7 +65,10 @@ export function separarNomeEDocumento(nomeCliente: string | null): {
   if (!nomeCliente) return { nome: null, documento: null };
   const match = nomeCliente.match(/^(.*?)\s*\[([^\]]+)\]\s*$/);
   if (!match) return { nome: nomeCliente.trim(), documento: null };
-  return { nome: (match[1] ?? "").trim() || null, documento: (match[2] ?? "").trim() || null };
+  return {
+    nome: (match[1] ?? "").trim() || null,
+    documento: (match[2] ?? "").trim() || null,
+  };
 }
 
 /** Mapeia o cliente da PIER Public API V2 para o modelo interno. */
@@ -114,7 +136,6 @@ export function mapPost(raw: Raw, requestExternalId: string): PierPost {
     postedAt: str(raw, "postadoEm", "postedAt", "criadoEm", "data"),
   };
 }
-
 
 /** Mapeia ArquivoPublic (/api/v2/arquivos). */
 export function mapFile(raw: Raw, requestExternalId: string | null): PierFile {
