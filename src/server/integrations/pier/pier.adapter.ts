@@ -70,7 +70,7 @@ export const pierAdapter: PierAdapter = {
    * Busca as solicitações de um tipo para a competência. O PIER não filtra por
    * competência, então usamos `busca` com MM/AAAA e conferimos a descrição.
    */
-  async listRequestsByType({ typeExternalId, referenceMonth }) {
+  async listRequestsByType({ typeExternalId, referenceMonth, incluirSemCompetencia }) {
     const [ano, mes] = referenceMonth.split("-");
     const termo = `${mes}/${ano}`;
     const resultados: PierRequest[] = [];
@@ -95,8 +95,13 @@ export const pierAdapter: PierAdapter = {
       if (lotes.some((lote) => lote.length < POR_PAGINA_SOLICITACOES)) break;
     }
 
+    // Sem competência interpretável a solicitação não é descartada: ela é devolvida
+    // para entrar na fila de "Revisão de competência".
     return resultados.filter(
-      (request) => request.externalId && request.referenceMonth === referenceMonth,
+      (request) =>
+        request.externalId &&
+        (request.referenceMonth === referenceMonth ||
+          (incluirSemCompetencia && !request.referenceMonth)),
     );
   },
 

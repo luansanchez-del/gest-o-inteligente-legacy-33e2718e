@@ -60,6 +60,8 @@ export interface PierAdapter {
   listRequestsByType(input: {
     typeExternalId: string;
     referenceMonth: string;
+    /** Inclui solicitações cuja competência não foi interpretada (revisão de competência). */
+    incluirSemCompetencia?: boolean;
   }): Promise<PierRequest[]>;
   listPosts(input: { requestExternalId: string }): Promise<PierPost[]>;
 }

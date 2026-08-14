@@ -9,6 +9,8 @@ type Linha = Record<string, unknown>;
 export function criarDbFalso(tabelas: Record<string, Linha[]>) {
   const tabelasLidas: string[] = [];
   const tabelasEscritas: string[] = [];
+  /** Registro das gravações, para conferir idempotência nos testes. */
+  const gravacoes: { tabela: string; operacao: "insert" | "upsert"; linhas: Linha[] }[] = [];
 
   function construir(tabela: string) {
     let linhas = [...(tabelas[tabela] ?? [])];
@@ -23,6 +25,18 @@ export function criarDbFalso(tabelas: Record<string, Linha[]>) {
       },
       in: (coluna: string, valores: unknown[]) => {
         linhas = linhas.filter((l) => valores.includes(l[coluna]));
+        return api;
+      },
+      gte: (coluna: string, valor: string) => {
+        linhas = linhas.filter((l) => String(l[coluna] ?? "") >= valor);
+        return api;
+      },
+      lte: (coluna: string, valor: string) => {
+        linhas = linhas.filter((l) => String(l[coluna] ?? "") <= valor);
+        return api;
+      },
+      is: (coluna: string, valor: null) => {
+        linhas = linhas.filter((l) => (l[coluna] ?? null) === valor);
         return api;
       },
       ilike: (coluna: string, padrao: string) => {
@@ -53,16 +67,26 @@ export function criarDbFalso(tabelas: Record<string, Linha[]>) {
           tabelasLidas.push(tabela);
           return construir(tabela).select(...(args as []));
         },
-        insert: () => {
+        insert: (linhas?: Linha | Linha[]) => {
           tabelasEscritas.push(tabela);
+          gravacoes.push({
+            tabela,
+            operacao: "insert",
+            linhas: Array.isArray(linhas) ? linhas : linhas ? [linhas] : [],
+          });
           return {
             select: () => ({ single: () => Promise.resolve({ data: { id: "x" }, error: null }) }),
             then: (r: (v: { data: null; error: null }) => unknown) =>
               Promise.resolve(r({ data: null, error: null })),
           };
         },
-        upsert: () => {
+        upsert: (linhas?: Linha | Linha[]) => {
           tabelasEscritas.push(tabela);
+          gravacoes.push({
+            tabela,
+            operacao: "upsert",
+            linhas: Array.isArray(linhas) ? linhas : linhas ? [linhas] : [],
+          });
           return {
             select: () => ({ single: () => Promise.resolve({ data: { id: "x" }, error: null }) }),
             then: (r: (v: { data: null; error: null }) => unknown) =>
@@ -101,5 +125,5 @@ export function criarDbFalso(tabelas: Record<string, Linha[]>) {
     isAdmin: true,
   } as AppContext;
 
-  return { ctx, tabelasLidas, tabelasEscritas };
+  return { ctx, tabelasLidas, tabelasEscritas, gravacoes };
 }
