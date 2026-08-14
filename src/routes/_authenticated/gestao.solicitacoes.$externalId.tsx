@@ -173,6 +173,19 @@ function SolicitacaoPage() {
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
 
+  const processar = useMutation({
+    mutationFn: () => processarSolicitacao({ data: { solicitacaoExternalId: id } }),
+    onSuccess: (r) => {
+      setConfirmarProcessar(false);
+      if (r.situacao === "FINALIZADO") toast.success(r.motivo);
+      else if (r.situacao === "ERRO") toast.error(r.motivo);
+      else toast.warning(r.motivo);
+      invalidar();
+    },
+    onError: (e) => toast.error(mensagemDeErro(e)),
+  });
+
+
   const decidir = useMutation({
     mutationFn: (decisao: "APPROVED" | "RETURNED" | "NEEDS_REVIEW") =>
       registrarDecisao({
