@@ -145,7 +145,7 @@ function contemDeclaracaoSemMovimento(value: string) {
   const texto = normalizarBusca(value);
   return (
     /\b(empresa\s+)?sem\s+moviment(?:o|acao)\b/.test(texto) ||
-    /\bnao\s+(?:houve|possui|teve)\s+moviment(?:o|acao)\b/.test(texto)
+    /\bnao\s+houve\s+moviment(?:o|acao)\b/.test(texto)
   );
 }
 
@@ -890,7 +890,7 @@ export async function notificarRevisaoPier(
     const mensagem = mascararTexto(
       [
         "Olá! Na conferência do Movimento Financeiro Mensal, não localizamos o extrato bancário da competência.",
-        "Se a empresa não teve movimentação no período, registre essa informação na solicitação.",
+        "Caso não existam lançamentos no período, registre expressamente essa condição na solicitação.",
         "Caso tenha movimentação, anexe o extrato bancário para liberar o início do fechamento contábil.",
         "A solicitação permanecerá aberta até a regularização.",
       ].join("\n"),
