@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
+  BellRing,
   CheckCircle2,
   FileUp,
   Info,
@@ -47,7 +48,7 @@ import {
   obterResultadoValidacao,
   registrarDecisao,
 } from "@/lib/api/validacao.functions";
-import { processarSolicitacao } from "@/lib/api/processamento.functions";
+import { notificarRevisaoPier, processarSolicitacao } from "@/lib/api/processamento.functions";
 import { formatarCnpj } from "@/lib/formato";
 import { mensagemDeErro } from "@/lib/erros";
 
@@ -115,6 +116,7 @@ function SolicitacaoPage() {
   const [notas, setNotas] = useState("");
   const [expandido, setExpandido] = useState<string | null>(null);
   const [confirmarProcessar, setConfirmarProcessar] = useState(false);
+  const [confirmarNotificacao, setConfirmarNotificacao] = useState(false);
 
   const detalhe = useQuery({
     queryKey: ["solicitacao", id],
@@ -181,6 +183,18 @@ function SolicitacaoPage() {
       if (r.situacao === "FINALIZADO") toast.success(r.motivo);
       else if (r.situacao === "ERRO") toast.error(r.motivo);
       else toast.warning(r.motivo);
+      invalidar();
+    },
+    onError: (e) => toast.error(mensagemDeErro(e)),
+  });
+
+
+  const notificarRevisao = useMutation({
+    mutationFn: () => notificarRevisaoPier({ data: { solicitacaoExternalId: id } }),
+    onSuccess: (r) => {
+      setConfirmarNotificacao(false);
+      if (r.jaEnviada) toast.info(r.mensagem);
+      else toast.success(r.mensagem);
       invalidar();
     },
     onError: (e) => toast.error(mensagemDeErro(e)),
@@ -290,6 +304,27 @@ function SolicitacaoPage() {
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={() => processar.mutate()}>
               Processar agora
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmarNotificacao} onOpenChange={setConfirmarNotificacao}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Notificar a responsável no PIER?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Será publicada uma mensagem privada com os alertas e as evidências da análise atual.
+              A solicitação continuará aberta e não será finalizada nem devolvida ao cliente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => notificarRevisao.mutate()}
+              disabled={notificarRevisao.isPending}
+            >
+              Enviar notificação privada
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -584,6 +619,20 @@ function SolicitacaoPage() {
               <AlertTriangle className="mr-2 h-4 w-4" />
               Enviar para revisão
             </Button>
+            {processamento?.situacao === "EM_REVISAO" && ultimaExecucao?.id ? (
+              <Button
+                variant="outline"
+                onClick={() => setConfirmarNotificacao(true)}
+                disabled={notificarRevisao.isPending}
+              >
+                <BellRing
+                  className={`mr-2 h-4 w-4 ${notificarRevisao.isPending ? "animate-pulse" : ""}`}
+                />
+                {notificarRevisao.isPending
+                  ? "Notificando no PIER…"
+                  : "Notificar responsável no PIER"}
+              </Button>
+            ) : null}
           </div>
           {resultado.data?.resultado === "REPROVADO" ? (
             <p className="text-xs text-destructive">
