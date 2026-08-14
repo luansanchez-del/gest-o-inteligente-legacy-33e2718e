@@ -401,10 +401,15 @@ function CarteiraPage() {
                   <TableCell>
                     {linha.vinculado ? (
                       <span className="text-success-strong">{linha.empresaNome}</span>
+                    ) : linha.motivoRevisao ? (
+                      <span className="text-warning-strong">
+                        Revisão · {MOTIVO_REVISAO[linha.motivoRevisao]}
+                      </span>
                     ) : (
                       <span className="text-muted-foreground">Não vinculado</span>
                     )}
                   </TableCell>
+
                   <TableCell className="text-muted-foreground">
                     {formatarDataHora(linha.sincronizadoEm)}
                   </TableCell>
