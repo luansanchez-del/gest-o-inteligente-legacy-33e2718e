@@ -104,7 +104,31 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
   );
   const abertas = new Set((aberturas ?? []).map((a) => a.company_id));
 
+  // Estado da análise interna (a última execução por solicitação).
+  const idsSolicitacoes = (solicitacoes ?? []).map((s) => s.id);
+  const analisePorRequest = new Map<string, { status: string; resultado: string | null }>();
+  if (idsSolicitacoes.length) {
+    const { data: execucoes } = await ctx.db
+      .from("validation_execution")
+      .select("request_id, status, result, created_at")
+      .eq("organization_id", ctx.organizationId)
+      .in("request_id", idsSolicitacoes)
+      .order("created_at", { ascending: false });
+    for (const e of execucoes ?? []) {
+      if (!analisePorRequest.has(e.request_id))
+        analisePorRequest.set(e.request_id, { status: e.status, resultado: e.result });
+    }
+  }
+
   let linhas: EscopoLinha[] = (solicitacoes ?? []).map((s) => {
+    const analise = analisePorRequest.get(s.id) ?? null;
+    const statusAnalise: EscopoLinha["statusAnalise"] = !analise
+      ? "NAO_ANALISADA"
+      : analise.status === "COMPLETED"
+        ? "CONCLUIDA"
+        : analise.status === "FAILED"
+          ? "FALHOU"
+          : "ANALISANDO";
     const usuario = s.responsible_external_id
       ? (usuarioPorId.get(s.responsible_external_id) ?? null)
       : null;
