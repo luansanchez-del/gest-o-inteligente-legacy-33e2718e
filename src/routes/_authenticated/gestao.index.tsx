@@ -1,12 +1,23 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { ArrowRight, Download, FilterX, Pencil, PlayCircle, Users } from "lucide-react";
+import {
+  ArrowRight,
+  Download,
+  FilterX,
+  Pencil,
+  PlayCircle,
+  Users,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/common/PageHeader";
 import { CargaCompetencias } from "@/components/gestao/CargaCompetencias";
-import { CarregandoTabela, ErroConsulta, EstadoVazio } from "@/components/common/EstadoConsulta";
+import {
+  CarregandoTabela,
+  ErroConsulta,
+  EstadoVazio,
+} from "@/components/common/EstadoConsulta";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -55,10 +66,14 @@ export const Route = createFileRoute("/_authenticated/gestao/")({
         content:
           "Defina o escopo do fechamento contábil por competência, departamento e responsável do PIER antes de iniciar a gestão.",
       },
-      { property: "og:title", content: "Gestão de fechamentos | Gestão Inteligente" },
+      {
+        property: "og:title",
+        content: "Gestão de fechamentos | Gestão Inteligente",
+      },
       {
         property: "og:description",
-        content: "Escopo por departamento e responsável, com pré-visualização antes de executar.",
+        content:
+          "Escopo por departamento e responsável, com pré-visualização antes de executar.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -73,13 +88,28 @@ const TODAS_FILAS = "__TODAS_FILAS__";
 
 /** Fila operacional do fechamento contábil. */
 const FILA: Record<string, { rotulo: string; classe: string }> = {
-  AGUARDANDO_DOCUMENTO: { rotulo: "Aguardando documento", classe: "text-muted-foreground" },
-  PRONTO_PARA_ANALISE: { rotulo: "Pronto para análise", classe: "text-primary" },
+  AGUARDANDO_DOCUMENTO: {
+    rotulo: "Aguardando documento",
+    classe: "text-muted-foreground",
+  },
+  PRONTO_PARA_ANALISE: {
+    rotulo: "Pronto para análise",
+    classe: "text-primary",
+  },
   ANALISANDO: { rotulo: "Analisando", classe: "text-warning-strong" },
-  ANALISE_CONCLUIDA: { rotulo: "Análise concluída", classe: "text-success-strong" },
-  REVISAO_NECESSARIA: { rotulo: "Revisão necessária", classe: "text-warning-strong" },
+  ANALISE_CONCLUIDA: {
+    rotulo: "Análise concluída",
+    classe: "text-success-strong",
+  },
+  REVISAO_NECESSARIA: {
+    rotulo: "Revisão necessária",
+    classe: "text-warning-strong",
+  },
   ERRO: { rotulo: "Erro objetivo", classe: "text-destructive" },
-  HISTORICO: { rotulo: "Histórico/finalizada", classe: "text-muted-foreground" },
+  HISTORICO: {
+    rotulo: "Histórico/finalizada",
+    classe: "text-muted-foreground",
+  },
 };
 
 function competenciaAtual() {
@@ -90,6 +120,9 @@ function competenciaAtual() {
 function GestaoPage() {
   const queryClient = useQueryClient();
   const [competencia, setCompetencia] = useState(competenciaAtual);
+  const [tipo, setTipo] = useState<"CONTABIL" | "MOVIMENTO_FINANCEIRO">(
+    "CONTABIL",
+  );
   const [competenciaFim, setCompetenciaFim] = useState("");
   const [busca, setBusca] = useState("");
   const [revisaoCompetencia, setRevisaoCompetencia] = useState(false);
@@ -103,7 +136,8 @@ function GestaoPage() {
 
   const equipe = useQuery({
     queryKey: ["equipe-pier", incluirInativos, "contabeis"],
-    queryFn: () => listarEquipe({ data: { incluirInativos, somenteContabeis: true } }),
+    queryFn: () =>
+      listarEquipe({ data: { incluirInativos, somenteContabeis: true } }),
   });
 
   const filtro = {
@@ -111,7 +145,7 @@ function GestaoPage() {
     competenciaFim: competenciaFim || null,
     revisaoCompetencia,
     busca: busca.trim() || null,
-    tipo: "CONTABIL" as const,
+    tipo,
     departamentoId: departamento === TODOS_DEPARTAMENTOS ? null : departamento,
     responsavelId: responsavel === TODOS_USUARIOS ? null : responsavel,
     statusFila: fila === TODAS_FILAS ? null : (fila as never),
@@ -121,6 +155,7 @@ function GestaoPage() {
     queryKey: [
       "preview-gestao",
       filtro.competencia,
+      filtro.tipo,
       filtro.competenciaFim,
       filtro.revisaoCompetencia,
       filtro.busca,
@@ -133,24 +168,23 @@ function GestaoPage() {
     placeholderData: (anterior) => anterior,
   });
 
-
   const sincEquipe = useMutation({
     mutationFn: () => sincronizarEquipe(),
     onSuccess: (r) => {
-      toast.success(`${r.processados} usuários e ${r.departamentos} departamentos atualizados.`);
+      toast.success(
+        `${r.processados} usuários e ${r.departamentos} departamentos atualizados.`,
+      );
       void queryClient.invalidateQueries({ queryKey: ["equipe-pier"] });
       void queryClient.invalidateQueries({ queryKey: ["equipe-completa"] });
       void queryClient.invalidateQueries({ queryKey: ["preview-gestao"] });
-
     },
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
 
   const prepararSolicitacoes = useMutation({
-    mutationFn: () =>
-      sincronizarSolicitacoes({ data: { competencia, tipo: "CONTABIL" as const } }),
+    mutationFn: () => sincronizarSolicitacoes({ data: { competencia, tipo } }),
     onSuccess: (r) => {
-      toast.success(`${r.processados} solicitações de fechamento carregadas da competência.`);
+      toast.success(`${r.processados} solicitações carregadas da competência.`);
       void queryClient.invalidateQueries({ queryKey: ["preview-gestao"] });
     },
     onError: (e) => toast.error(mensagemDeErro(e)),
@@ -161,7 +195,7 @@ function GestaoPage() {
       iniciarGestao({
         data: {
           ...filtro,
-          idempotencyKey: `${competencia}|CONTABIL|${filtro.departamentoId ?? "todos"}|${filtro.responsavelId ?? "todos"}`,
+          idempotencyKey: `${competencia}|${tipo}|${filtro.departamentoId ?? "todos"}|${filtro.responsavelId ?? "todos"}`,
         },
       }),
     onSuccess: (r) => {
@@ -178,7 +212,9 @@ function GestaoPage() {
   const processarLote = useMutation({
     mutationFn: async () => {
       await iniciar.mutateAsync();
-      const solicitacoes = (preview.data?.empresas ?? []).map((e) => e.solicitacaoId);
+      const solicitacoes = (preview.data?.empresas ?? []).map(
+        (e) => e.solicitacaoId,
+      );
       return processarEscopo({ data: { solicitacoes } });
     },
     onSuccess: (r) => {
@@ -191,11 +227,13 @@ function GestaoPage() {
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
 
-
   const renomear = useMutation({
     mutationFn: () =>
       renomearDepartamento({
-        data: { departamentoId: departamento, nome: novoNomeDepartamento.trim() },
+        data: {
+          departamentoId: departamento,
+          nome: novoNomeDepartamento.trim(),
+        },
       }),
     onSuccess: () => {
       toast.success("Nome do departamento atualizado.");
@@ -203,20 +241,22 @@ function GestaoPage() {
       void queryClient.invalidateQueries({ queryKey: ["equipe-pier"] });
       void queryClient.invalidateQueries({ queryKey: ["equipe-completa"] });
       void queryClient.invalidateQueries({ queryKey: ["preview-gestao"] });
-
     },
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
 
   const departamentos = equipe.data?.departamentos ?? [];
   const usuarios = equipe.data?.usuarios ?? [];
-  const departamentoSelecionado = departamentos.find((d) => d.id === departamento);
+  const departamentoSelecionado = departamentos.find(
+    (d) => d.id === departamento,
+  );
   const usuariosDoDepartamento = useMemo(() => {
     if (departamento === TODOS_DEPARTAMENTOS) return usuarios;
     return usuarios.filter((u) => u.departamentoId === departamento);
   }, [usuarios, departamento]);
 
   const filtrosAtivos =
+    tipo !== "CONTABIL" ||
     departamento !== TODOS_DEPARTAMENTOS ||
     responsavel !== TODOS_USUARIOS ||
     fila !== TODAS_FILAS ||
@@ -226,9 +266,9 @@ function GestaoPage() {
     incluirInativos ||
     competencia !== competenciaAtual();
 
-
   function limparFiltros() {
     setCompetencia(competenciaAtual());
+    setTipo("CONTABIL");
     setDepartamento(TODOS_DEPARTAMENTOS);
     setResponsavel(TODOS_USUARIOS);
     setFila(TODAS_FILAS);
@@ -238,15 +278,13 @@ function GestaoPage() {
     setIncluirInativos(false);
   }
 
-
-
   const dados = preview.data;
 
   return (
     <div className="space-y-6">
       <PageHeader
-        titulo="Gestão de fechamentos"
-        descricao="Escolha a competência, o departamento e o responsável do PIER antes de iniciar a gestão."
+        titulo="Gestão de solicitações contábeis"
+        descricao="Escolha o tipo, a competência e o responsável do PIER antes de iniciar a gestão."
         acoes={
           <div className="flex flex-wrap items-center gap-2">
             <Button
@@ -254,7 +292,9 @@ function GestaoPage() {
               onClick={() => sincEquipe.mutate()}
               disabled={sincEquipe.isPending}
             >
-              <Users className={`mr-2 h-4 w-4 ${sincEquipe.isPending ? "animate-pulse" : ""}`} />
+              <Users
+                className={`mr-2 h-4 w-4 ${sincEquipe.isPending ? "animate-pulse" : ""}`}
+              />
               Sincronizar equipe
             </Button>
             <Button
@@ -273,11 +313,12 @@ function GestaoPage() {
 
       {equipe.data && !equipe.data.integracao.available ? (
         <Card className="border-warning/40 bg-warning-soft p-4 text-sm text-warning-strong">
-          Integração com o PIER indisponível: {equipe.data.integracao.reason ?? "não configurada"}.
+          Integração com o PIER indisponível:{" "}
+          {equipe.data.integracao.reason ?? "não configurada"}.
         </Card>
       ) : null}
 
-      <CargaCompetencias />
+      {tipo === "CONTABIL" ? <CargaCompetencias /> : null}
 
       <Card className="p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
@@ -303,13 +344,21 @@ function GestaoPage() {
             />
           </div>
           <div className="space-y-1.5 lg:w-[190px]">
-            <Label>Tipo de fechamento</Label>
-            <Select value="CONTABIL" disabled>
+            <Label>Tipo de solicitação</Label>
+            <Select
+              value={tipo}
+              onValueChange={(value) =>
+                setTipo(value as "CONTABIL" | "MOVIMENTO_FINANCEIRO")
+              }
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="CONTABIL">Fechamento Contábil</SelectItem>
+                <SelectItem value="MOVIMENTO_FINANCEIRO">
+                  Movimento Financeiro Mensal
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -323,15 +372,22 @@ function GestaoPage() {
                   setResponsavel(TODOS_USUARIOS);
                 }}
               >
-                <SelectTrigger aria-label="Departamento responsável" className="flex-1">
+                <SelectTrigger
+                  aria-label="Departamento responsável"
+                  className="flex-1"
+                >
                   <SelectValue placeholder="Todos os departamentos" />
                 </SelectTrigger>
                 <SelectContent className="max-h-80">
-                  <SelectItem value={TODOS_DEPARTAMENTOS}>Todos os departamentos</SelectItem>
+                  <SelectItem value={TODOS_DEPARTAMENTOS}>
+                    Todos os departamentos
+                  </SelectItem>
                   {departamentos.map((d) => (
                     <SelectItem key={d.id} value={d.id}>
                       {d.nome}
-                      <span className="ml-1 text-muted-foreground">· {d.totalUsuarios}</span>
+                      <span className="ml-1 text-muted-foreground">
+                        · {d.totalUsuarios}
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -344,7 +400,9 @@ function GestaoPage() {
                   aria-label="Renomear departamento"
                   title="Definir nome legível do departamento"
                   onClick={() => {
-                    setNovoNomeDepartamento(departamentoSelecionado?.nome ?? "");
+                    setNovoNomeDepartamento(
+                      departamentoSelecionado?.nome ?? "",
+                    );
                     setRenomeando(true);
                   }}
                 >
@@ -439,7 +497,8 @@ function GestaoPage() {
           <DialogHeader>
             <DialogTitle>Nome do departamento</DialogTitle>
             <DialogDescription>
-              O PIER disponibiliza apenas o código do departamento ({departamentoSelecionado?.codigo}
+              O PIER disponibiliza apenas o código do departamento (
+              {departamentoSelecionado?.codigo}
               ). Defina aqui o nome que aparecerá nos filtros.
             </DialogDescription>
           </DialogHeader>
@@ -464,7 +523,10 @@ function GestaoPage() {
       </Dialog>
 
       {preview.isError ? (
-        <ErroConsulta error={preview.error} onRetry={() => void preview.refetch()} />
+        <ErroConsulta
+          error={preview.error}
+          onRetry={() => void preview.refetch()}
+        />
       ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
@@ -476,8 +538,12 @@ function GestaoPage() {
           { rotulo: "Avisos cadastrais", valor: dados?.totalAvisosCadastrais },
         ].map((item) => (
           <Card key={item.rotulo} className="p-4">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">{item.rotulo}</p>
-            <p className="text-2xl font-semibold tabular-nums">{item.valor ?? "—"}</p>
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+              {item.rotulo}
+            </p>
+            <p className="text-2xl font-semibold tabular-nums">
+              {item.valor ?? "—"}
+            </p>
           </Card>
         ))}
       </div>
@@ -486,11 +552,13 @@ function GestaoPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-sm">
             <p className="font-medium">
-              {dados?.departamento.nome ?? "—"} · {dados?.responsavel.nome ?? "—"}
+              {dados?.departamento.nome ?? "—"} ·{" "}
+              {dados?.responsavel.nome ?? "—"}
             </p>
             <p className="text-muted-foreground">
-              {dados?.solicitacoesEmCache ?? 0} solicitações de Fechamento Contábil em cache para{" "}
-              {competencia}. Sem responsável: {dados?.totalSemResponsavel ?? 0}.
+              {dados?.solicitacoesEmCache ?? 0} solicitações de Fechamento
+              Contábil em cache para {competencia}. Sem responsável:{" "}
+              {dados?.totalSemResponsavel ?? 0}.
             </p>
           </div>
           <Button
@@ -509,19 +577,25 @@ function GestaoPage() {
           </Button>
         </div>
 
-        <Dialog open={confirmarProcessamento} onOpenChange={setConfirmarProcessamento}>
+        <Dialog
+          open={confirmarProcessamento}
+          onOpenChange={setConfirmarProcessamento}
+        >
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Processar o escopo filtrado?</DialogTitle>
               <DialogDescription>
-                {dados?.totalEmpresas ?? 0} solicitação(ões) do escopo atual serão processadas:
-                conferência do estado real no PIER, leitura do balancete e análise. A postagem
-                privada e a finalização só acontecem quando o resultado for aprovado sem erros nem
-                alertas.
+                {dados?.totalEmpresas ?? 0} solicitação(ões) do escopo atual
+                serão processadas: conferência do estado real no PIER, leitura
+                do balancete e análise. A postagem privada e a finalização só
+                acontecem quando o resultado for aprovado sem erros nem alertas.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
-              <Button variant="ghost" onClick={() => setConfirmarProcessamento(false)}>
+              <Button
+                variant="ghost"
+                onClick={() => setConfirmarProcessamento(false)}
+              >
                 Cancelar
               </Button>
               <Button
@@ -534,7 +608,6 @@ function GestaoPage() {
           </DialogContent>
         </Dialog>
 
-
         {dados?.responsaveis.length ? (
           <div className="flex flex-wrap gap-2">
             {dados.responsaveis.map((r) => (
@@ -542,7 +615,8 @@ function GestaoPage() {
                 key={r.id ?? r.nome}
                 className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground"
               >
-                {r.nome}: <span className="tabular-nums font-medium">{r.total}</span>
+                {r.nome}:{" "}
+                <span className="tabular-nums font-medium">{r.total}</span>
               </span>
             ))}
           </div>
@@ -574,10 +648,13 @@ function GestaoPage() {
             </TableHeader>
             <TableBody>
               {dados.empresas.map((linha) => {
-                const analise = FILA[linha.statusFila] ?? FILA.AGUARDANDO_DOCUMENTO;
+                const analise =
+                  FILA[linha.statusFila] ?? FILA.AGUARDANDO_DOCUMENTO;
                 return (
                   <TableRow key={linha.solicitacaoId}>
-                    <TableCell className="tabular-nums">{linha.numero ?? "—"}</TableCell>
+                    <TableCell className="tabular-nums">
+                      {linha.numero ?? "—"}
+                    </TableCell>
                     <TableCell className="font-medium">
                       {linha.clienteNome}
                       {linha.avisoCadastral ? (
@@ -589,9 +666,15 @@ function GestaoPage() {
                         </span>
                       ) : null}
                     </TableCell>
-                    <TableCell className="tabular-nums">{formatarCnpj(linha.documento)}</TableCell>
-                    <TableCell className="tabular-nums">{linha.competencia ?? "—"}</TableCell>
-                    <TableCell>{linha.responsavelNome ?? "Sem responsável"}</TableCell>
+                    <TableCell className="tabular-nums">
+                      {formatarCnpj(linha.documento)}
+                    </TableCell>
+                    <TableCell className="tabular-nums">
+                      {linha.competencia ?? "—"}
+                    </TableCell>
+                    <TableCell>
+                      {linha.responsavelNome ?? "Sem responsável"}
+                    </TableCell>
                     <TableCell>{linha.statusSolicitacao ?? "—"}</TableCell>
                     <TableCell>
                       {linha.temAnexo ? (
@@ -610,7 +693,9 @@ function GestaoPage() {
                           params={{ externalId: linha.solicitacaoId }}
                           aria-label={`Abrir solicitação de ${linha.clienteNome}`}
                         >
-                          {linha.statusAnalise === "NAO_ANALISADA" ? "Analisar" : "Ver análise"}
+                          {linha.statusAnalise === "NAO_ANALISADA"
+                            ? "Analisar"
+                            : "Ver análise"}
                           <ArrowRight className="ml-1 h-4 w-4" />
                         </Link>
                       </Button>
