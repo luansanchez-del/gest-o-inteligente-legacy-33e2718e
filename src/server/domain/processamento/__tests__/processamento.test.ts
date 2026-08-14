@@ -32,17 +32,8 @@ const SOLICITACAO = {
   finished_at: null,
 };
 
-function contexto(linhas: Record<string, Record<string, unknown>[]> = {}) {
-  const { db } = criarDbFalso({ request_processing: [], audit_log: [], request: [], ...linhas });
-  return {
-    db,
-    organizationId: "org-1",
-    organizationName: "Org",
-    userId: "user-1",
-    roles: ["admin"],
-    canWrite: true,
-    isAdmin: true,
-  } as unknown as AppContext;
+function contexto(linhas: Record<string, Record<string, unknown>[]> = {}): AppContext {
+  return criarDbFalso({ request_processing: [], audit_log: [], request: [], ...linhas }).ctx;
 }
 
 function pierFalso(over: Record<string, unknown> = {}) {
