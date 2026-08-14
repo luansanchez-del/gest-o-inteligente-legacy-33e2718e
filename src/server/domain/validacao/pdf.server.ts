@@ -1,18 +1,22 @@
 /**
- * Extração de texto de PDF no servidor (runtime Worker).
- * Reconstrói as linhas a partir da posição vertical dos itens de texto,
- * porque o parser do balancete depende da quebra de linha real.
+ * Extração de texto de PDF no servidor.
  *
- * O pdf.js (via unpdf) pode devolver `transform` como Array, Float32Array ou
- * objeto array-like. Nenhum item de texto pode ser descartado por causa disso:
- * quando não houver coordenadas utilizáveis, caímos para a concatenação simples
- * usando `hasEOL` como quebra de linha.
+ * Usa apenas as APIs públicas do unpdf. extractTextItems preserva as posições
+ * necessárias para reconstruir as linhas do balancete; extractText é o fallback
+ * quando um PDF não fornece coordenadas utilizáveis.
  */
 
 interface ItemTexto {
   str?: string;
   hasEOL?: boolean;
   transform?: unknown;
+}
+
+interface ItemEstruturado {
+  str?: string;
+  x?: number;
+  y?: number;
+  hasEOL?: boolean;
 }
 
 export interface PdfExtraido {
@@ -37,22 +41,21 @@ export function normalizarTransform(transform: unknown): number[] | null {
 
 /** Reconstrói o texto de uma página a partir dos itens do pdf.js. */
 export function montarTextoDaPagina(itens: ItemTexto[]): string {
-  const comTexto = itens.filter((i) => typeof i?.str === "string");
+  const comTexto = itens.filter((i) => typeof i?.str === "string" && i.str.length > 0);
   if (!comTexto.length) return "";
 
   const posicionados = comTexto
     .map((item) => ({ item, transform: normalizarTransform(item.transform) }))
     .filter((i): i is { item: ItemTexto; transform: number[] } => i.transform !== null);
 
-  // Fallback seguro: sem coordenadas utilizáveis, concatena respeitando hasEOL.
   if (!posicionados.length) {
     const texto = comTexto
       .map((i) => (i.hasEOL ? `${i.str}\n` : i.str))
-      .join("")
+      .join(" ")
       .replace(/[ \t]{2,}/g, " ");
     return texto
       .split("\n")
-      .map((l) => l.trim())
+      .map((linha) => linha.trim())
       .filter(Boolean)
       .join("\n");
   }
@@ -71,7 +74,7 @@ export function montarTextoDaPagina(itens: ItemTexto[]): string {
     .map(([, itensDaLinha]) =>
       itensDaLinha
         .sort((a, b) => a.x - b.x)
-        .map((i) => i.str)
+        .map((item) => item.str)
         .join(" ")
         .replace(/\s{2,}/g, " ")
         .trim(),
@@ -80,17 +83,36 @@ export function montarTextoDaPagina(itens: ItemTexto[]): string {
     .join("\n");
 }
 
-export async function extrairTextoPdf(bytes: Uint8Array): Promise<PdfExtraido> {
-  const { getDocumentProxy } = await import("unpdf");
-  const pdf = await getDocumentProxy(bytes);
-  const paginas: string[] = [];
+/** Converte a estrutura pública do unpdf no formato do reconstrutor de linhas. */
+export function montarTextoDeItensEstruturados(itens: ItemEstruturado[]): string {
+  return montarTextoDaPagina(
+    itens.map((item) => ({
+      str: item.str,
+      hasEOL: item.hasEOL,
+      transform:
+        Number.isFinite(item.x) && Number.isFinite(item.y)
+          ? [1, 0, 0, 1, Number(item.x), Number(item.y)]
+          : undefined,
+    })),
+  );
+}
 
-  for (let numero = 1; numero <= pdf.numPages; numero++) {
-    const page = await pdf.getPage(numero);
-    const conteudo = (await page.getTextContent()) as { items?: unknown[] };
-    const itens = Array.isArray(conteudo?.items) ? (conteudo.items as ItemTexto[]) : [];
-    paginas.push(montarTextoDaPagina(itens));
+export async function extrairTextoPdf(bytes: Uint8Array): Promise<PdfExtraido> {
+  const { extractText, extractTextItems } = await import("unpdf");
+
+  // A API pública estruturada é estável entre runtimes e preserva x/y por página.
+  const estruturado = await extractTextItems(new Uint8Array(bytes));
+  let paginas = estruturado.items.map((itens) =>
+    montarTextoDeItensEstruturados(itens as ItemEstruturado[]),
+  );
+
+  // Alguns PDFs fornecem texto, mas não posições úteis. Nesse caso usamos a
+  // extração textual oficial, que preserva as quebras de página.
+  if (paginas.every((pagina) => !pagina.trim())) {
+    const simples = await extractText(new Uint8Array(bytes), { mergePages: false });
+    paginas = Array.isArray(simples.text) ? simples.text : [simples.text];
+    return { paginas, totalPaginas: simples.totalPages };
   }
 
-  return { paginas, totalPaginas: pdf.numPages };
+  return { paginas, totalPaginas: estruturado.totalPages };
 }
