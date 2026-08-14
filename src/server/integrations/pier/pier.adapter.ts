@@ -1,5 +1,7 @@
-import { pierGet, readPierConfig } from "./pier.http";
-import { mapClient, mapPost, mapRequest, mapUser } from "./pier.mapper";
+import { integracaoFalhou } from "../../lib/errors";
+
+import { pierDownload, pierGet, pierPost, readPierConfig } from "./pier.http";
+import { mapClient, mapFile, mapPost, mapRequest, mapUser } from "./pier.mapper";
 import type { PierAdapter, PierRequest } from "./pier.types";
 
 type Raw = Record<string, unknown>;

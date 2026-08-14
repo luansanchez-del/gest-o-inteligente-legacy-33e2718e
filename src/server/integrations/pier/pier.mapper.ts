@@ -1,4 +1,4 @@
-import type { PierClient, PierPost, PierRequest, PierUser } from "./pier.types";
+import type { PierClient, PierFile, PierPost, PierRequest, PierUser } from "./pier.types";
 
 type Raw = Record<string, unknown>;
 
@@ -111,5 +111,19 @@ export function mapPost(raw: Raw, requestExternalId: string): PierPost {
     authorName: str(raw, "authorName", "autor", "usuario"),
     content: str(raw, "content", "mensagem", "texto"),
     postedAt: str(raw, "postedAt", "criadoEm", "data"),
+  };
+}
+
+/** Mapeia ArquivoPublic (/api/v2/arquivos). */
+export function mapFile(raw: Raw, requestExternalId: string | null): PierFile {
+  const tamanho = raw["tamanho"] ?? raw["tamanhoBytes"] ?? raw["size"];
+  return {
+    externalId: str(raw, "id", "idArquivo", "externalId") ?? "",
+    requestExternalId: str(raw, "idSolicitacao") ?? requestExternalId,
+    name: str(raw, "nome", "nomeArquivo", "filename", "name"),
+    category: str(raw, "categoria", "nomeCategoria", "tipo", "descricao"),
+    mimeType: str(raw, "mimeType", "contentType", "tipoConteudo"),
+    sizeBytes: typeof tamanho === "number" ? tamanho : null,
+    createdAt: str(raw, "criadoEm", "dataUpload", "data", "enviadoEm"),
   };
 }
