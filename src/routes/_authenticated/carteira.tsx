@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link2, Link2Off, RefreshCw, Stethoscope, X } from "lucide-react";
+import { FileSearch, Info, RefreshCw, Stethoscope, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/common/PageHeader";
@@ -12,7 +12,6 @@ import {
 } from "@/components/common/EstadoConsulta";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -30,25 +29,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
-  desvincularCliente,
   diagnosticarConexaoPier,
   listarCarteira,
-  previsualizarVinculoAutomatico,
+  listarSolicitacoesDoCliente,
   sincronizarCarteira,
-  vincularCarteiraAutomaticamente,
-
-  vincularCliente,
-  vincularClientesEmLote,
 } from "@/lib/api/carteira.functions";
 import { formatarCnpj, formatarDataHora } from "@/lib/formato";
 import { mensagemDeErro } from "@/lib/erros";
@@ -60,12 +51,12 @@ export const Route = createFileRoute("/_authenticated/carteira")({
       {
         name: "description",
         content:
-          "Clientes sincronizados do PIER, com tributação, status e situação do vínculo com as empresas internas.",
+          "Catálogo dos clientes sincronizados do PIER para localizar clientes e suas solicitações de fechamento contábil.",
       },
       { property: "og:title", content: "Carteira PIER | Gestão Inteligente" },
       {
         property: "og:description",
-        content: "Consulte e vincule os clientes do PIER às empresas da sua carteira.",
+        content: "Consulte clientes do PIER e abra as solicitações de fechamento contábil.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -75,13 +66,6 @@ export const Route = createFileRoute("/_authenticated/carteira")({
 });
 
 type StatusFiltro = "Todos" | "Ativo" | "Inativo";
-type SituacaoFiltro = "TODOS" | "VINCULADO" | "NAO_VINCULADO" | "REVISAO";
-const MOTIVO_REVISAO: Record<string, string> = {
-  SEM_DOCUMENTO: "Sem CNPJ/CPF",
-  DOCUMENTO_INVALIDO: "Documento inválido",
-  DOCUMENTO_DUPLICADO: "CNPJ duplicado",
-};
-
 const TODOS_REGIMES = "__TODOS__";
 
 function CarteiraPage() {
@@ -89,60 +73,45 @@ function CarteiraPage() {
   const [busca, setBusca] = useState("");
   const [status, setStatus] = useState<StatusFiltro>("Todos");
   const [regime, setRegime] = useState<string>(TODOS_REGIMES);
-  const [situacao, setSituacao] = useState<SituacaoFiltro>("TODOS");
-  const [selecionados, setSelecionados] = useState<string[]>([]);
-  const [preview, setPreview] = useState<{
-    total: number;
-    jaVinculados: number;
-    reutilizarEmpresas: number;
-    criarEmpresas: number;
-    conflitos: number;
-    semDocumento: number;
+  const [cliente, setCliente] = useState<{
+    externalId: string;
+    nome: string;
+    documento: string | null;
   } | null>(null);
 
   const consulta = useQuery({
-    queryKey: ["carteira", busca, status, regime, situacao],
+    queryKey: ["carteira", busca, status, regime],
     queryFn: () =>
       listarCarteira({
         data: {
           busca,
           ...(status === "Todos" ? {} : { status }),
           ...(regime === TODOS_REGIMES ? {} : { regime }),
-          ...(situacao === "TODOS" ? {} : { situacao }),
         },
       }),
     placeholderData: (anterior) => anterior,
+  });
+
+  const solicitacoes = useQuery({
+    queryKey: ["carteira-solicitacoes", cliente?.externalId],
+    enabled: cliente !== null,
+    queryFn: () =>
+      listarSolicitacoesDoCliente({
+        data: { clientExternalId: cliente?.externalId, documento: cliente?.documento },
+      }),
   });
 
   const sincronizar = useMutation({
     mutationFn: () => sincronizarCarteira(),
     onSuccess: (r) => {
       toast.success(
-        `Sincronizados ${r.total} clientes · ${r.processados} processados · ${r.falhas} falhas. Use “Pré-visualizar vínculo” para vincular.`,
-        { duration: 9000 },
+        `Carteira atualizada: ${r.total} clientes · ${r.processados} processados · ${r.falhas} falhas.`,
+        { duration: 8000 },
       );
       void queryClient.invalidateQueries({ queryKey: ["carteira"] });
     },
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
-
-  const previa = useMutation({
-    mutationFn: () => previsualizarVinculoAutomatico(),
-    onSuccess: (p) => setPreview(p),
-    onError: (e) => toast.error(mensagemDeErro(e)),
-  });
-
-  const vincularAuto = useMutation({
-    mutationFn: () => vincularCarteiraAutomaticamente(),
-    onSuccess: (v) => {
-      setPreview(null);
-      toast.success(v.mensagem, { duration: 9000 });
-      void queryClient.invalidateQueries({ queryKey: ["carteira"] });
-    },
-    onError: (e) => toast.error(mensagemDeErro(e)),
-  });
-
-
 
   const diagnosticar = useMutation({
     mutationFn: () => diagnosticarConexaoPier(),
@@ -158,68 +127,22 @@ function CarteiraPage() {
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
 
-  const vincular = useMutation({
-    mutationFn: (pierClientId: string) => vincularCliente({ data: { pierClientId } }),
-    onSuccess: () => {
-      toast.success("Cliente vinculado a uma empresa interna.");
-      void queryClient.invalidateQueries({ queryKey: ["carteira"] });
-    },
-    onError: (e) => toast.error(mensagemDeErro(e)),
-  });
-
-  const desvincular = useMutation({
-    mutationFn: (pierClientId: string) => desvincularCliente({ data: { pierClientId } }),
-    onSuccess: () => {
-      toast.success("Vínculo removido.");
-      void queryClient.invalidateQueries({ queryKey: ["carteira"] });
-    },
-    onError: (e) => toast.error(mensagemDeErro(e)),
-  });
-
-  const vincularLote = useMutation({
-    mutationFn: (pierClientIds: string[]) => vincularClientesEmLote({ data: { pierClientIds } }),
-    onSuccess: (r) => {
-      if (r.falhas.length) {
-        toast.warning(`${r.vinculados} vinculados, ${r.falhas.length} com falha.`, {
-          description: r.falhas[0]?.motivo,
-        });
-      } else {
-        toast.success(`${r.vinculados} clientes vinculados.`);
-      }
-      setSelecionados([]);
-      void queryClient.invalidateQueries({ queryKey: ["carteira"] });
-    },
-    onError: (e) => toast.error(mensagemDeErro(e)),
-  });
-
   const resumo = consulta.data?.resumo;
   const linhas = consulta.data?.linhas ?? [];
   const ultimaSincronizacao = resumo?.ultimaSincronizacao;
   const regimes = resumo?.filtrosDisponiveis?.regimes ?? [];
-  const selecionaveis = linhas.filter((l) => !l.vinculado);
-  const selecionadosValidos = selecionados.filter((id) =>
-    selecionaveis.some((l) => l.pierClientId === id),
-  );
-  const todosSelecionados =
-    selecionaveis.length > 0 && selecionadosValidos.length === selecionaveis.length;
-  const alternarTodos = (marcar: boolean) =>
-    setSelecionados(marcar ? selecionaveis.map((l) => l.pierClientId) : []);
-  const alternarLinha = (id: string, marcar: boolean) =>
-    setSelecionados((atual) => (marcar ? [...atual, id] : atual.filter((i) => i !== id)));
-  const temFiltroAtivo =
-    busca.trim() !== "" || status !== "Todos" || regime !== TODOS_REGIMES || situacao !== "TODOS";
+  const temFiltroAtivo = busca.trim() !== "" || status !== "Todos" || regime !== TODOS_REGIMES;
   const limparFiltros = () => {
     setBusca("");
     setStatus("Todos");
     setRegime(TODOS_REGIMES);
-    setSituacao("TODOS");
   };
 
   return (
     <div className="space-y-6">
       <PageHeader
         titulo="Carteira PIER"
-        descricao="Clientes sincronizados do PIER e o vínculo com as empresas internas."
+        descricao="Catálogo de clientes do PIER usado para localizar clientes e suas solicitações."
         acoes={
           <div className="flex items-center gap-2">
             <Button
@@ -231,17 +154,6 @@ function CarteiraPage() {
               <Stethoscope className="mr-2 h-4 w-4" />
               Testar conexão
             </Button>
-            <Button
-              variant="outline"
-              onClick={() => previa.mutate()}
-              disabled={previa.isPending || vincularAuto.isPending}
-              title="Simular o vínculo automático sem gravar nada"
-            >
-              <Link2 className={`mr-2 h-4 w-4 ${previa.isPending ? "animate-pulse" : ""}`} />
-              {previa.isPending ? "Analisando…" : "Pré-visualizar vínculo"}
-            </Button>
-
-
             <Button onClick={() => sincronizar.mutate()} disabled={sincronizar.isPending}>
               <RefreshCw
                 className={`mr-2 h-4 w-4 ${sincronizar.isPending ? "animate-spin" : ""}`}
@@ -252,58 +164,10 @@ function CarteiraPage() {
         }
       />
 
-      <AlertDialog
-        open={preview !== null}
-        onOpenChange={(aberto) => {
-          if (!aberto && !vincularAuto.isPending) setPreview(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar vínculo automático</AlertDialogTitle>
-            <AlertDialogDescription>
-              Nada foi gravado ainda. Estes são os números da pré-visualização:
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {preview ? (
-            <ul className="space-y-1 text-sm">
-              <li>
-                Clientes na carteira: <strong className="tabular-nums">{preview.total}</strong>
-              </li>
-              <li>
-                Já vinculados: <strong className="tabular-nums">{preview.jaVinculados}</strong>
-              </li>
-              <li>
-                Empresas existentes a reutilizar:{" "}
-                <strong className="tabular-nums">{preview.reutilizarEmpresas}</strong>
-              </li>
-              <li>
-                Empresas a criar: <strong className="tabular-nums">{preview.criarEmpresas}</strong>
-              </li>
-              <li>
-                Conflitos: <strong className="tabular-nums">{preview.conflitos}</strong>
-              </li>
-              <li>
-                Sem documento: <strong className="tabular-nums">{preview.semDocumento}</strong>
-              </li>
-            </ul>
-          ) : null}
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={vincularAuto.isPending}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => {
-                e.preventDefault();
-                if (!vincularAuto.isPending) vincularAuto.mutate();
-              }}
-              disabled={vincularAuto.isPending}
-            >
-              {vincularAuto.isPending ? "Vinculando…" : "Confirmar e vincular"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-
+      <Card className="flex items-start gap-2 border-primary/30 bg-primary/5 p-4 text-sm">
+        <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+        <p>Carteira PIER — catálogo para localizar clientes e solicitações.</p>
+      </Card>
 
       {resumo && !resumo.integracao.available ? (
         <Card className="border-warning/40 bg-warning-soft p-4 text-sm text-warning-strong">
@@ -329,31 +193,33 @@ function CarteiraPage() {
             </p>
           ) : null}
         </Card>
-
         <Card className="p-4">
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">Vinculados</p>
-          <p className="text-2xl font-semibold tabular-nums">{resumo?.vinculados ?? "—"}</p>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Ativos</p>
+          <p className="text-2xl font-semibold tabular-nums">{resumo?.ativos ?? "—"}</p>
         </Card>
         <Card className="p-4">
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">Sem vínculo</p>
-          <p className="text-2xl font-semibold tabular-nums">{resumo?.naoVinculados ?? "—"}</p>
-        </Card>
-        <Card className="p-4">
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">Em revisão</p>
-          <p className="text-2xl font-semibold tabular-nums">{resumo?.emRevisao ?? "—"}</p>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Inativos</p>
+          <p className="text-2xl font-semibold tabular-nums">{resumo?.inativos ?? "—"}</p>
           <p className="mt-1 text-[11px] text-muted-foreground">
-            Sem documento: {resumo?.semDocumento ?? 0} · CNPJ duplicado:{" "}
-            {resumo?.documentosDuplicados ?? 0}
+            Outros status: {resumo?.outrosStatus ?? 0}
           </p>
-          <p className="text-[11px] text-muted-foreground">
-            Última sincronização:{" "}
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+            Última sincronização
+          </p>
+          <p className="text-sm font-medium">
             {ultimaSincronizacao
               ? formatarDataHora(ultimaSincronizacao.finishedAt ?? ultimaSincronizacao.startedAt)
               : "nunca sincronizada"}
           </p>
+          {ultimaSincronizacao ? (
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {ultimaSincronizacao.processados} processados · {ultimaSincronizacao.falhas} falhas
+            </p>
+          ) : null}
         </Card>
       </div>
-
 
       <Card className="overflow-hidden">
         <div className="flex flex-col gap-3 border-b border-border p-4 md:flex-row md:flex-wrap md:items-center">
@@ -374,11 +240,11 @@ function CarteiraPage() {
             </SelectContent>
           </Select>
           <Select value={regime} onValueChange={setRegime}>
-            <SelectTrigger className="md:w-56" aria-label="Regime tributário">
+            <SelectTrigger className="md:w-56" aria-label="Tributação">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={TODOS_REGIMES}>Todos os regimes</SelectItem>
+              <SelectItem value={TODOS_REGIMES}>Todas as tributações</SelectItem>
               {regimes.map((r) => (
                 <SelectItem key={r} value={r}>
                   {r}
@@ -386,18 +252,6 @@ function CarteiraPage() {
               ))}
             </SelectContent>
           </Select>
-          <Select value={situacao} onValueChange={(v) => setSituacao(v as SituacaoFiltro)}>
-            <SelectTrigger className="md:w-48" aria-label="Situação do vínculo">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="TODOS">Todos os vínculos</SelectItem>
-              <SelectItem value="VINCULADO">Vinculados</SelectItem>
-              <SelectItem value="NAO_VINCULADO">Sem vínculo</SelectItem>
-              <SelectItem value="REVISAO">Em revisão</SelectItem>
-            </SelectContent>
-          </Select>
-
           {temFiltroAtivo ? (
             <Button variant="ghost" size="sm" onClick={limparFiltros}>
               <X className="mr-2 h-4 w-4" />
@@ -405,34 +259,6 @@ function CarteiraPage() {
             </Button>
           ) : null}
         </div>
-
-        {selecionaveis.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/40 px-4 py-2 text-sm">
-            <span className="text-muted-foreground">
-              {selecionadosValidos.length} de {selecionaveis.length} sem vínculo selecionados
-            </span>
-            <Button
-              size="sm"
-              onClick={() => vincularLote.mutate(selecionadosValidos)}
-              disabled={selecionadosValidos.length === 0 || vincularLote.isPending}
-            >
-              <Link2 className="mr-2 h-4 w-4" />
-              {vincularLote.isPending
-                ? "Vinculando…"
-                : `Vincular selecionados${
-                    selecionadosValidos.length ? ` (${selecionadosValidos.length})` : ""
-                  }`}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => alternarTodos(!todosSelecionados)}
-              disabled={vincularLote.isPending}
-            >
-              {todosSelecionados ? "Limpar seleção" : "Selecionar todos sem vínculo"}
-            </Button>
-          </div>
-        ) : null}
 
         {consulta.isLoading ? (
           <CarregandoTabela />
@@ -449,19 +275,10 @@ function CarteiraPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-10">
-                  <Checkbox
-                    checked={todosSelecionados}
-                    onCheckedChange={(v) => alternarTodos(v === true)}
-                    disabled={selecionaveis.length === 0}
-                    aria-label="Selecionar todos sem vínculo"
-                  />
-                </TableHead>
                 <TableHead>Nome</TableHead>
                 <TableHead>CNPJ/CPF</TableHead>
                 <TableHead>Tributação</TableHead>
                 <TableHead>Status PIER</TableHead>
-                <TableHead>Situação do vínculo</TableHead>
                 <TableHead>Última sincronização</TableHead>
                 <TableHead className="text-right">Ação</TableHead>
               </TableRow>
@@ -469,55 +286,28 @@ function CarteiraPage() {
             <TableBody>
               {linhas.map((linha) => (
                 <TableRow key={linha.pierClientId}>
-                  <TableCell>
-                    <Checkbox
-                      checked={selecionadosValidos.includes(linha.pierClientId)}
-                      onCheckedChange={(v) => alternarLinha(linha.pierClientId, v === true)}
-                      disabled={linha.vinculado}
-                      aria-label={`Selecionar ${linha.nome}`}
-                    />
-                  </TableCell>
                   <TableCell className="font-medium">{linha.nome}</TableCell>
                   <TableCell className="tabular-nums">{formatarCnpj(linha.documento)}</TableCell>
                   <TableCell>{linha.regime ?? "—"}</TableCell>
                   <TableCell>{linha.status ?? "—"}</TableCell>
-                  <TableCell>
-                    {linha.vinculado ? (
-                      <span className="text-success-strong">{linha.empresaNome}</span>
-                    ) : linha.motivoRevisao ? (
-                      <span className="text-warning-strong">
-                        Revisão · {MOTIVO_REVISAO[linha.motivoRevisao]}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground">Não vinculado</span>
-                    )}
-                  </TableCell>
-
                   <TableCell className="text-muted-foreground">
                     {formatarDataHora(linha.sincronizadoEm)}
                   </TableCell>
                   <TableCell className="text-right">
-                    {linha.vinculado ? (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => desvincular.mutate(linha.pierClientId)}
-                        disabled={desvincular.isPending}
-                      >
-                        <Link2Off className="mr-2 h-4 w-4" />
-                        Desvincular
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => vincular.mutate(linha.pierClientId)}
-                        disabled={vincular.isPending}
-                      >
-                        <Link2 className="mr-2 h-4 w-4" />
-                        Vincular
-                      </Button>
-                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        setCliente({
+                          externalId: linha.externalId,
+                          nome: linha.nome,
+                          documento: linha.documento,
+                        })
+                      }
+                    >
+                      <FileSearch className="mr-2 h-4 w-4" />
+                      Ver solicitações
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
@@ -525,6 +315,65 @@ function CarteiraPage() {
           </Table>
         )}
       </Card>
+
+      <Dialog open={cliente !== null} onOpenChange={(aberto) => !aberto && setCliente(null)}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{cliente?.nome ?? "Solicitações"}</DialogTitle>
+            <DialogDescription>
+              Fechamento Contábil · {formatarCnpj(cliente?.documento ?? null)}
+            </DialogDescription>
+          </DialogHeader>
+
+          {solicitacoes.isLoading ? (
+            <CarregandoTabela />
+          ) : solicitacoes.isError ? (
+            <ErroConsulta
+              error={solicitacoes.error}
+              onRetry={() => void solicitacoes.refetch()}
+            />
+          ) : (solicitacoes.data ?? []).length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              Nenhuma solicitação de Fechamento Contábil em cache para este cliente. Sincronize a
+              competência na tela Gestão.
+            </p>
+          ) : (
+            <div className="max-h-[60vh] overflow-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Competência</TableHead>
+                    <TableHead>Nº</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Responsável</TableHead>
+                    <TableHead>Departamento</TableHead>
+                    <TableHead className="text-right">Documento</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(solicitacoes.data ?? []).map((s) => (
+                    <TableRow key={s.externalId}>
+                      <TableCell className="tabular-nums">{s.competencia ?? "—"}</TableCell>
+                      <TableCell>{s.numero ?? s.externalId}</TableCell>
+                      <TableCell>{s.status ?? "—"}</TableCell>
+                      <TableCell>{s.responsavelNome ?? "Sem responsável"}</TableCell>
+                      <TableCell>{s.departamentoNome ?? "—"}</TableCell>
+                      <TableCell className="text-right text-muted-foreground">
+                        {s.documentoDisponivel
+                          ? "PDF interno"
+                          : s.temAnexoPier
+                            ? "Anexo no PIER"
+                            : "Sem anexo"}
+                        {s.postagens ? ` · ${s.postagens} postagens` : ""}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
