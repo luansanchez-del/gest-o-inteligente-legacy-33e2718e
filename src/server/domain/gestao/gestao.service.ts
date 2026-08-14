@@ -147,6 +147,10 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
       vinculada: Boolean(s.company_id),
       statusSolicitacao: s.status,
       jaAberta: Boolean(s.company_id && abertas.has(s.company_id)),
+      competencia: s.reference_month,
+      temAnexo: Boolean(s.has_attachment),
+      statusAnalise,
+      resultadoAnalise: analise?.resultado ?? null,
     };
   });
 
