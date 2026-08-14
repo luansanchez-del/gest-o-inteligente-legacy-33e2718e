@@ -241,9 +241,11 @@ export async function listarSolicitacoesDoCliente(
     if (error)
       throw new AppError("INESPERADO", "Não foi possível carregar as solicitações.", error.message);
     for (const linha of (data ?? []) as LinhaRequest[]) {
+      const casaCliente = Boolean(externalId) && linha.client_external_id === externalId;
       // O CNPJ do PIER pode vir formatado; conferimos pelos dígitos.
-      if (digitos && !externalId && !normalizarDocumento(linha.client_document).includes(digitos))
-        continue;
+      const casaDocumento =
+        Boolean(digitos) && normalizarDocumento(linha.client_document) === digitos;
+      if (!casaCliente && !casaDocumento) continue;
       porId.set(linha.id, linha);
     }
   }
