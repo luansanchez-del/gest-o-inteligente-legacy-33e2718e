@@ -63,7 +63,7 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
   const { data: solicitacoes, error } = await ctx.db
     .from("request")
     .select(
-      "id, external_id, number, description, status, client_name, client_document, company_id, responsible_external_id, responsible_name, department_external_id",
+      "id, external_id, number, description, status, client_name, client_document, company_id, responsible_external_id, responsible_name, department_external_id, has_attachment, reference_month",
     )
     .eq("organization_id", ctx.organizationId)
     .eq("reference_month", filtro.competencia)
