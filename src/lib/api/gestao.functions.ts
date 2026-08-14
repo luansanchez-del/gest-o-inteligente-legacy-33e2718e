@@ -5,17 +5,95 @@ import { comContexto, emailDoToken } from "./contexto";
 
 type EscopoInput = {
   competencia: string;
+  competenciaFim?: string | null;
   tipo: "CONTABIL" | "FISCAL" | "OUTRO";
   departamentoId?: string | null;
   responsavelId?: string | null;
+  statusFila?: never;
+  revisaoCompetencia?: boolean;
+  busca?: string | null;
 };
 
+const COMPETENCIA = /^\d{4}-\d{2}$/;
+
 function validarEscopo(input: EscopoInput) {
-  if (!input?.competencia || !/^\d{4}-\d{2}$/.test(input.competencia))
+  if (!input?.competencia || !COMPETENCIA.test(input.competencia))
     throw new Error("VALIDACAO::Informe a competência no formato AAAA-MM.");
+  if (input.competenciaFim && !COMPETENCIA.test(input.competenciaFim))
+    throw new Error("VALIDACAO::Informe a competência final no formato AAAA-MM.");
   if (!input.tipo) throw new Error("VALIDACAO::Informe o tipo de fechamento.");
   return input;
 }
+
+function validarIntervalo(input: { inicio: string; fim: string }) {
+  if (!COMPETENCIA.test(input?.inicio ?? "") || !COMPETENCIA.test(input?.fim ?? ""))
+    throw new Error("VALIDACAO::Informe as competências no formato AAAA-MM.");
+  if (input.inicio > input.fim)
+    throw new Error("VALIDACAO::A competência inicial deve ser anterior ou igual à final.");
+  return input;
+}
+
+export const previsualizarCarga = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(validarIntervalo)
+  .handler(async ({ data, context }) =>
+    comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
+      const service = await import("@/server/domain/gestao/carga.service");
+      return service.previsualizarCarga(ctx, data);
+    }),
+  );
+
+export const abrirCarga = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { inicio: string; fim: string; tipoCarga: "HISTORICA" | "MENSAL" }) => {
+    validarIntervalo(input);
+    return input;
+  })
+  .handler(async ({ data, context }) =>
+    comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
+      const service = await import("@/server/domain/gestao/carga.service");
+      return service.abrirCarga(ctx, data);
+    }),
+  );
+
+export const carregarCompetencia = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { competencia: string; runId?: string | null }) => {
+    if (!COMPETENCIA.test(input?.competencia ?? ""))
+      throw new Error("VALIDACAO::Informe a competência no formato AAAA-MM.");
+    return input;
+  })
+  .handler(async ({ data, context }) =>
+    comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
+      const service = await import("@/server/domain/gestao/carga.service");
+      return service.carregarCompetencia(ctx, data);
+    }),
+  );
+
+export const encerrarCarga = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(
+    (input: { runId: string; status: "COMPLETED" | "FAILED" | "CANCELLED"; mensagem?: string }) => {
+      if (!input?.runId) throw new Error("VALIDACAO::Carga não identificada.");
+      return input;
+    },
+  )
+  .handler(async ({ data, context }) =>
+    comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
+      const service = await import("@/server/domain/gestao/carga.service");
+      return service.encerrarCarga(ctx, data);
+    }),
+  );
+
+export const estadoCarga = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) =>
+    comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
+      const service = await import("@/server/domain/gestao/carga.service");
+      return service.estadoCarga(ctx);
+    }),
+  );
+
 
 export const listarEquipe = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
