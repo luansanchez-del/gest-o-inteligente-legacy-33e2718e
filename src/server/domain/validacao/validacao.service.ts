@@ -126,6 +126,16 @@ export async function detalharSolicitacao(
   const instrucoes = await listarInstrucoes(ctx, solicitacao.id);
   const efetiva = instrucaoEfetiva(instrucoes);
 
+  const { data: processamento } = await ctx.db
+    .from("request_processing")
+    .select(
+      "outcome, reason, pier_post_external_id, posted_at, finalized_at, pier_status, execution_id, updated_at",
+    )
+    .eq("organization_id", ctx.organizationId)
+    .eq("request_id", solicitacao.id)
+    .maybeSingle();
+
+
   const [{ data: anexos }, { data: execucoes }, { data: decisoes }, { data: auditoria }] =
     await Promise.all([
       ctx.db
