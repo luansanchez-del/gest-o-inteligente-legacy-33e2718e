@@ -42,6 +42,7 @@ import {
   sincronizarEquipe,
   sincronizarSolicitacoes,
 } from "@/lib/api/gestao.functions";
+import { processarEscopo } from "@/lib/api/processamento.functions";
 import { formatarCnpj } from "@/lib/formato";
 import { mensagemDeErro } from "@/lib/erros";
 
