@@ -90,6 +90,55 @@ function limparNome(nome: string) {
   return nome.replace(/\s{2,}/g, " ").replace(/[.\s]+$/, "").trim();
 }
 
+interface InicioDeLinha {
+  /** Classificação contábil (ex.: 1.1.01.001.001). */
+  codigo: string;
+  /** Número interno de conta do sistema contábil, quando presente. */
+  contaInterna: string | null;
+  /** true = sintética (marcador "S"), false = analítica (marcador "A"), null = inferir. */
+  sintetica: boolean | null;
+  /** Restante da linha (nome + valores). */
+  resto: string;
+}
+
+/**
+ * Suporta os dois layouts encontrados nos balancetes:
+ *  a) "1.1.1.01.0001 CAIXA GERAL 1.688,24 ..."  → classificação no início
+ *  b) "5   1.1.01.001.001 Caixa ..." ou "1 S 1 ATIVO ..." → conta interna,
+ *     marcador sintético opcional (S/A) e então a classificação.
+ */
+export function interpretarInicioDaLinha(texto: string): InicioDeLinha | null {
+  // (b) conta interna + marcador S/A + classificação
+  const comMarcador = texto.match(/^(\d+)\s+([SA])\s+(\d+(?:\.\d+)*)\s+(\D.*)$/);
+  if (comMarcador) {
+    return {
+      codigo: comMarcador[3]!,
+      contaInterna: comMarcador[1]!,
+      sintetica: comMarcador[2] === "S",
+      resto: comMarcador[4]!,
+    };
+  }
+
+  // (b) conta interna + classificação com separadores, sem marcador
+  const semMarcador = texto.match(/^(\d+)\s+(\d+(?:\.\d+)+)\s+(\D.*)$/);
+  if (semMarcador) {
+    return {
+      codigo: semMarcador[2]!,
+      contaInterna: semMarcador[1]!,
+      sintetica: null,
+      resto: semMarcador[3]!,
+    };
+  }
+
+  // (a) classificação diretamente no início
+  const direto = texto.match(CODIGO_LINHA);
+  if (direto) {
+    return { codigo: direto[1]!, contaInterna: null, sintetica: null, resto: direto[2]! };
+  }
+  return null;
+}
+
+
 export function parseBalancete(paginas: string[]): BalanceteDocumento {
   const linhas: LinhaBalancete[] = [];
   const naoInterpretadas: LinhaNaoInterpretada[] = [];
