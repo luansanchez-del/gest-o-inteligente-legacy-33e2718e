@@ -210,13 +210,14 @@ export async function listarSolicitacoesDoCliente(
         .eq("client_external_id", externalId),
     );
   if (digitos)
+    // O CNPJ chega formatado do PIER ("12.345.678/0001-90"), então a comparação
+    // por dígitos é feita em memória sobre as solicitações do tipo contábil.
     consultas.push(
       ctx.db
         .from("request")
         .select(colunas)
         .eq("organization_id", ctx.organizationId)
-        .eq("type_external_id", typeExternalId)
-        .ilike("client_document", `%${digitos}%`),
+        .eq("type_external_id", typeExternalId),
     );
 
   type LinhaRequest = {
