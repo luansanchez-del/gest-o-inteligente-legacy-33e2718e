@@ -6,7 +6,7 @@ import { comContexto, emailDoToken } from "./contexto";
 type EscopoInput = {
   competencia: string;
   competenciaFim?: string | null;
-  tipo: "CONTABIL" | "FISCAL" | "OUTRO";
+  tipo: "CONTABIL" | "MOVIMENTO_FINANCEIRO" | "FISCAL" | "OUTRO";
   departamentoId?: string | null;
   responsavelId?: string | null;
   statusFila?:
@@ -28,16 +28,23 @@ function validarEscopo(input: EscopoInput) {
   if (!input?.competencia || !COMPETENCIA.test(input.competencia))
     throw new Error("VALIDACAO::Informe a competência no formato AAAA-MM.");
   if (input.competenciaFim && !COMPETENCIA.test(input.competenciaFim))
-    throw new Error("VALIDACAO::Informe a competência final no formato AAAA-MM.");
+    throw new Error(
+      "VALIDACAO::Informe a competência final no formato AAAA-MM.",
+    );
   if (!input.tipo) throw new Error("VALIDACAO::Informe o tipo de fechamento.");
   return input;
 }
 
 function validarIntervalo(input: { inicio: string; fim: string }) {
-  if (!COMPETENCIA.test(input?.inicio ?? "") || !COMPETENCIA.test(input?.fim ?? ""))
+  if (
+    !COMPETENCIA.test(input?.inicio ?? "") ||
+    !COMPETENCIA.test(input?.fim ?? "")
+  )
     throw new Error("VALIDACAO::Informe as competências no formato AAAA-MM.");
   if (input.inicio > input.fim)
-    throw new Error("VALIDACAO::A competência inicial deve ser anterior ou igual à final.");
+    throw new Error(
+      "VALIDACAO::A competência inicial deve ser anterior ou igual à final.",
+    );
   return input;
 }
 
@@ -53,10 +60,16 @@ export const previsualizarCarga = createServerFn({ method: "POST" })
 
 export const abrirCarga = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { inicio: string; fim: string; tipoCarga: "HISTORICA" | "MENSAL" }) => {
-    validarIntervalo(input);
-    return input;
-  })
+  .inputValidator(
+    (input: {
+      inicio: string;
+      fim: string;
+      tipoCarga: "HISTORICA" | "MENSAL";
+    }) => {
+      validarIntervalo(input);
+      return input;
+    },
+  )
   .handler(async ({ data, context }) =>
     comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
       const service = await import("@/server/domain/gestao/carga.service");
@@ -81,7 +94,11 @@ export const carregarCompetencia = createServerFn({ method: "POST" })
 export const encerrarCarga = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(
-    (input: { runId: string; status: "COMPLETED" | "FAILED" | "CANCELLED"; mensagem?: string }) => {
+    (input: {
+      runId: string;
+      status: "COMPLETED" | "FAILED" | "CANCELLED";
+      mensagem?: string;
+    }) => {
       if (!input?.runId) throw new Error("VALIDACAO::Carga não identificada.");
       return input;
     },
@@ -102,10 +119,12 @@ export const estadoCarga = createServerFn({ method: "GET" })
     }),
   );
 
-
 export const listarEquipe = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input?: { incluirInativos?: boolean; somenteContabeis?: boolean }) => input ?? {})
+  .inputValidator(
+    (input?: { incluirInativos?: boolean; somenteContabeis?: boolean }) =>
+      input ?? {},
+  )
   .handler(async ({ data, context }) =>
     comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
       const service = await import("@/server/domain/gestao/escopo.service");
@@ -149,7 +168,8 @@ export const iniciarGestao = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: EscopoInput & { idempotencyKey: string }) => {
     validarEscopo(input);
-    if (!input.idempotencyKey) throw new Error("VALIDACAO::Chave de execução ausente.");
+    if (!input.idempotencyKey)
+      throw new Error("VALIDACAO::Chave de execução ausente.");
     return input;
   })
   .handler(async ({ data, context }) =>
@@ -171,7 +191,8 @@ export const listarExecucoes = createServerFn({ method: "GET" })
 export const detalharExecucao = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { execucaoId: string }) => {
-    if (!input?.execucaoId) throw new Error("VALIDACAO::Execução não informada.");
+    if (!input?.execucaoId)
+      throw new Error("VALIDACAO::Execução não informada.");
     return input;
   })
   .handler(async ({ data, context }) =>
@@ -184,8 +205,10 @@ export const detalharExecucao = createServerFn({ method: "GET" })
 export const renomearDepartamento = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { departamentoId: string; nome: string }) => {
-    if (!input?.departamentoId) throw new Error("VALIDACAO::Departamento não informado.");
-    if (!input?.nome?.trim()) throw new Error("VALIDACAO::Informe o nome do departamento.");
+    if (!input?.departamentoId)
+      throw new Error("VALIDACAO::Departamento não informado.");
+    if (!input?.nome?.trim())
+      throw new Error("VALIDACAO::Informe o nome do departamento.");
     return input;
   })
   .handler(async ({ data, context }) =>

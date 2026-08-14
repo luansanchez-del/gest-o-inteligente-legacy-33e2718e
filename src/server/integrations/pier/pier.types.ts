@@ -21,6 +21,12 @@ export interface PierUser {
   raw: Record<string, unknown>;
 }
 
+export interface PierRequestType {
+  externalId: string;
+  name: string;
+  status: string | null;
+}
+
 export interface PierRequest {
   externalId: string;
   clientExternalId: string | null;
@@ -30,7 +36,12 @@ export interface PierRequest {
   description: string | null;
   typeExternalId: string | null;
   typeName: string | null;
-  purpose: "ACCOUNTING_CLOSING" | "TAX_CLOSING" | "OTHER" | "UNMAPPED";
+  purpose:
+    | "ACCOUNTING_CLOSING"
+    | "MONTHLY_FINANCIAL_MOVEMENT"
+    | "TAX_CLOSING"
+    | "OTHER"
+    | "UNMAPPED";
   /** Competência AAAA-MM extraída da descrição da solicitação, quando existir. */
   referenceMonth: string | null;
   status: string | null;
@@ -65,8 +76,14 @@ export interface PierFile {
 export interface PierAdapter {
   /** Informa se a integração está configurada e utilizável. */
   status(): Promise<{ available: boolean; reason?: string }>;
-  listClients(options?: { status?: "Ativo" | "Inativo" | "Todos" }): Promise<PierClient[]>;
-  listUsers(options?: { status?: "Ativo" | "Inativo" | "Todos" }): Promise<PierUser[]>;
+  listClients(options?: {
+    status?: "Ativo" | "Inativo" | "Todos";
+  }): Promise<PierClient[]>;
+  listUsers(options?: {
+    status?: "Ativo" | "Inativo" | "Todos";
+  }): Promise<PierUser[]>;
+  /** Tipos ativos disponíveis no PIER, usados para descobrir IDs sem hardcode. */
+  listRequestTypes(): Promise<PierRequestType[]>;
   /** Solicitações de um tipo (ex.: Fechamento Contábil) filtradas pela competência. */
   listRequestsByType(input: {
     typeExternalId: string;

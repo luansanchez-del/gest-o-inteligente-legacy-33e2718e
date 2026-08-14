@@ -4,7 +4,6 @@ import { AppError } from "../../lib/errors";
 import { pierAdapter } from "../../integrations/pier/pier.adapter";
 import { carregarUsuariosPier } from "./pier-user.repo";
 
-
 /**
  * IDs reais dos tipos de solicitação no PIER (/api/v2/tipos-solicitacao).
  * Podem ser sobrescritos por organização em app_setting (chave `pier.tipos_solicitacao`).
@@ -17,7 +16,16 @@ const TIPOS_PADRAO: Record<string, string> = {
 /** Tipos considerados internos do escritório (o PIER também lista usuários "Cliente"). */
 const TIPOS_INTERNOS = new Set(["colaborador", "gestor", "encarregado"]);
 
-export type TipoFechamento = "CONTABIL" | "FISCAL" | "OUTRO";
+export type TipoFechamento =
+  "CONTABIL" | "MOVIMENTO_FINANCEIRO" | "FISCAL" | "OUTRO";
+
+function normalizarNome(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
 
 export interface DepartamentoOpcao {
   /** Código interno do PIER — usado como value, nunca exibido como rótulo. */
@@ -50,7 +58,22 @@ export async function resolverTipoSolicitacao(
 
   const override = (data?.value ?? {}) as Record<string, unknown>;
   const configurado = override[tipo];
-  const resolvido = typeof configurado === "string" ? configurado : TIPOS_PADRAO[tipo];
+  const resolvido =
+    typeof configurado === "string" ? configurado : TIPOS_PADRAO[tipo];
+
+  if (resolvido) return resolvido;
+
+  if (tipo === "MOVIMENTO_FINANCEIRO") {
+    const tipos = await pierAdapter.listRequestTypes();
+    const encontrado = tipos.find((item) => {
+      const nome = normalizarNome(item.name);
+      return (
+        nome.includes("movimento financeiro mensal") ||
+        (nome.includes("movimento financeiro") && nome.includes("mensal"))
+      );
+    });
+    if (encontrado) return encontrado.externalId;
+  }
 
   if (!resolvido)
     throw new AppError(
@@ -80,7 +103,11 @@ export async function sincronizarEquipe(ctx: AppContext) {
     .single();
 
   if (runError || !run)
-    throw new AppError("INESPERADO", "Não foi possível iniciar a sincronização.", runError?.message);
+    throw new AppError(
+      "INESPERADO",
+      "Não foi possível iniciar a sincronização.",
+      runError?.message,
+    );
 
   try {
     const usuarios = await pierAdapter.listUsers({ status: "Todos" });
@@ -124,7 +151,10 @@ export async function sincronizarEquipe(ctx: AppContext) {
     for (const u of usuarios) {
       if (!u.departmentExternalId) continue;
       if (!TIPOS_INTERNOS.has((u.kind ?? "").toLowerCase())) continue;
-      contagem.set(u.departmentExternalId, (contagem.get(u.departmentExternalId) ?? 0) + 1);
+      contagem.set(
+        u.departmentExternalId,
+        (contagem.get(u.departmentExternalId) ?? 0) + 1,
+      );
     }
 
     if (contagem.size) {
@@ -132,7 +162,9 @@ export async function sincronizarEquipe(ctx: AppContext) {
         .from("pier_department")
         .select("external_id, name")
         .eq("organization_id", ctx.organizationId);
-      const nomes = new Map((existentes ?? []).map((d) => [d.external_id, d.name]));
+      const nomes = new Map(
+        (existentes ?? []).map((d) => [d.external_id, d.name]),
+      );
 
       await ctx.db.from("pier_department").upsert(
         [...contagem.entries()].map(([externalId, total]) => ({
@@ -161,16 +193,31 @@ export async function sincronizarEquipe(ctx: AppContext) {
       action: "SINCRONIZAR_EQUIPE",
       entity: "sync_run",
       entityId: run.id,
-      after: { usuarios: usuarios.length, departamentos: contagem.size, falhas },
+      after: {
+        usuarios: usuarios.length,
+        departamentos: contagem.size,
+        falhas,
+      },
     });
 
-    return { total: usuarios.length, processados, falhas, departamentos: contagem.size };
+    return {
+      total: usuarios.length,
+      processados,
+      falhas,
+      departamentos: contagem.size,
+    };
   } catch (error) {
     const mensagem =
-      error instanceof AppError ? error.userMessage : "Falha inesperada na sincronização.";
+      error instanceof AppError
+        ? error.userMessage
+        : "Falha inesperada na sincronização.";
     await ctx.db
       .from("sync_run")
-      .update({ status: "FAILED", message: mensagem, finished_at: new Date().toISOString() })
+      .update({
+        status: "FAILED",
+        message: mensagem,
+        finished_at: new Date().toISOString(),
+      })
       .eq("id", run.id);
     throw error;
   }
@@ -180,18 +227,25 @@ export async function sincronizarEquipe(ctx: AppContext) {
  * Nesta fase o fluxo é restrito à contabilidade: apenas estes departamentos entram no escopo.
  * CONTATO LEGACY e as áreas fiscal/folha/financeira ficam de fora por decisão de negócio.
  */
-export const DEPARTAMENTOS_CONTABEIS_NOMES = ["CONTABILIDADE LEGACY", "CONTABILIDADE BPO"];
+export const DEPARTAMENTOS_CONTABEIS_NOMES = [
+  "CONTABILIDADE LEGACY",
+  "CONTABILIDADE BPO",
+];
 const DEPARTAMENTOS_CONTABEIS_PADRAO = ["9625", "16104"];
 
 /** Resolve os códigos PIER dos departamentos contábeis pelo nome cadastrado. */
-export async function departamentosContabeis(ctx: AppContext): Promise<string[]> {
+export async function departamentosContabeis(
+  ctx: AppContext,
+): Promise<string[]> {
   const { data } = await ctx.db
     .from("pier_department")
     .select("external_id, name")
     .eq("organization_id", ctx.organizationId);
 
   const encontrados = (data ?? [])
-    .filter((d) => DEPARTAMENTOS_CONTABEIS_NOMES.includes(d.name.trim().toUpperCase()))
+    .filter((d) =>
+      DEPARTAMENTOS_CONTABEIS_NOMES.includes(d.name.trim().toUpperCase()),
+    )
     .map((d) => d.external_id);
 
   return encontrados.length ? encontrados : DEPARTAMENTOS_CONTABEIS_PADRAO;
@@ -209,13 +263,18 @@ export async function listarEquipe(
     .order("name");
 
   if (error)
-    throw new AppError("INESPERADO", "Não foi possível carregar os departamentos.", error.message);
+    throw new AppError(
+      "INESPERADO",
+      "Não foi possível carregar os departamentos.",
+      error.message,
+    );
 
-  const contabeis = opcoes?.somenteContabeis ? new Set(await departamentosContabeis(ctx)) : null;
+  const contabeis = opcoes?.somenteContabeis
+    ? new Set(await departamentosContabeis(ctx))
+    : null;
   const departamentos = contabeis
     ? (departamentosBrutos ?? []).filter((d) => contabeis.has(d.external_id))
     : departamentosBrutos;
-
 
   const usuarios = await carregarUsuariosPier<{
     external_id: string;
@@ -229,11 +288,14 @@ export async function listarEquipe(
     .filter(
       (u) =>
         TIPOS_INTERNOS.has((u.kind ?? "").toLowerCase()) &&
-        (opcoes?.incluirInativos || (u.status ?? "").toLowerCase() === "ativo") &&
-        (!contabeis || (u.department_external_id ? contabeis.has(u.department_external_id) : false)),
+        (opcoes?.incluirInativos ||
+          (u.status ?? "").toLowerCase() === "ativo") &&
+        (!contabeis ||
+          (u.department_external_id
+            ? contabeis.has(u.department_external_id)
+            : false)),
     )
     .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
-
 
   const ativosPorDepto = new Map<string, number>();
   for (const u of internos) {
@@ -257,7 +319,8 @@ export async function listarEquipe(
     })
     .sort((a, b) => {
       if (a.personalizado !== b.personalizado) return a.personalizado ? -1 : 1;
-      if (a.totalUsuarios !== b.totalUsuarios) return b.totalUsuarios - a.totalUsuarios;
+      if (a.totalUsuarios !== b.totalUsuarios)
+        return b.totalUsuarios - a.totalUsuarios;
       return a.nome.localeCompare(b.nome, "pt-BR");
     });
 
@@ -294,7 +357,11 @@ export async function renomearDepartamento(
     .eq("external_id", input.departamentoId);
 
   if (error)
-    throw new AppError("INESPERADO", "Não foi possível renomear o departamento.", error.message);
+    throw new AppError(
+      "INESPERADO",
+      "Não foi possível renomear o departamento.",
+      error.message,
+    );
 
   await audit(ctx, {
     action: "RENOMEAR_DEPARTAMENTO",
@@ -305,7 +372,6 @@ export async function renomearDepartamento(
 
   return { id: input.departamentoId, nome };
 }
-
 
 function normalizarDocumento(value: string | null | undefined) {
   return (value ?? "").replace(/\D/g, "");
@@ -341,8 +407,6 @@ export async function sincronizarSolicitacoes(
     });
 
     // Sem leitura de company/company_pier_link: a carteira é apenas catálogo.
-
-
 
     const usuarios = await carregarUsuariosPier<{
       external_id: string;
@@ -411,11 +475,17 @@ export async function sincronizarSolicitacoes(
     return { total: solicitacoes.length, processados };
   } catch (error) {
     const mensagem =
-      error instanceof AppError ? error.userMessage : "Falha inesperada na preparação.";
+      error instanceof AppError
+        ? error.userMessage
+        : "Falha inesperada na preparação.";
     if (run)
       await ctx.db
         .from("sync_run")
-        .update({ status: "FAILED", message: mensagem, finished_at: new Date().toISOString() })
+        .update({
+          status: "FAILED",
+          message: mensagem,
+          finished_at: new Date().toISOString(),
+        })
         .eq("id", run.id);
     throw error;
   }

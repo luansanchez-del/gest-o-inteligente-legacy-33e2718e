@@ -1,7 +1,14 @@
 import { integracaoFalhou } from "../../lib/errors";
 
 import { pierDownload, pierGet, pierPost, readPierConfig } from "./pier.http";
-import { mapClient, mapFile, mapPost, mapRequest, mapUser } from "./pier.mapper";
+import {
+  mapClient,
+  mapFile,
+  mapPost,
+  mapRequest,
+  mapRequestType,
+  mapUser,
+} from "./pier.mapper";
 import type { PierAdapter, PierRequest } from "./pier.types";
 
 type Raw = Record<string, unknown>;
@@ -17,7 +24,14 @@ function asArray(payload: unknown): Raw[] {
   if (Array.isArray(payload)) return payload as Raw[];
   if (payload && typeof payload === "object") {
     const container = payload as Record<string, unknown>;
-    for (const key of ["data", "items", "content", "results", "dados", "registros"]) {
+    for (const key of [
+      "data",
+      "items",
+      "content",
+      "results",
+      "dados",
+      "registros",
+    ]) {
       if (Array.isArray(container[key])) return container[key] as Raw[];
     }
   }
@@ -28,7 +42,9 @@ function asArray(payload: unknown): Raw[] {
 export const pierAdapter: PierAdapter = {
   async status() {
     const resolved = readPierConfig();
-    return resolved.ok ? { available: true } : { available: false, reason: resolved.reason };
+    return resolved.ok
+      ? { available: true }
+      : { available: false, reason: resolved.reason };
   },
 
   /** Percorre /api/v2/clientes página a página até esgotar os registros. */
@@ -68,17 +84,39 @@ export const pierAdapter: PierAdapter = {
     return resultados.map(mapUser).filter((user) => user.externalId);
   },
 
+  async listRequestTypes() {
+    const resultados: Raw[] = [];
+    for (let pagina = 1; pagina <= MAX_PAGINAS; pagina++) {
+      const payload = await pierGet<unknown>("/api/v2/tipos-solicitacao", {
+        pagina,
+        quantidadePorPagina: POR_PAGINA,
+        status: "Ativo",
+      });
+      const lote = asArray(payload);
+      resultados.push(...lote);
+      if (lote.length < POR_PAGINA) break;
+    }
+    return resultados.map(mapRequestType).filter((tipo) => tipo.externalId);
+  },
+
   /**
    * Busca as solicitações de um tipo para a competência. O PIER não filtra por
    * competência, então usamos `busca` com MM/AAAA e conferimos a descrição.
    */
-  async listRequestsByType({ typeExternalId, referenceMonth, incluirSemCompetencia }) {
+  async listRequestsByType({
+    typeExternalId,
+    referenceMonth,
+    incluirSemCompetencia,
+  }) {
     const [ano, mes] = referenceMonth.split("-");
     const termo = `${mes}/${ano}`;
     const resultados: PierRequest[] = [];
 
     for (let bloco = 0; bloco < MAX_PAGINAS; bloco += CONCORRENCIA) {
-      const paginas = Array.from({ length: CONCORRENCIA }, (_, i) => bloco + i + 1);
+      const paginas = Array.from(
+        { length: CONCORRENCIA },
+        (_, i) => bloco + i + 1,
+      );
       const lotes = await Promise.all(
         paginas.map((pagina) =>
           pierGet<unknown>("/api/v2/solicitacoes", {
@@ -108,7 +146,9 @@ export const pierAdapter: PierAdapter = {
   },
 
   async listPosts({ requestExternalId }) {
-    const payload = await pierGet<unknown>(`/api/v2/solicitacoes/${requestExternalId}/postagens`);
+    const payload = await pierGet<unknown>(
+      `/api/v2/solicitacoes/${requestExternalId}/postagens`,
+    );
     return asArray(payload)
       .map((raw) => mapPost(raw, requestExternalId))
       .filter((post) => post.externalId);
@@ -116,12 +156,15 @@ export const pierAdapter: PierAdapter = {
 
   /** Estado real da solicitação. Usado para corrigir divergência entre cache e PIER. */
   async getRequest({ requestExternalId }) {
-    const payload = await pierGet<unknown>(`/api/v2/solicitacoes/${requestExternalId}`);
+    const payload = await pierGet<unknown>(
+      `/api/v2/solicitacoes/${requestExternalId}`,
+    );
     const raw =
       payload && typeof payload === "object" && !Array.isArray(payload)
-        ? ((payload as Raw)["data"] && typeof (payload as Raw)["data"] === "object"
-            ? ((payload as Raw)["data"] as Raw)
-            : (payload as Raw))
+        ? (payload as Raw)["data"] &&
+          typeof (payload as Raw)["data"] === "object"
+          ? ((payload as Raw)["data"] as Raw)
+          : (payload as Raw)
         : ({} as Raw);
     const request = mapRequest(raw);
     if (!request.externalId) request.externalId = requestExternalId;
@@ -140,11 +183,15 @@ export const pierAdapter: PierAdapter = {
       resultados.push(...lote);
       if (lote.length < POR_PAGINA) break;
     }
-    return resultados.map((raw) => mapFile(raw, requestExternalId)).filter((f) => f.externalId);
+    return resultados
+      .map((raw) => mapFile(raw, requestExternalId))
+      .filter((f) => f.externalId);
   },
 
   async downloadFile({ fileExternalId }) {
-    const payload = await pierGet<unknown>(`/api/v2/arquivos/${fileExternalId}/url-download`);
+    const payload = await pierGet<unknown>(
+      `/api/v2/arquivos/${fileExternalId}/url-download`,
+    );
     let url: string | null = null;
     if (typeof payload === "string") url = payload;
     else if (payload && typeof payload === "object") {
@@ -157,7 +204,10 @@ export const pierAdapter: PierAdapter = {
         }
       }
     }
-    if (!url) throw integracaoFalhou("O PIER não devolveu o link de download do arquivo.");
+    if (!url)
+      throw integracaoFalhou(
+        "O PIER não devolveu o link de download do arquivo.",
+      );
     // A URL é temporária: usada apenas aqui e nunca persistida ou registrada.
     return pierDownload(url);
   },
@@ -168,11 +218,14 @@ export const pierAdapter: PierAdapter = {
       { mensagem, flgPrivada: privada },
     );
     let externalId: string | null = null;
-    if (typeof payload === "string" || typeof payload === "number") externalId = String(payload);
+    if (typeof payload === "string" || typeof payload === "number")
+      externalId = String(payload);
     else if (payload && typeof payload === "object") {
       const raw = payload as Raw;
       const alvo =
-        raw["data"] && typeof raw["data"] === "object" ? (raw["data"] as Raw) : raw;
+        raw["data"] && typeof raw["data"] === "object"
+          ? (raw["data"] as Raw)
+          : raw;
       for (const key of ["id", "idPostagem", "externalId"]) {
         const value = alvo[key];
         if (typeof value === "string" || typeof value === "number") {
@@ -185,6 +238,8 @@ export const pierAdapter: PierAdapter = {
   },
 
   async finalizeRequest({ requestExternalId }) {
-    await pierPost<unknown>(`/api/v2/solicitacoes/${requestExternalId}/finalizar`);
+    await pierPost<unknown>(
+      `/api/v2/solicitacoes/${requestExternalId}/finalizar`,
+    );
   },
 };
