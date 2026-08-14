@@ -65,15 +65,20 @@ export const Route = createFileRoute("/_authenticated/gestao/")({
   component: GestaoPage,
 });
 
-const ANALISE: Record<string, { rotulo: string; classe: string }> = {
-  NAO_ANALISADA: { rotulo: "Documento não carregado", classe: "text-muted-foreground" },
-  ANALISANDO: { rotulo: "Analisando", classe: "text-warning-strong" },
-  CONCLUIDA: { rotulo: "Análise concluída", classe: "text-success-strong" },
-  FALHOU: { rotulo: "Falha na análise", classe: "text-destructive" },
-};
-
 const TODOS_DEPARTAMENTOS = "__TODOS__";
 const TODOS_USUARIOS = "__TODOS_USUARIOS__";
+const TODAS_FILAS = "__TODAS_FILAS__";
+
+/** Fila operacional do fechamento contábil. */
+const FILA: Record<string, { rotulo: string; classe: string }> = {
+  AGUARDANDO_DOCUMENTO: { rotulo: "Aguardando documento", classe: "text-muted-foreground" },
+  PRONTO_PARA_ANALISE: { rotulo: "Pronto para análise", classe: "text-primary" },
+  ANALISANDO: { rotulo: "Analisando", classe: "text-warning-strong" },
+  ANALISE_CONCLUIDA: { rotulo: "Análise concluída", classe: "text-success-strong" },
+  REVISAO_NECESSARIA: { rotulo: "Revisão necessária", classe: "text-warning-strong" },
+  ERRO: { rotulo: "Erro objetivo", classe: "text-destructive" },
+  HISTORICO: { rotulo: "Histórico/finalizada", classe: "text-muted-foreground" },
+};
 
 function competenciaAtual() {
   const hoje = new Date();
@@ -85,13 +90,14 @@ function GestaoPage() {
   const [competencia, setCompetencia] = useState(competenciaAtual);
   const [departamento, setDepartamento] = useState(TODOS_DEPARTAMENTOS);
   const [responsavel, setResponsavel] = useState(TODOS_USUARIOS);
+  const [fila, setFila] = useState(TODAS_FILAS);
   const [incluirInativos, setIncluirInativos] = useState(false);
   const [renomeando, setRenomeando] = useState(false);
   const [novoNomeDepartamento, setNovoNomeDepartamento] = useState("");
 
   const equipe = useQuery({
-    queryKey: ["equipe-pier", incluirInativos],
-    queryFn: () => listarEquipe({ data: { incluirInativos } }),
+    queryKey: ["equipe-pier", incluirInativos, "contabeis"],
+    queryFn: () => listarEquipe({ data: { incluirInativos, somenteContabeis: true } }),
   });
 
   const filtro = {
@@ -99,14 +105,22 @@ function GestaoPage() {
     tipo: "CONTABIL" as const,
     departamentoId: departamento === TODOS_DEPARTAMENTOS ? null : departamento,
     responsavelId: responsavel === TODOS_USUARIOS ? null : responsavel,
+    statusFila: fila === TODAS_FILAS ? null : (fila as never),
   };
 
   const preview = useQuery({
-    queryKey: ["preview-gestao", filtro.competencia, filtro.departamentoId, filtro.responsavelId],
+    queryKey: [
+      "preview-gestao",
+      filtro.competencia,
+      filtro.departamentoId,
+      filtro.responsavelId,
+      fila,
+    ],
     queryFn: () => montarPreview({ data: filtro }),
     enabled: /^\d{4}-\d{2}$/.test(competencia),
     placeholderData: (anterior) => anterior,
   });
+
 
   const sincEquipe = useMutation({
     mutationFn: () => sincronizarEquipe(),
@@ -176,15 +190,19 @@ function GestaoPage() {
   const filtrosAtivos =
     departamento !== TODOS_DEPARTAMENTOS ||
     responsavel !== TODOS_USUARIOS ||
+    fila !== TODAS_FILAS ||
     incluirInativos ||
     competencia !== competenciaAtual();
+
 
   function limparFiltros() {
     setCompetencia(competenciaAtual());
     setDepartamento(TODOS_DEPARTAMENTOS);
     setResponsavel(TODOS_USUARIOS);
+    setFila(TODAS_FILAS);
     setIncluirInativos(false);
   }
+
 
 
   const dados = preview.data;
@@ -316,6 +334,25 @@ function GestaoPage() {
               </SelectContent>
             </Select>
           </div>
+          <div className="min-w-[190px] space-y-1">
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              Situação
+            </Label>
+            <Select value={fila} onValueChange={setFila}>
+              <SelectTrigger aria-label="Situação da fila">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="max-h-80">
+                <SelectItem value={TODAS_FILAS}>Todas as situações</SelectItem>
+                {Object.entries(FILA).map(([valor, info]) => (
+                  <SelectItem key={valor} value={valor}>
+                    {info.rotulo}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           <Button
             variant="outline"
             onClick={limparFiltros}
@@ -429,13 +466,13 @@ function GestaoPage() {
                 <TableHead>Responsável</TableHead>
                 <TableHead>Status PIER</TableHead>
                 <TableHead>Anexo</TableHead>
-                <TableHead>Análise</TableHead>
+                <TableHead>Situação</TableHead>
                 <TableHead className="text-right">Ação</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {dados.empresas.map((linha) => {
-                const analise = ANALISE[linha.statusAnalise];
+                const analise = FILA[linha.statusFila] ?? FILA.AGUARDANDO_DOCUMENTO;
                 return (
                   <TableRow key={linha.solicitacaoId}>
                     <TableCell className="tabular-nums">{linha.numero ?? "—"}</TableCell>

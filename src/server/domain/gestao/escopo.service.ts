@@ -176,9 +176,33 @@ export async function sincronizarEquipe(ctx: AppContext) {
   }
 }
 
+/**
+ * Nesta fase o fluxo é restrito à contabilidade: apenas estes departamentos entram no escopo.
+ * CONTATO LEGACY e as áreas fiscal/folha/financeira ficam de fora por decisão de negócio.
+ */
+export const DEPARTAMENTOS_CONTABEIS_NOMES = ["CONTABILIDADE LEGACY", "CONTABILIDADE BPO"];
+const DEPARTAMENTOS_CONTABEIS_PADRAO = ["9625", "16104"];
+
+/** Resolve os códigos PIER dos departamentos contábeis pelo nome cadastrado. */
+export async function departamentosContabeis(ctx: AppContext): Promise<string[]> {
+  const { data } = await ctx.db
+    .from("pier_department")
+    .select("external_id, name")
+    .eq("organization_id", ctx.organizationId);
+
+  const encontrados = (data ?? [])
+    .filter((d) => DEPARTAMENTOS_CONTABEIS_NOMES.includes(d.name.trim().toUpperCase()))
+    .map((d) => d.external_id);
+
+  return encontrados.length ? encontrados : DEPARTAMENTOS_CONTABEIS_PADRAO;
+}
+
 /** Departamentos e usuários em cache, para alimentar os selects da tela de Gestão. */
-export async function listarEquipe(ctx: AppContext, opcoes?: { incluirInativos?: boolean }) {
-  const { data: departamentos, error } = await ctx.db
+export async function listarEquipe(
+  ctx: AppContext,
+  opcoes?: { incluirInativos?: boolean; somenteContabeis?: boolean },
+) {
+  const { data: departamentosBrutos, error } = await ctx.db
     .from("pier_department")
     .select("external_id, name, user_count, synced_at")
     .eq("organization_id", ctx.organizationId)
@@ -186,6 +210,12 @@ export async function listarEquipe(ctx: AppContext, opcoes?: { incluirInativos?:
 
   if (error)
     throw new AppError("INESPERADO", "Não foi possível carregar os departamentos.", error.message);
+
+  const contabeis = opcoes?.somenteContabeis ? new Set(await departamentosContabeis(ctx)) : null;
+  const departamentos = contabeis
+    ? (departamentosBrutos ?? []).filter((d) => contabeis.has(d.external_id))
+    : departamentosBrutos;
+
 
   const usuarios = await carregarUsuariosPier<{
     external_id: string;
@@ -199,9 +229,11 @@ export async function listarEquipe(ctx: AppContext, opcoes?: { incluirInativos?:
     .filter(
       (u) =>
         TIPOS_INTERNOS.has((u.kind ?? "").toLowerCase()) &&
-        (opcoes?.incluirInativos || (u.status ?? "").toLowerCase() === "ativo"),
+        (opcoes?.incluirInativos || (u.status ?? "").toLowerCase() === "ativo") &&
+        (!contabeis || (u.department_external_id ? contabeis.has(u.department_external_id) : false)),
     )
     .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+
 
   const ativosPorDepto = new Map<string, number>();
   for (const u of internos) {

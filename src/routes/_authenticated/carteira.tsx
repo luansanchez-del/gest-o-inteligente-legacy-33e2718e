@@ -34,6 +34,8 @@ import {
   diagnosticarConexaoPier,
   listarCarteira,
   sincronizarCarteira,
+  vincularCarteiraAutomaticamente,
+
   vincularCliente,
   vincularClientesEmLote,
 } from "@/lib/api/carteira.functions";
@@ -62,7 +64,13 @@ export const Route = createFileRoute("/_authenticated/carteira")({
 });
 
 type StatusFiltro = "Todos" | "Ativo" | "Inativo";
-type SituacaoFiltro = "TODOS" | "VINCULADO" | "NAO_VINCULADO";
+type SituacaoFiltro = "TODOS" | "VINCULADO" | "NAO_VINCULADO" | "REVISAO";
+const MOTIVO_REVISAO: Record<string, string> = {
+  SEM_DOCUMENTO: "Sem CNPJ/CPF",
+  DOCUMENTO_INVALIDO: "Documento inválido",
+  DOCUMENTO_DUPLICADO: "CNPJ duplicado",
+};
+
 const TODOS_REGIMES = "__TODOS__";
 
 function CarteiraPage() {
@@ -90,11 +98,28 @@ function CarteiraPage() {
   const sincronizar = useMutation({
     mutationFn: () => sincronizarCarteira(),
     onSuccess: (r) => {
-      toast.success(`Sincronização concluída: ${r.processados} clientes atualizados.`);
+      const v = r.vinculo;
+      toast.success(
+        `Sincronizados ${v.sincronizados} · vinculados ${v.vinculados} · empresas criadas ${v.criados} · conflitos ${v.conflitos} · sem documento ${v.semDocumento}`,
+        { duration: 9000 },
+      );
       void queryClient.invalidateQueries({ queryKey: ["carteira"] });
     },
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
+
+  const vincularAuto = useMutation({
+    mutationFn: () => vincularCarteiraAutomaticamente(),
+    onSuccess: (v) => {
+      toast.success(
+        `Vínculo automático: ${v.vinculados} vinculados · ${v.criados} empresas criadas · ${v.conflitos} conflitos · ${v.semDocumento} sem documento`,
+        { duration: 9000 },
+      );
+      void queryClient.invalidateQueries({ queryKey: ["carteira"] });
+    },
+    onError: (e) => toast.error(mensagemDeErro(e)),
+  });
+
 
   const diagnosticar = useMutation({
     mutationFn: () => diagnosticarConexaoPier(),
@@ -183,6 +208,16 @@ function CarteiraPage() {
               <Stethoscope className="mr-2 h-4 w-4" />
               Testar conexão
             </Button>
+            <Button
+              variant="outline"
+              onClick={() => vincularAuto.mutate()}
+              disabled={vincularAuto.isPending}
+              title="Vincular por CNPJ os clientes ainda sem empresa interna"
+            >
+              <Link2 className={`mr-2 h-4 w-4 ${vincularAuto.isPending ? "animate-pulse" : ""}`} />
+              Vincular automaticamente
+            </Button>
+
             <Button onClick={() => sincronizar.mutate()} disabled={sincronizar.isPending}>
               <RefreshCw
                 className={`mr-2 h-4 w-4 ${sincronizar.isPending ? "animate-spin" : ""}`}
@@ -207,7 +242,7 @@ function CarteiraPage() {
         />
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="p-4">
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Clientes</p>
           <p className="text-2xl font-semibold tabular-nums">{resumo?.total ?? "—"}</p>
@@ -219,7 +254,15 @@ function CarteiraPage() {
         <Card className="p-4">
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Sem vínculo</p>
           <p className="text-2xl font-semibold tabular-nums">{resumo?.naoVinculados ?? "—"}</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Em revisão</p>
+          <p className="text-2xl font-semibold tabular-nums">{resumo?.emRevisao ?? "—"}</p>
           <p className="mt-1 text-[11px] text-muted-foreground">
+            Sem documento: {resumo?.semDocumento ?? 0} · CNPJ duplicado:{" "}
+            {resumo?.documentosDuplicados ?? 0}
+          </p>
+          <p className="text-[11px] text-muted-foreground">
             Última sincronização:{" "}
             {ultimaSincronizacao
               ? formatarDataHora(ultimaSincronizacao.finishedAt ?? ultimaSincronizacao.startedAt)
@@ -227,6 +270,7 @@ function CarteiraPage() {
           </p>
         </Card>
       </div>
+
 
       <Card className="overflow-hidden">
         <div className="flex flex-col gap-3 border-b border-border p-4 md:flex-row md:flex-wrap md:items-center">
@@ -267,8 +311,10 @@ function CarteiraPage() {
               <SelectItem value="TODOS">Todos os vínculos</SelectItem>
               <SelectItem value="VINCULADO">Vinculados</SelectItem>
               <SelectItem value="NAO_VINCULADO">Sem vínculo</SelectItem>
+              <SelectItem value="REVISAO">Em revisão</SelectItem>
             </SelectContent>
           </Select>
+
           {temFiltroAtivo ? (
             <Button variant="ghost" size="sm" onClick={limparFiltros}>
               <X className="mr-2 h-4 w-4" />
@@ -355,10 +401,15 @@ function CarteiraPage() {
                   <TableCell>
                     {linha.vinculado ? (
                       <span className="text-success-strong">{linha.empresaNome}</span>
+                    ) : linha.motivoRevisao ? (
+                      <span className="text-warning-strong">
+                        Revisão · {MOTIVO_REVISAO[linha.motivoRevisao]}
+                      </span>
                     ) : (
                       <span className="text-muted-foreground">Não vinculado</span>
                     )}
                   </TableCell>
+
                   <TableCell className="text-muted-foreground">
                     {formatarDataHora(linha.sincronizadoEm)}
                   </TableCell>

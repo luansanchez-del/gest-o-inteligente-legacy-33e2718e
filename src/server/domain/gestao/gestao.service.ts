@@ -1,19 +1,34 @@
 import { audit } from "../../lib/audit";
 import { assertCanWrite, type AppContext } from "../../lib/context";
 import { AppError } from "../../lib/errors";
-import { resolverTipoSolicitacao, type TipoFechamento } from "./escopo.service";
+import {
+  departamentosContabeis,
+  resolverTipoSolicitacao,
+  type TipoFechamento,
+} from "./escopo.service";
 import { carregarTodasAsLinhas, carregarUsuariosPier } from "./pier-user.repo";
 
+/** Fila operacional do fechamento contábil, do documento pendente até a finalização interna. */
+export type StatusFila =
+  | "AGUARDANDO_DOCUMENTO"
+  | "PRONTO_PARA_ANALISE"
+  | "ANALISANDO"
+  | "ANALISE_CONCLUIDA"
+  | "REVISAO_NECESSARIA"
+  | "ERRO"
+  | "HISTORICO";
 
 export interface EscopoFiltro {
   competencia: string;
   tipo: TipoFechamento;
-  /** ID externo do departamento no PIER. Vazio = todos os departamentos. */
+  /** ID externo do departamento no PIER. Vazio = todos os departamentos contábeis. */
   departamentoId?: string | null;
   /** ID externo do usuário responsável no PIER. Vazio = todos do departamento. */
   responsavelId?: string | null;
   /** Seleção manual de empresas internas (reservado para etapas futuras). */
   empresaIds?: string[];
+  /** Filtro opcional pela fila operacional. */
+  statusFila?: StatusFila | null;
 }
 
 export interface EscopoLinha {
@@ -32,10 +47,14 @@ export interface EscopoLinha {
   jaAberta: boolean;
   competencia: string | null;
   temAnexo: boolean;
+  /** true quando o PDF já está armazenado internamente e pode ser analisado. */
+  documentoDisponivel: boolean;
   /** Estado da análise interna do balancete desta solicitação. */
   statusAnalise: "NAO_ANALISADA" | "ANALISANDO" | "CONCLUIDA" | "FALHOU";
   resultadoAnalise: string | null;
+  statusFila: StatusFila;
 }
+
 
 export interface EscopoPreview {
   competencia: string;
@@ -107,17 +126,33 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
   // Estado da análise interna (a última execução por solicitação).
   const idsSolicitacoes = (solicitacoes ?? []).map((s) => s.id);
   const analisePorRequest = new Map<string, { status: string; resultado: string | null }>();
+  const comAnexoInterno = new Set<string>();
+  const finalizadas = new Set<string>();
   if (idsSolicitacoes.length) {
-    const { data: execucoes } = await ctx.db
-      .from("validation_execution")
-      .select("request_id, status, result, created_at")
-      .eq("organization_id", ctx.organizationId)
-      .in("request_id", idsSolicitacoes)
-      .order("created_at", { ascending: false });
+    const [{ data: execucoes }, { data: anexos }, { data: decisoes }] = await Promise.all([
+      ctx.db
+        .from("validation_execution")
+        .select("request_id, status, result, created_at")
+        .eq("organization_id", ctx.organizationId)
+        .in("request_id", idsSolicitacoes)
+        .order("created_at", { ascending: false }),
+      ctx.db
+        .from("request_attachment")
+        .select("request_id")
+        .eq("organization_id", ctx.organizationId)
+        .in("request_id", idsSolicitacoes),
+      ctx.db
+        .from("request_decision")
+        .select("request_id")
+        .eq("organization_id", ctx.organizationId)
+        .in("request_id", idsSolicitacoes),
+    ]);
     for (const e of execucoes ?? []) {
       if (!analisePorRequest.has(e.request_id))
         analisePorRequest.set(e.request_id, { status: e.status, resultado: e.result });
     }
+    for (const a of anexos ?? []) comAnexoInterno.add(a.request_id);
+    for (const d of decisoes ?? []) finalizadas.add(d.request_id);
   }
 
   let linhas: EscopoLinha[] = (solicitacoes ?? []).map((s) => {
@@ -133,6 +168,22 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
       ? (usuarioPorId.get(s.responsible_external_id) ?? null)
       : null;
     const departamentoId = s.department_external_id ?? usuario?.department_external_id ?? null;
+    const documentoDisponivel = comAnexoInterno.has(s.id);
+
+    const statusFila: StatusFila = finalizadas.has(s.id)
+      ? "HISTORICO"
+      : statusAnalise === "FALHOU"
+        ? "ERRO"
+        : statusAnalise === "ANALISANDO"
+          ? "ANALISANDO"
+          : statusAnalise === "CONCLUIDA"
+            ? analise?.resultado === "REVISAO_HUMANA"
+              ? "REVISAO_NECESSARIA"
+              : "ANALISE_CONCLUIDA"
+            : documentoDisponivel
+              ? "PRONTO_PARA_ANALISE"
+              : "AGUARDANDO_DOCUMENTO";
+
     return {
       solicitacaoId: s.external_id,
       numero: s.number,
@@ -149,10 +200,16 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
       jaAberta: Boolean(s.company_id && abertas.has(s.company_id)),
       competencia: s.reference_month,
       temAnexo: Boolean(s.has_attachment),
+      documentoDisponivel,
       statusAnalise,
       resultadoAnalise: analise?.resultado ?? null,
+      statusFila,
     };
   });
+
+  // Escopo contábil restrito: só entram responsáveis dos departamentos de contabilidade.
+  const contabeis = new Set(await departamentosContabeis(ctx));
+  linhas = linhas.filter((l) => l.departamentoId && contabeis.has(l.departamentoId));
 
   if (filtro.responsavelId) {
     const usuario = usuarioPorId.get(filtro.responsavelId);
@@ -170,10 +227,13 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
     linhas = linhas.filter((l) => l.departamentoId === filtro.departamentoId);
   }
 
+  if (filtro.statusFila) linhas = linhas.filter((l) => l.statusFila === filtro.statusFila);
+
   if (filtro.empresaIds?.length) {
     const set = new Set(filtro.empresaIds);
     linhas = linhas.filter((l) => l.empresaId && set.has(l.empresaId));
   }
+
 
   linhas.sort((a, b) => a.clienteNome.localeCompare(b.clienteNome, "pt-BR"));
 
