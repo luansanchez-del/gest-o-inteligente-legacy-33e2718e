@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { montarTextoDaPagina, normalizarTransform } from "../pdf.server";
+import { montarTextoDaPagina, montarTextoDeItensEstruturados, normalizarTransform } from "../pdf.server";
 import { parseBalancete } from "../balancete.parser";
 import { validarBalancete } from "../balancete.validator";
 import { PAGINAS_PILOTO, TITULO_PILOTO } from "./balancete.fixture";
@@ -54,6 +54,25 @@ describe("montarTextoDaPagina", () => {
   it("não descarta itens válidos quando transform não é Array", () => {
     const texto = montarTextoDaPagina([item("TONIOLO", 10, 700, "typed")]);
     expect(texto).toContain("TONIOLO");
+  });
+});
+
+describe("itens estruturados do unpdf", () => {
+  it("reconstrói a linha usando x/y da API pública", () => {
+    const texto = montarTextoDeItensEstruturados([
+      { str: "5", x: 10, y: 680 },
+      { str: "1.1.01.001.001", x: 40, y: 680 },
+      { str: "Caixa", x: 140, y: 680 },
+      { str: "1.688.184,24", x: 300, y: 680 },
+      { str: "0,00", x: 400, y: 680 },
+      { str: "0,00", x: 470, y: 680 },
+      { str: "0,00", x: 540, y: 680 },
+      { str: "1.688.184,24", x: 610, y: 680 },
+    ]);
+    expect(texto).toBe(
+      "5 1.1.01.001.001 Caixa 1.688.184,24 0,00 0,00 0,00 1.688.184,24",
+    );
+    expect(parseBalancete([texto]).linhas).toHaveLength(1);
   });
 });
 
