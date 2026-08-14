@@ -28,7 +28,7 @@ function base64ParaBytes(base64: string): Uint8Array {
   return bytes;
 }
 
-async function carregarSolicitacao(ctx: AppContext, externalId: string) {
+export async function carregarSolicitacao(ctx: AppContext, externalId: string) {
   const { data, error } = await ctx.db
     .from("request")
     .select(
