@@ -197,8 +197,10 @@ function GestaoPage() {
     setCompetencia(competenciaAtual());
     setDepartamento(TODOS_DEPARTAMENTOS);
     setResponsavel(TODOS_USUARIOS);
+    setFila(TODAS_FILAS);
     setIncluirInativos(false);
   }
+
 
 
   const dados = preview.data;
