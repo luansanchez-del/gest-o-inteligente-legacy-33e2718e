@@ -422,6 +422,7 @@ function GestaoPage() {
                 <TableHead>Responsável</TableHead>
                 <TableHead>Vínculo</TableHead>
                 <TableHead>Competência</TableHead>
+                <TableHead className="text-right">Análise</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -440,6 +441,18 @@ function GestaoPage() {
                     )}
                   </TableCell>
                   <TableCell>{linha.jaAberta ? "Já aberta" : "Nova"}</TableCell>
+                  <TableCell className="text-right">
+                    <Button variant="ghost" size="sm" asChild>
+                      <Link
+                        to="/solicitacao/$id"
+                        params={{ id: linha.solicitacaoId }}
+                        aria-label={`Abrir análise de ${linha.clienteNome}`}
+                      >
+                        Abrir
+                        <ArrowRight className="ml-1 h-4 w-4" />
+                      </Link>
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
