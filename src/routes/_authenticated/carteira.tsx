@@ -208,6 +208,16 @@ function CarteiraPage() {
               <Stethoscope className="mr-2 h-4 w-4" />
               Testar conexão
             </Button>
+            <Button
+              variant="outline"
+              onClick={() => vincularAuto.mutate()}
+              disabled={vincularAuto.isPending}
+              title="Vincular por CNPJ os clientes ainda sem empresa interna"
+            >
+              <Link2 className={`mr-2 h-4 w-4 ${vincularAuto.isPending ? "animate-pulse" : ""}`} />
+              Vincular automaticamente
+            </Button>
+
             <Button onClick={() => sincronizar.mutate()} disabled={sincronizar.isPending}>
               <RefreshCw
                 className={`mr-2 h-4 w-4 ${sincronizar.isPending ? "animate-spin" : ""}`}
