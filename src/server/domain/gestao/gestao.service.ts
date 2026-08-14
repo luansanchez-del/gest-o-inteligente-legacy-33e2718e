@@ -183,20 +183,26 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
               ? "PRONTO_PARA_ANALISE"
               : "AGUARDANDO_DOCUMENTO";
 
+    const ficha = fichaPorDoc.get(normalizarDocumento(s.client_document)) ?? null;
+
     return {
       solicitacaoId: s.external_id,
       numero: s.number,
+      clienteExternalId: s.client_external_id,
       clienteNome: s.client_name ?? "—",
       documento: s.client_document,
-      regime: regimePorDoc.get(normalizarDocumento(s.client_document)) ?? null,
+      regime: ficha?.tax_regime ?? null,
       departamentoId,
       departamentoNome: departamentoId ? (deptoNome.get(departamentoId) ?? null) : null,
       responsavelId: s.responsible_external_id,
       responsavelNome: s.responsible_name ?? usuario?.name ?? null,
-      empresaId: s.company_id,
-      vinculada: Boolean(s.company_id),
       statusSolicitacao: s.status,
-      jaAberta: Boolean(s.company_id && abertas.has(s.company_id)),
+      // Apenas aviso: a ficha do cliente pode estar incompleta e isso nunca bloqueia a análise.
+      avisoCadastral: !ficha
+        ? "Cliente não encontrado no catálogo do PIER."
+        : !ficha.responsible_name
+          ? "Ficha do cliente sem responsável contábil."
+          : null,
       competencia: s.reference_month,
       temAnexo: Boolean(s.has_attachment),
       documentoDisponivel,
