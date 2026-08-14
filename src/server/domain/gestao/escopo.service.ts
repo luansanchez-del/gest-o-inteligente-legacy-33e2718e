@@ -390,7 +390,8 @@ export async function sincronizarSolicitacoes(
           client_external_id: s.clientExternalId,
           client_name: s.clientName,
           client_document: s.clientDocument,
-          company_id: empresaPorDocumento.get(normalizarDocumento(s.clientDocument)) ?? null,
+          // company_id deixou de ser preenchido: a solicitação do PIER é a fonte operacional
+          // e não depende de empresa interna nem de vínculo.
           requested_at: s.requestedAt,
           finished_at: s.finishedAt,
           deadline_at: s.deadlineAt,
