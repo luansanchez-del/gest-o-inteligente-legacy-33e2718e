@@ -5,10 +5,20 @@ import { comContexto, emailDoToken } from "./contexto";
 
 type Filtros = {
   busca?: string;
-  situacao?: "TODOS" | "VINCULADO" | "NAO_VINCULADO";
+  situacao?: "TODOS" | "VINCULADO" | "NAO_VINCULADO" | "REVISAO";
   status?: string;
   regime?: string;
 };
+
+export const vincularCarteiraAutomaticamente = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) =>
+    comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
+      const service = await import("@/server/domain/carteira/carteira.service");
+      return service.vincularCarteiraAutomaticamente(ctx);
+    }),
+  );
+
 
 export const listarCarteira = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
