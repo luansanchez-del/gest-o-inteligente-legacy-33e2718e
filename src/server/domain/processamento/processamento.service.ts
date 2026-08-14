@@ -15,6 +15,7 @@ import { AppError } from "../../lib/errors";
 import { erroSeguro, mascararTexto } from "../../lib/mascara";
 import { pierAdapter } from "../../integrations/pier/pier.adapter";
 import type { PierAdapter } from "../../integrations/pier/pier.types";
+import { extrairTextoPdf } from "../validacao/pdf.server";
 import {
   carregarSolicitacao,
   executarValidacao,
@@ -23,11 +24,7 @@ import {
 } from "../validacao/validacao.service";
 
 export type SituacaoProcessamento =
-  | "FINALIZADO"
-  | "JA_FINALIZADA"
-  | "EM_REVISAO"
-  | "PENDENTE"
-  | "ERRO";
+  "FINALIZADO" | "JA_FINALIZADA" | "EM_REVISAO" | "PENDENTE" | "ERRO";
 
 export interface ResultadoProcessamento {
   solicitacaoExternalId: string;
@@ -51,7 +48,12 @@ export interface ResultadoProcessamento {
 export interface DepsProcessamento {
   pier: Pick<
     PierAdapter,
-    "getRequest" | "listPosts" | "listFiles" | "downloadFile" | "createPost" | "finalizeRequest"
+    | "getRequest"
+    | "listPosts"
+    | "listFiles"
+    | "downloadFile"
+    | "createPost"
+    | "finalizeRequest"
   >;
   salvarAnexo: typeof salvarAnexoBytes;
   validar: typeof executarValidacao;
@@ -74,12 +76,20 @@ function pareceFinalizada(status: string | null, finishedAt: string | null) {
 function competenciaParaTermos(competencia: string | null) {
   if (!competencia) return [];
   const [ano, mes] = competencia.split("-");
-  return [competencia, `${mes}/${ano}`, `${mes}-${ano}`, `${mes}${ano}`].filter(Boolean) as string[];
+  return [competencia, `${mes}/${ano}`, `${mes}-${ano}`, `${mes}${ano}`].filter(
+    Boolean,
+  ) as string[];
 }
 
 /** Escolhe o PDF com maior chance de ser o balancete da competência. */
 export function escolherBalancete(
-  arquivos: { externalId: string; name: string | null; category: string | null; mimeType: string | null; createdAt: string | null }[],
+  arquivos: {
+    externalId: string;
+    name: string | null;
+    category: string | null;
+    mimeType: string | null;
+    createdAt: string | null;
+  }[],
   contexto: { competencia: string | null; textoPostagens: string },
 ) {
   const termos = competenciaParaTermos(contexto.competencia);
@@ -95,17 +105,156 @@ export function escolherBalancete(
       if (alvo.includes("balancete")) pontos += 10;
       if (alvo.includes("balanco") || alvo.includes("balanço")) pontos += 3;
       if (termos.some((t) => alvo.includes(t.toLowerCase()))) pontos += 5;
-      if (contexto.textoPostagens.toLowerCase().includes((a.name ?? "###").toLowerCase()))
+      if (
+        contexto.textoPostagens
+          .toLowerCase()
+          .includes((a.name ?? "###").toLowerCase())
+      )
         pontos += 2;
       return { arquivo: a, pontos };
     })
     .sort(
       (a, b) =>
         b.pontos - a.pontos ||
-        String(b.arquivo.createdAt ?? "").localeCompare(String(a.arquivo.createdAt ?? "")),
+        String(b.arquivo.createdAt ?? "").localeCompare(
+          String(a.arquivo.createdAt ?? ""),
+        ),
     );
 
   return candidatos[0]?.arquivo ?? null;
+}
+
+export interface ConferenciaMovimentoFinanceiro {
+  situacao: "LIBERADO" | "BLOQUEADO";
+  semMovimentoDeclarado: boolean;
+  extratosBancarios: string[];
+  extratosAplicacoes: string[];
+  comprovantesEcac: string[];
+  observacoes: string[];
+}
+
+function normalizarBusca(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ");
+}
+
+function contemDeclaracaoSemMovimento(value: string) {
+  const texto = normalizarBusca(value);
+  return (
+    /\b(empresa\s+)?sem\s+moviment(?:o|acao)\b/.test(texto) ||
+    /\bnao\s+(?:houve|possui|teve)\s+moviment(?:o|acao)\b/.test(texto)
+  );
+}
+
+function classificarFonte(value: string) {
+  const texto = normalizarBusca(value);
+  const ecac =
+    /\b(e\s*cac|receita federal|situacao fiscal|conta corrente fiscal)\b/.test(
+      texto,
+    );
+  const aplicacao =
+    /\b(aplicac|investiment|cdb|renda fixa|fundo|poupanca)\w*/.test(texto);
+  const bancario =
+    !ecac && (/\bextrato\b/.test(texto) || /\bofx\b/.test(texto)) && !aplicacao;
+  return { ecac, aplicacao, bancario };
+}
+
+function adicionarUnico(lista: string[], valor: string) {
+  if (valor && !lista.includes(valor)) lista.push(valor);
+}
+
+/** Regra do escritório: extrato bancário OU declaração expressa de empresa sem movimento. */
+export async function conferirMovimentoFinanceiro(
+  arquivos: {
+    externalId: string;
+    name: string | null;
+    category: string | null;
+    mimeType: string | null;
+    sizeBytes?: number | null;
+  }[],
+  textoPostagens: string,
+  baixar: (externalId: string) => Promise<Uint8Array>,
+): Promise<ConferenciaMovimentoFinanceiro> {
+  const extratosBancarios: string[] = [];
+  const extratosAplicacoes: string[] = [];
+  const comprovantesEcac: string[] = [];
+  const observacoes: string[] = [];
+  let semMovimentoDeclarado = contemDeclaracaoSemMovimento(textoPostagens);
+
+  for (const arquivo of arquivos.slice(0, 30)) {
+    const nome = arquivo.name ?? arquivo.externalId;
+    const metadados = `${arquivo.name ?? ""} ${arquivo.category ?? ""}`;
+    let classificacao = classificarFonte(metadados);
+
+    const ehPdf =
+      (arquivo.name ?? "").toLowerCase().endsWith(".pdf") ||
+      (arquivo.mimeType ?? "").toLowerCase().includes("pdf");
+    if (
+      ehPdf &&
+      (!classificacao.bancario ||
+        !classificacao.aplicacao ||
+        !classificacao.ecac)
+    ) {
+      try {
+        const bytes = await baixar(arquivo.externalId);
+        const extraido = await extrairTextoPdf(bytes);
+        const texto = extraido.paginas.join("\n").slice(0, 250_000);
+        semMovimentoDeclarado ||= contemDeclaracaoSemMovimento(texto);
+        const conteudo = classificarFonte(texto);
+        classificacao = {
+          bancario: classificacao.bancario || conteudo.bancario,
+          aplicacao: classificacao.aplicacao || conteudo.aplicacao,
+          ecac: classificacao.ecac || conteudo.ecac,
+        };
+      } catch {
+        observacoes.push(
+          `${nome}: conteúdo não pôde ser lido; classificação feita pelo nome.`,
+        );
+      }
+    }
+
+    if (classificacao.bancario) adicionarUnico(extratosBancarios, nome);
+    if (classificacao.aplicacao) adicionarUnico(extratosAplicacoes, nome);
+    if (classificacao.ecac) adicionarUnico(comprovantesEcac, nome);
+  }
+
+  return {
+    situacao:
+      semMovimentoDeclarado || extratosBancarios.length > 0
+        ? "LIBERADO"
+        : "BLOQUEADO",
+    semMovimentoDeclarado,
+    extratosBancarios,
+    extratosAplicacoes,
+    comprovantesEcac,
+    observacoes,
+  };
+}
+
+function mensagemMovimento(
+  conferencia: ConferenciaMovimentoFinanceiro,
+  competencia: string | null,
+) {
+  const encontrado = (lista: string[]) =>
+    lista.length ? `identificado (${lista.length})` : "não identificado";
+  return mascararTexto(
+    [
+      "Conferência automática do Movimento Financeiro Mensal concluída.",
+      `Competência: ${competencia ?? "não identificada"}.`,
+      `Extrato bancário: ${encontrado(conferencia.extratosBancarios)}.`,
+      `Extrato de aplicações: ${encontrado(conferencia.extratosAplicacoes)}.`,
+      `Comprovante da Receita/e-CAC: ${encontrado(conferencia.comprovantesEcac)}.`,
+      conferencia.semMovimentoDeclarado
+        ? "A empresa foi declarada sem movimento no período."
+        : "",
+      "Resultado: documentação mínima identificada; o fechamento contábil pode ser iniciado.",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
 }
 
 async function gravarProcessamento(
@@ -148,11 +297,18 @@ function resumoDaValidacao(input: {
  */
 export async function processarSolicitacao(
   ctx: AppContext,
-  input: { solicitacaoExternalId: string; permitirFinalizar?: boolean; reprocessar?: boolean },
+  input: {
+    solicitacaoExternalId: string;
+    permitirFinalizar?: boolean;
+    reprocessar?: boolean;
+  },
   deps: DepsProcessamento = DEPS_PADRAO,
 ): Promise<ResultadoProcessamento> {
   assertCanWrite(ctx);
-  const solicitacao = await carregarSolicitacao(ctx, input.solicitacaoExternalId);
+  const solicitacao = await carregarSolicitacao(
+    ctx,
+    input.solicitacaoExternalId,
+  );
   const permitirFinalizar = input.permitirFinalizar !== false;
 
   const base: ResultadoProcessamento = {
@@ -216,13 +372,19 @@ export async function processarSolicitacao(
   // 1. Estado real antes de qualquer ação.
   let detalhe;
   try {
-    detalhe = await deps.pier.getRequest({ requestExternalId: solicitacao.external_id });
+    detalhe = await deps.pier.getRequest({
+      requestExternalId: solicitacao.external_id,
+    });
   } catch (error) {
-    return encerrar("ERRO", `Não foi possível consultar a solicitação no PIER. ${erroSeguro(error)}`);
+    return encerrar(
+      "ERRO",
+      `Não foi possível consultar a solicitação no PIER. ${erroSeguro(error)}`,
+    );
   }
 
   base.statusPier = detalhe.status ?? solicitacao.status;
-  base.divergenciaCorrigida = (detalhe.status ?? null) !== (solicitacao.status ?? null);
+  base.divergenciaCorrigida =
+    (detalhe.status ?? null) !== (solicitacao.status ?? null);
   base.periodo = detalhe.referenceMonth ?? solicitacao.reference_month;
 
   await ctx.db
@@ -231,7 +393,9 @@ export async function processarSolicitacao(
       status: detalhe.status ?? solicitacao.status,
       finished_at: detalhe.finishedAt ?? solicitacao.finished_at,
       has_attachment: detalhe.hasAttachment || solicitacao.has_attachment,
-      ...(detalhe.referenceMonth ? { reference_month: detalhe.referenceMonth } : {}),
+      ...(detalhe.referenceMonth
+        ? { reference_month: detalhe.referenceMonth }
+        : {}),
     })
     .eq("id", solicitacao.id);
 
@@ -240,25 +404,142 @@ export async function processarSolicitacao(
     return encerrar(
       "JA_FINALIZADA",
       "A solicitação já está finalizada no PIER. Nenhuma ação foi executada.",
-      { finalizadaEm: detalhe.finishedAt ?? anteriorProc?.finalized_at ?? null },
+      {
+        finalizadaEm: detalhe.finishedAt ?? anteriorProc?.finalized_at ?? null,
+      },
     );
   }
 
   // 2. Postagens (contexto para identificar o balancete).
   let textoPostagens = "";
   try {
-    const postagens = await deps.pier.listPosts({ requestExternalId: solicitacao.external_id });
+    const postagens = await deps.pier.listPosts({
+      requestExternalId: solicitacao.external_id,
+    });
     textoPostagens = postagens.map((p) => p.content ?? "").join("\n");
   } catch (error) {
-    console.error("[processamento] postagens indisponíveis:", erroSeguro(error));
+    console.error(
+      "[processamento] postagens indisponíveis:",
+      erroSeguro(error),
+    );
   }
 
   // 3. Arquivos da solicitação.
   let arquivos;
   try {
-    arquivos = await deps.pier.listFiles({ requestExternalId: solicitacao.external_id });
+    arquivos = await deps.pier.listFiles({
+      requestExternalId: solicitacao.external_id,
+    });
   } catch (error) {
-    return encerrar("ERRO", `Não foi possível listar os anexos no PIER. ${erroSeguro(error)}`);
+    return encerrar(
+      "ERRO",
+      `Não foi possível listar os anexos no PIER. ${erroSeguro(error)}`,
+    );
+  }
+
+  const ehMovimentoFinanceiro =
+    solicitacao.purpose === "MONTHLY_FINANCIAL_MOVEMENT" ||
+    (normalizarBusca(solicitacao.type_name ?? "").includes("movimento") &&
+      normalizarBusca(solicitacao.type_name ?? "").includes("financeiro"));
+
+  if (ehMovimentoFinanceiro) {
+    const conferencia = await conferirMovimentoFinanceiro(
+      arquivos,
+      textoPostagens,
+      (externalId) => deps.pier.downloadFile({ fileExternalId: externalId }),
+    );
+
+    await audit(ctx, {
+      action: "ANALISAR_MOVIMENTO_FINANCEIRO",
+      entity: "request",
+      entityId: solicitacao.id,
+      correlationId: solicitacao.external_id,
+      after: { ...conferencia, competencia: base.periodo },
+    });
+
+    if (conferencia.situacao === "BLOQUEADO") {
+      return encerrar(
+        "EM_REVISAO",
+        "Fechamento contábil bloqueado: não foi localizado extrato bancário nem declaração de empresa sem movimento.",
+      );
+    }
+
+    base.resultado = "LIBERADO";
+    base.totalAlertas =
+      Number(conferencia.extratosAplicacoes.length === 0) +
+      Number(conferencia.comprovantesEcac.length === 0);
+
+    if (!permitirFinalizar) {
+      return encerrar(
+        "PENDENTE",
+        "Documentação mínima identificada. O fechamento contábil está liberado; finalização no PIER não solicitada.",
+      );
+    }
+
+    let postagemId = anteriorProc?.pier_post_external_id ?? null;
+    if (!postagemId) {
+      try {
+        const postagem = await deps.pier.createPost({
+          requestExternalId: solicitacao.external_id,
+          mensagem: mensagemMovimento(conferencia, base.periodo),
+          privada: true,
+        });
+        postagemId = postagem.externalId;
+      } catch (error) {
+        return encerrar(
+          "PENDENTE",
+          `A conferência foi aprovada, mas a postagem no PIER falhou. ${erroSeguro(error)}`,
+        );
+      }
+    }
+
+    if (!postagemId)
+      return encerrar(
+        "PENDENTE",
+        "O PIER não confirmou a postagem privada. A solicitação não foi finalizada.",
+      );
+
+    base.postagemId = postagemId;
+    await gravarProcessamento(ctx, solicitacao.id, {
+      outcome: "PENDENTE",
+      reason: "Documentação mínima aprovada; aguardando finalização.",
+      pier_post_external_id: postagemId,
+      posted_at: new Date().toISOString(),
+    });
+
+    try {
+      await deps.pier.finalizeRequest({
+        requestExternalId: solicitacao.external_id,
+      });
+      const confirmacao = await deps.pier.getRequest({
+        requestExternalId: solicitacao.external_id,
+      });
+      base.statusPier = confirmacao.status ?? base.statusPier;
+      if (!pareceFinalizada(confirmacao.status, confirmacao.finishedAt))
+        return encerrar(
+          "PENDENTE",
+          "O PIER ainda não confirmou a finalização da solicitação.",
+        );
+
+      await ctx.db
+        .from("request")
+        .update({
+          status: confirmacao.status,
+          finished_at: confirmacao.finishedAt ?? new Date().toISOString(),
+        })
+        .eq("id", solicitacao.id);
+
+      return encerrar(
+        "FINALIZADO",
+        "Movimento Financeiro Mensal conferido e finalizado. Fechamento contábil liberado.",
+        { finalizadaEm: confirmacao.finishedAt ?? new Date().toISOString() },
+      );
+    } catch (error) {
+      return encerrar(
+        "PENDENTE",
+        `A postagem foi publicada, mas não foi possível confirmar a finalização. ${erroSeguro(error)}`,
+      );
+    }
   }
 
   const balancete = escolherBalancete(arquivos, {
@@ -279,7 +560,9 @@ export async function processarSolicitacao(
   let anexoId: string;
   let hash: string;
   try {
-    const bytes = await deps.pier.downloadFile({ fileExternalId: balancete.externalId });
+    const bytes = await deps.pier.downloadFile({
+      fileExternalId: balancete.externalId,
+    });
     const anexo = await deps.salvarAnexo(ctx, solicitacao, {
       filename: balancete.name ?? `balancete-${balancete.externalId}.pdf`,
       bytes,
@@ -302,10 +585,15 @@ export async function processarSolicitacao(
     });
     execucaoId = execucao.execucaoId;
   } catch (error) {
-    return encerrar("EM_REVISAO", `A análise do balancete falhou. ${erroSeguro(error)}`, {}, {
-      attachment_id: anexoId,
-      content_hash: hash,
-    });
+    return encerrar(
+      "EM_REVISAO",
+      `A análise do balancete falhou. ${erroSeguro(error)}`,
+      {},
+      {
+        attachment_id: anexoId,
+        content_hash: hash,
+      },
+    );
   }
 
   const resultado = await deps.obterResultado(ctx, { execucaoId });
@@ -313,7 +601,9 @@ export async function processarSolicitacao(
   const erros = achados.filter(
     (a) => a.severidade === "ERROR" || a.severidade === "BLOCKER",
   ).length;
-  const alertas = achados.filter((a) => a.severidade === "WARNING" || a.exigeHumano).length;
+  const alertas = achados.filter(
+    (a) => a.severidade === "WARNING" || a.exigeHumano,
+  ).length;
 
   base.execucaoId = execucaoId;
   base.resultado = resultado.resultado ?? null;
@@ -326,7 +616,8 @@ export async function processarSolicitacao(
     execution_id: execucaoId,
   };
 
-  const aprovado = resultado.resultado === "APROVADO" && erros === 0 && alertas === 0;
+  const aprovado =
+    resultado.resultado === "APROVADO" && erros === 0 && alertas === 0;
 
   if (!aprovado) {
     return encerrar(
@@ -359,7 +650,8 @@ export async function processarSolicitacao(
         mensagem: resumoDaValidacao({
           arquivo: base.arquivo,
           competencia: base.periodo,
-          resumo: typeof resultado.resumo === "string" ? resultado.resumo : null,
+          resumo:
+            typeof resultado.resumo === "string" ? resultado.resumo : null,
           totalRegras: achados.length,
         }),
         privada: true,
@@ -396,7 +688,9 @@ export async function processarSolicitacao(
 
   // 6. Finalização.
   try {
-    await deps.pier.finalizeRequest({ requestExternalId: solicitacao.external_id });
+    await deps.pier.finalizeRequest({
+      requestExternalId: solicitacao.external_id,
+    });
   } catch (error) {
     return encerrar(
       "PENDENTE",
@@ -409,7 +703,9 @@ export async function processarSolicitacao(
   // 7. Confirmação: só mostramos "Finalizado no PIER" após novo GET.
   let confirmacao;
   try {
-    confirmacao = await deps.pier.getRequest({ requestExternalId: solicitacao.external_id });
+    confirmacao = await deps.pier.getRequest({
+      requestExternalId: solicitacao.external_id,
+    });
   } catch (error) {
     return encerrar(
       "PENDENTE",
@@ -446,7 +742,6 @@ export async function processarSolicitacao(
   );
 }
 
-
 type AchadoParaNotificacao = {
   severidade: string;
   titulo: string;
@@ -467,7 +762,7 @@ export function montarMensagemRevisao(input: {
   const periodo =
     input.periodoInicio && input.periodoFim
       ? `${input.periodoInicio} a ${input.periodoFim}`
-      : input.periodoInicio ?? input.periodoFim ?? "não identificado";
+      : (input.periodoInicio ?? input.periodoFim ?? "não identificado");
 
   const relevantes = input.achados
     .filter(
@@ -479,31 +774,58 @@ export function montarMensagemRevisao(input: {
     )
     .slice(0, 12);
 
+  const valorEmReais = (texto: string | null | undefined) => {
+    const match = texto?.match(/R\$\s*(-?[\d.]+,\d{2})/);
+    if (!match) return null;
+    const numero = Number(match[1].replace(/\./g, "").replace(",", "."));
+    return Number.isFinite(numero) ? numero : null;
+  };
+  const lucros = relevantes.filter((a) =>
+    normalizarBusca(a.titulo).includes("lucro"),
+  );
+  const demais = relevantes.filter(
+    (a) => !normalizarBusca(a.titulo).includes("lucro"),
+  );
+  const totalLucros = lucros.reduce(
+    (total, a) => total + (valorEmReais(a.detalhe) ?? 0),
+    0,
+  );
+  const pontos = demais.map(
+    (a) => `• ${a.titulo}${a.detalhe ? ` — ${a.detalhe}` : ""}`,
+  );
+  if (lucros.length) {
+    const total = totalLucros
+      ? totalLucros.toLocaleString("pt-BR", {
+          style: "currency",
+          currency: "BRL",
+        })
+      : null;
+    pontos.push(
+      `• Adiantamentos de lucros: ${lucros.length} lançamento(s)${total ? `, total de ${total}` : ""}. Conferir documentação e tratamento contábil/fiscal.`,
+    );
+  }
+
   const linhas = [
-    "Validação automática do balancete concluída — revisão necessária.",
+    "Olá! A validação automática do balancete foi concluída e precisa de revisão.",
     "",
     `Empresa: ${input.clienteNome ?? "não informada"}`,
     `Solicitação: ${input.numero ?? "não informada"}`,
     `Período analisado: ${periodo}`,
-    `Arquivo: ${input.arquivo ?? "não informado"}`,
     "",
-    "Pontos identificados:",
-    ...relevantes.map((a) => {
-      const conta = a.contaCodigo ? ` (conta ${a.contaCodigo})` : "";
-      const detalhe = a.detalhe ? ` — ${a.detalhe}` : "";
-      const pagina = a.pagina ? ` [página ${a.pagina}]` : "";
-      return `• ${a.titulo}${conta}${detalhe}${pagina}`;
-    }),
+    "Pontos para conferir:",
+    ...pontos,
     "",
-    "Solicitamos validar a composição, os documentos de suporte e eventual necessidade de ajuste ou reclassificação contábil.",
-    "A solicitação permanecerá aberta e não será finalizada até a confirmação.",
+    "Por favor, valide os documentos de suporte e confirme se é necessário algum ajuste.",
+    "A solicitação permanecerá aberta até a revisão.",
   ];
 
   return mascararTexto(linhas.join("\n")).slice(0, 9000);
 }
 
 function objeto(valor: unknown): Record<string, unknown> {
-  return valor && typeof valor === "object" ? (valor as Record<string, unknown>) : {};
+  return valor && typeof valor === "object"
+    ? (valor as Record<string, unknown>)
+    : {};
 }
 
 /**
@@ -516,7 +838,93 @@ export async function notificarRevisaoPier(
   deps: Pick<DepsProcessamento, "pier"> = { pier: pierAdapter },
 ) {
   assertCanWrite(ctx);
-  const solicitacao = await carregarSolicitacao(ctx, input.solicitacaoExternalId);
+  const solicitacao = await carregarSolicitacao(
+    ctx,
+    input.solicitacaoExternalId,
+  );
+
+  const ehMovimentoFinanceiro =
+    solicitacao.purpose === "MONTHLY_FINANCIAL_MOVEMENT" ||
+    (normalizarBusca(solicitacao.type_name ?? "").includes("movimento") &&
+      normalizarBusca(solicitacao.type_name ?? "").includes("financeiro"));
+
+  if (ehMovimentoFinanceiro) {
+    const { data: analises } = await ctx.db
+      .from("audit_log")
+      .select("id, after_data")
+      .eq("organization_id", ctx.organizationId)
+      .eq("correlation_id", solicitacao.external_id)
+      .eq("action", "ANALISAR_MOVIMENTO_FINANCEIRO")
+      .order("created_at", { ascending: false })
+      .limit(1);
+    const analise = analises?.[0];
+    const dados = objeto(analise?.after_data);
+    if (!analise || dados["situacao"] !== "BLOQUEADO")
+      throw new AppError(
+        "REGRA_NEGOCIO",
+        "A solicitação precisa estar bloqueada por falta de extrato antes da notificação.",
+      );
+
+    const { data: notificacoes } = await ctx.db
+      .from("audit_log")
+      .select("after_data")
+      .eq("organization_id", ctx.organizationId)
+      .eq("correlation_id", solicitacao.external_id)
+      .eq("action", "NOTIFICAR_REVISAO_PIER")
+      .order("created_at", { ascending: false })
+      .limit(20);
+    for (const evento of notificacoes ?? []) {
+      const anterior = objeto(evento.after_data);
+      if (
+        anterior["analiseMovimentoId"] === analise.id &&
+        anterior["postagemId"]
+      )
+        return {
+          postagemId: String(anterior["postagemId"]),
+          jaEnviada: true,
+          mensagem:
+            "A responsável já foi notificada no PIER para esta conferência.",
+        };
+    }
+
+    const mensagem = mascararTexto(
+      [
+        "Olá! Na conferência do Movimento Financeiro Mensal, não localizamos o extrato bancário da competência.",
+        "Se a empresa não teve movimentação no período, registre essa informação na solicitação.",
+        "Caso tenha movimentação, anexe o extrato bancário para liberar o início do fechamento contábil.",
+        "A solicitação permanecerá aberta até a regularização.",
+      ].join("\n"),
+    );
+    const postagem = await deps.pier.createPost({
+      requestExternalId: solicitacao.external_id,
+      mensagem,
+      privada: true,
+    });
+    if (!postagem.externalId)
+      throw new AppError(
+        "INESPERADO",
+        "O PIER não confirmou a postagem privada.",
+      );
+
+    await audit(ctx, {
+      action: "NOTIFICAR_REVISAO_PIER",
+      entity: "request",
+      entityId: solicitacao.id,
+      correlationId: solicitacao.external_id,
+      after: {
+        analiseMovimentoId: analise.id,
+        postagemId: postagem.externalId,
+        privada: true,
+        finalizou: false,
+      },
+    });
+    return {
+      postagemId: postagem.externalId,
+      jaEnviada: false,
+      mensagem:
+        "Responsável notificada no PIER. A solicitação permanece aberta.",
+    };
+  }
 
   const { data: processamento, error: procError } = await ctx.db
     .from("request_processing")
@@ -526,8 +934,16 @@ export async function notificarRevisaoPier(
     .maybeSingle();
 
   if (procError)
-    throw new AppError("INESPERADO", "Não foi possível conferir o processamento.", procError.message);
-  if (!processamento || processamento.outcome !== "EM_REVISAO" || !processamento.execution_id)
+    throw new AppError(
+      "INESPERADO",
+      "Não foi possível conferir o processamento.",
+      procError.message,
+    );
+  if (
+    !processamento ||
+    processamento.outcome !== "EM_REVISAO" ||
+    !processamento.execution_id
+  )
     throw new AppError(
       "REGRA_NEGOCIO",
       "A solicitação precisa estar em revisão e possuir uma análise concluída antes da notificação.",
@@ -560,25 +976,35 @@ export async function notificarRevisaoPier(
     }
   }
 
-  const [{ data: execucao, error: execError }, { data: achados, error: achadosError }] =
-    await Promise.all([
-      ctx.db
-        .from("validation_execution")
-        .select("id, attachment_id, instruction_snapshot, totals")
-        .eq("organization_id", ctx.organizationId)
-        .eq("id", execucaoId)
-        .maybeSingle(),
-      ctx.db
-        .from("validation_finding")
-        .select("severity, title, detail, account_code, page, requires_human")
-        .eq("organization_id", ctx.organizationId)
-        .eq("execution_id", execucaoId),
-    ]);
+  const [
+    { data: execucao, error: execError },
+    { data: achados, error: achadosError },
+  ] = await Promise.all([
+    ctx.db
+      .from("validation_execution")
+      .select("id, attachment_id, instruction_snapshot, totals")
+      .eq("organization_id", ctx.organizationId)
+      .eq("id", execucaoId)
+      .maybeSingle(),
+    ctx.db
+      .from("validation_finding")
+      .select("severity, title, detail, account_code, page, requires_human")
+      .eq("organization_id", ctx.organizationId)
+      .eq("execution_id", execucaoId),
+  ]);
 
   if (execError || !execucao)
-    throw new AppError("REGRA_NEGOCIO", "A análise usada na revisão não foi encontrada.", execError?.message);
+    throw new AppError(
+      "REGRA_NEGOCIO",
+      "A análise usada na revisão não foi encontrada.",
+      execError?.message,
+    );
   if (achadosError)
-    throw new AppError("INESPERADO", "Não foi possível carregar as evidências.", achadosError.message);
+    throw new AppError(
+      "INESPERADO",
+      "Não foi possível carregar as evidências.",
+      achadosError.message,
+    );
 
   const relevantes = (achados ?? []).filter(
     (a) =>
@@ -691,7 +1117,10 @@ export async function processarEscopo(
   assertCanWrite(ctx);
   const lista = [...new Set(input.solicitacoes.filter(Boolean))];
   if (!lista.length)
-    throw new AppError("REGRA_NEGOCIO", "Nenhuma solicitação no escopo filtrado.");
+    throw new AppError(
+      "REGRA_NEGOCIO",
+      "Nenhuma solicitação no escopo filtrado.",
+    );
   if (lista.length > 100)
     throw new AppError(
       "REGRA_NEGOCIO",
@@ -706,7 +1135,9 @@ export async function processarEscopo(
           ctx,
           {
             solicitacaoExternalId: externalId,
-            ...(input.permitirFinalizar === false ? { permitirFinalizar: false } : {}),
+            ...(input.permitirFinalizar === false
+              ? { permitirFinalizar: false }
+              : {}),
           },
           deps,
         ),
