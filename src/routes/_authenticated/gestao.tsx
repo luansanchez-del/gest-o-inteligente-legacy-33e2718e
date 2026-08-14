@@ -415,46 +415,53 @@ function GestaoPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Cliente</TableHead>
+                <TableHead>Número</TableHead>
+                <TableHead>Empresa</TableHead>
                 <TableHead>CNPJ/CPF</TableHead>
-                <TableHead>Regime</TableHead>
-                <TableHead>Departamento</TableHead>
-                <TableHead>Responsável</TableHead>
-                <TableHead>Vínculo</TableHead>
                 <TableHead>Competência</TableHead>
-                <TableHead className="text-right">Análise</TableHead>
+                <TableHead>Responsável</TableHead>
+                <TableHead>Status PIER</TableHead>
+                <TableHead>Anexo</TableHead>
+                <TableHead>Análise</TableHead>
+                <TableHead className="text-right">Ação</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {dados.empresas.map((linha) => (
-                <TableRow key={linha.solicitacaoId}>
-                  <TableCell className="font-medium">{linha.clienteNome}</TableCell>
-                  <TableCell className="tabular-nums">{formatarCnpj(linha.documento)}</TableCell>
-                  <TableCell>{linha.regime ?? "—"}</TableCell>
-                  <TableCell>{linha.departamentoNome ?? "—"}</TableCell>
-                  <TableCell>{linha.responsavelNome ?? "Sem responsável"}</TableCell>
-                  <TableCell>
-                    {linha.vinculada ? (
-                      <span className="text-success-strong">Vinculada</span>
-                    ) : (
-                      <span className="text-muted-foreground">Sem vínculo</span>
-                    )}
-                  </TableCell>
-                  <TableCell>{linha.jaAberta ? "Já aberta" : "Nova"}</TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="sm" asChild>
-                      <Link
-                        to="/solicitacao/$id"
-                        params={{ id: linha.solicitacaoId }}
-                        aria-label={`Abrir análise de ${linha.clienteNome}`}
-                      >
-                        Abrir
-                        <ArrowRight className="ml-1 h-4 w-4" />
-                      </Link>
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {dados.empresas.map((linha) => {
+                const analise = ANALISE[linha.statusAnalise];
+                return (
+                  <TableRow key={linha.solicitacaoId}>
+                    <TableCell className="tabular-nums">{linha.numero ?? "—"}</TableCell>
+                    <TableCell className="font-medium">{linha.clienteNome}</TableCell>
+                    <TableCell className="tabular-nums">{formatarCnpj(linha.documento)}</TableCell>
+                    <TableCell className="tabular-nums">{linha.competencia ?? "—"}</TableCell>
+                    <TableCell>{linha.responsavelNome ?? "Sem responsável"}</TableCell>
+                    <TableCell>{linha.statusSolicitacao ?? "—"}</TableCell>
+                    <TableCell>
+                      {linha.temAnexo ? (
+                        <span className="text-success-strong">Sim</span>
+                      ) : (
+                        <span className="text-muted-foreground">Não</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <span className={analise.classe}>{analise.rotulo}</span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="sm" asChild>
+                        <Link
+                          to="/gestao/solicitacoes/$externalId"
+                          params={{ externalId: linha.solicitacaoId }}
+                          aria-label={`Abrir solicitação de ${linha.clienteNome}`}
+                        >
+                          {linha.statusAnalise === "NAO_ANALISADA" ? "Analisar" : "Ver análise"}
+                          <ArrowRight className="ml-1 h-4 w-4" />
+                        </Link>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         )}
