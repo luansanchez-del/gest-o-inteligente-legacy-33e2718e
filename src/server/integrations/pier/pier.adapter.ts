@@ -113,4 +113,78 @@ export const pierAdapter: PierAdapter = {
       .map((raw) => mapPost(raw, requestExternalId))
       .filter((post) => post.externalId);
   },
+
+  /** Estado real da solicitação. Usado para corrigir divergência entre cache e PIER. */
+  async getRequest({ requestExternalId }) {
+    const payload = await pierGet<unknown>(`/api/v2/solicitacoes/${requestExternalId}`);
+    const raw =
+      payload && typeof payload === "object" && !Array.isArray(payload)
+        ? ((payload as Raw)["data"] && typeof (payload as Raw)["data"] === "object"
+            ? ((payload as Raw)["data"] as Raw)
+            : (payload as Raw))
+        : ({} as Raw);
+    const request = mapRequest(raw);
+    if (!request.externalId) request.externalId = requestExternalId;
+    return request;
+  },
+
+  async listFiles({ requestExternalId }) {
+    const resultados: Raw[] = [];
+    for (let pagina = 1; pagina <= MAX_PAGINAS; pagina++) {
+      const payload = await pierGet<unknown>("/api/v2/arquivos", {
+        pagina,
+        quantidadePorPagina: POR_PAGINA,
+        idSolicitacao: requestExternalId,
+      });
+      const lote = asArray(payload);
+      resultados.push(...lote);
+      if (lote.length < POR_PAGINA) break;
+    }
+    return resultados.map((raw) => mapFile(raw, requestExternalId)).filter((f) => f.externalId);
+  },
+
+  async downloadFile({ fileExternalId }) {
+    const payload = await pierGet<unknown>(`/api/v2/arquivos/${fileExternalId}/url-download`);
+    let url: string | null = null;
+    if (typeof payload === "string") url = payload;
+    else if (payload && typeof payload === "object") {
+      const raw = payload as Raw;
+      for (const key of ["url", "urlDownload", "downloadUrl", "link", "uri"]) {
+        const value = raw[key];
+        if (typeof value === "string" && value.trim()) {
+          url = value.trim();
+          break;
+        }
+      }
+    }
+    if (!url) throw integracaoFalhou("O PIER não devolveu o link de download do arquivo.");
+    // A URL é temporária: usada apenas aqui e nunca persistida ou registrada.
+    return pierDownload(url);
+  },
+
+  async createPost({ requestExternalId, mensagem, privada = true }) {
+    const payload = await pierPost<unknown>(
+      `/api/v2/solicitacoes/${requestExternalId}/postagens`,
+      { mensagem, flgPrivada: privada },
+    );
+    let externalId: string | null = null;
+    if (typeof payload === "string" || typeof payload === "number") externalId = String(payload);
+    else if (payload && typeof payload === "object") {
+      const raw = payload as Raw;
+      const alvo =
+        raw["data"] && typeof raw["data"] === "object" ? (raw["data"] as Raw) : raw;
+      for (const key of ["id", "idPostagem", "externalId"]) {
+        const value = alvo[key];
+        if (typeof value === "string" || typeof value === "number") {
+          externalId = String(value);
+          break;
+        }
+      }
+    }
+    return { externalId };
+  },
+
+  async finalizeRequest({ requestExternalId }) {
+    await pierPost<unknown>(`/api/v2/solicitacoes/${requestExternalId}/finalizar`);
+  },
 };
