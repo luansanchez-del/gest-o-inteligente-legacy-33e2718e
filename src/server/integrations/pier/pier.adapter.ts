@@ -95,8 +95,13 @@ export const pierAdapter: PierAdapter = {
       if (lotes.some((lote) => lote.length < POR_PAGINA_SOLICITACOES)) break;
     }
 
+    // Sem competência interpretável a solicitação não é descartada: ela é devolvida
+    // para entrar na fila de "Revisão de competência".
     return resultados.filter(
-      (request) => request.externalId && request.referenceMonth === referenceMonth,
+      (request) =>
+        request.externalId &&
+        (request.referenceMonth === referenceMonth ||
+          (incluirSemCompetencia && !request.referenceMonth)),
     );
   },
 
