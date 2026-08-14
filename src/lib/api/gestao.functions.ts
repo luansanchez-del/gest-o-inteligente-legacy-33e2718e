@@ -15,6 +15,7 @@ type EscopoInput = {
     | "ANALISANDO"
     | "ANALISE_CONCLUIDA"
     | "REVISAO_NECESSARIA"
+    | "BLOQUEADA"
     | "ERRO"
     | "HISTORICO"
     | null;
