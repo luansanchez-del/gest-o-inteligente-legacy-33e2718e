@@ -5,6 +5,7 @@ import { ArrowRight, Download, FilterX, Pencil, PlayCircle, Users } from "lucide
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/common/PageHeader";
+import { CargaCompetencias } from "@/components/gestao/CargaCompetencias";
 import { CarregandoTabela, ErroConsulta, EstadoVazio } from "@/components/common/EstadoConsulta";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -88,6 +89,9 @@ function competenciaAtual() {
 function GestaoPage() {
   const queryClient = useQueryClient();
   const [competencia, setCompetencia] = useState(competenciaAtual);
+  const [competenciaFim, setCompetenciaFim] = useState("");
+  const [busca, setBusca] = useState("");
+  const [revisaoCompetencia, setRevisaoCompetencia] = useState(false);
   const [departamento, setDepartamento] = useState(TODOS_DEPARTAMENTOS);
   const [responsavel, setResponsavel] = useState(TODOS_USUARIOS);
   const [fila, setFila] = useState(TODAS_FILAS);
@@ -102,6 +106,9 @@ function GestaoPage() {
 
   const filtro = {
     competencia,
+    competenciaFim: competenciaFim || null,
+    revisaoCompetencia,
+    busca: busca.trim() || null,
     tipo: "CONTABIL" as const,
     departamentoId: departamento === TODOS_DEPARTAMENTOS ? null : departamento,
     responsavelId: responsavel === TODOS_USUARIOS ? null : responsavel,
@@ -112,6 +119,9 @@ function GestaoPage() {
     queryKey: [
       "preview-gestao",
       filtro.competencia,
+      filtro.competenciaFim,
+      filtro.revisaoCompetencia,
+      filtro.busca,
       filtro.departamentoId,
       filtro.responsavelId,
       fila,
@@ -191,6 +201,9 @@ function GestaoPage() {
     departamento !== TODOS_DEPARTAMENTOS ||
     responsavel !== TODOS_USUARIOS ||
     fila !== TODAS_FILAS ||
+    competenciaFim !== "" ||
+    busca !== "" ||
+    revisaoCompetencia ||
     incluirInativos ||
     competencia !== competenciaAtual();
 
@@ -200,6 +213,9 @@ function GestaoPage() {
     setDepartamento(TODOS_DEPARTAMENTOS);
     setResponsavel(TODOS_USUARIOS);
     setFila(TODAS_FILAS);
+    setCompetenciaFim("");
+    setBusca("");
+    setRevisaoCompetencia(false);
     setIncluirInativos(false);
   }
 
@@ -242,15 +258,29 @@ function GestaoPage() {
         </Card>
       ) : null}
 
+      <CargaCompetencias />
+
       <Card className="p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
           <div className="space-y-1.5 lg:w-[150px]">
-            <Label htmlFor="competencia">Competência</Label>
+            <Label htmlFor="competencia">Competência inicial</Label>
             <Input
               id="competencia"
               type="month"
               value={competencia}
+              disabled={revisaoCompetencia}
               onChange={(e) => setCompetencia(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5 lg:w-[150px]">
+            <Label htmlFor="competencia-fim">Competência final</Label>
+            <Input
+              id="competencia-fim"
+              type="month"
+              value={competenciaFim}
+              disabled={revisaoCompetencia}
+              placeholder="opcional"
+              onChange={(e) => setCompetenciaFim(e.target.value)}
             />
           </div>
           <div className="space-y-1.5 lg:w-[190px]">
@@ -352,6 +382,26 @@ function GestaoPage() {
               </SelectContent>
             </Select>
           </div>
+
+          <div className="space-y-1.5 lg:w-[220px]">
+            <Label htmlFor="busca-cliente">Cliente (nome ou CNPJ)</Label>
+            <Input
+              id="busca-cliente"
+              value={busca}
+              placeholder="Buscar cliente"
+              onChange={(e) => setBusca(e.target.value)}
+            />
+          </div>
+
+          <Button
+            type="button"
+            variant={revisaoCompetencia ? "default" : "outline"}
+            aria-pressed={revisaoCompetencia}
+            onClick={() => setRevisaoCompetencia((v) => !v)}
+            className="lg:self-end"
+          >
+            Revisão de competência
+          </Button>
 
           <Button
             variant="outline"
