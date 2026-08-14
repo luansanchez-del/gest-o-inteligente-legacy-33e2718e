@@ -136,11 +136,12 @@ export function parseBalancete(paginas: string[]): BalanceteDocumento {
         if (datas?.length) emissaoEm = datas[datas.length - 1]!;
       }
 
-      const casamento = texto.match(CODIGO_LINHA);
+      const casamento = interpretarInicioDaLinha(texto);
       if (!casamento) return;
 
-      const codigo = casamento[1]!;
-      const resto = casamento[2]!;
+      const { codigo, contaInterna, sintetica } = casamento;
+      const resto = casamento.resto;
+
       const { valores, brutos } = extrairValores(resto);
 
       if (valores.length < 3) {
