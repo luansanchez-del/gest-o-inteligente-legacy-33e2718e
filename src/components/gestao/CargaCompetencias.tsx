@@ -144,7 +144,7 @@ export function CargaCompetencias() {
           data: {
             runId,
             status: falhas ? "FAILED" : "COMPLETED",
-            mensagem: falhas ? `${falhas} competência(s) com falha.` : null,
+            mensagem: falhas ? `${falhas} competência(s) com falha.` : undefined,
           },
         });
       } catch {
