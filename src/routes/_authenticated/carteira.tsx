@@ -62,7 +62,13 @@ export const Route = createFileRoute("/_authenticated/carteira")({
 });
 
 type StatusFiltro = "Todos" | "Ativo" | "Inativo";
-type SituacaoFiltro = "TODOS" | "VINCULADO" | "NAO_VINCULADO";
+type SituacaoFiltro = "TODOS" | "VINCULADO" | "NAO_VINCULADO" | "REVISAO";
+const MOTIVO_REVISAO: Record<string, string> = {
+  SEM_DOCUMENTO: "Sem CNPJ/CPF",
+  DOCUMENTO_INVALIDO: "Documento inválido",
+  DOCUMENTO_DUPLICADO: "CNPJ duplicado",
+};
+
 const TODOS_REGIMES = "__TODOS__";
 
 function CarteiraPage() {
