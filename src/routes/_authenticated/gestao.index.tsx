@@ -476,7 +476,17 @@ function GestaoPage() {
                 return (
                   <TableRow key={linha.solicitacaoId}>
                     <TableCell className="tabular-nums">{linha.numero ?? "—"}</TableCell>
-                    <TableCell className="font-medium">{linha.clienteNome}</TableCell>
+                    <TableCell className="font-medium">
+                      {linha.clienteNome}
+                      {linha.avisoCadastral ? (
+                        <span
+                          className="mt-0.5 block text-xs font-normal text-muted-foreground"
+                          title={linha.avisoCadastral}
+                        >
+                          {linha.avisoCadastral}
+                        </span>
+                      ) : null}
+                    </TableCell>
                     <TableCell className="tabular-nums">{formatarCnpj(linha.documento)}</TableCell>
                     <TableCell className="tabular-nums">{linha.competencia ?? "—"}</TableCell>
                     <TableCell>{linha.responsavelNome ?? "Sem responsável"}</TableCell>
