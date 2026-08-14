@@ -331,24 +331,16 @@ export async function vincularCarteiraAutomaticamente(
 ): Promise<ResumoVinculoAutomatico> {
   assertCanWrite(ctx);
 
-  const clientes = await (async () => {
-    const acc: { id: string; name: string; document: string | null }[] = [];
-    const TAMANHO = 1000;
-    for (let pagina = 0; pagina < 50; pagina++) {
-      const de = pagina * TAMANHO;
-      const { data, error } = await ctx.db
+  const clientes = await carregarTodas<{ id: string; name: string; document: string | null }>(
+    "a carteira",
+    (de, ate) =>
+      ctx.db
         .from("pier_client")
         .select("id, name, document")
         .eq("organization_id", ctx.organizationId)
         .order("name")
-        .range(de, de + TAMANHO - 1);
-      if (error)
-        throw new AppError("INESPERADO", "Não foi possível ler a carteira.", error.message);
-      acc.push(...(data ?? []));
-      if (!data || data.length < TAMANHO) break;
-    }
-    return acc;
-  })();
+        .range(de, ate),
+  );
 
   const ocorrencias = new Map<string, number>();
   for (const c of clientes) {
@@ -356,22 +348,36 @@ export async function vincularCarteiraAutomaticamente(
     if (digitos) ocorrencias.set(digitos, (ocorrencias.get(digitos) ?? 0) + 1);
   }
 
-  const { data: vinculosAtuais } = await ctx.db
-    .from("company_pier_link")
-    .select("pier_client_id")
-    .eq("organization_id", ctx.organizationId);
-  const jaVinculados = new Set((vinculosAtuais ?? []).map((v) => v.pier_client_id));
+  const vinculosAtuais = await carregarTodas("os vínculos", (de, ate) =>
+    ctx.db
+      .from("company_pier_link")
+      .select("pier_client_id")
+      .eq("organization_id", ctx.organizationId)
+      .order("pier_client_id")
+      .range(de, ate),
+  );
+  const jaVinculados = new Set(vinculosAtuais.map((v) => v.pier_client_id));
 
-  const { data: empresas } = await ctx.db
-    .from("company")
-    .select("id, document")
-    .eq("organization_id", ctx.organizationId);
-  // Um documento nunca aponta para duas empresas: a primeira encontrada é a canônica.
-  const empresaPorDocumento = new Map<string, string>();
-  for (const e of empresas ?? []) {
-    const digitos = normalizarDocumento(e.document);
-    if (digitos && !empresaPorDocumento.has(digitos)) empresaPorDocumento.set(digitos, e.id);
+  // Todas as empresas precisam estar carregadas ANTES de qualquer criação,
+  // senão o vínculo automático recria empresas que já existem além da 1000ª linha.
+  const empresas = await carregarTodas("as empresas", (de, ate) =>
+    ctx.db
+      .from("company")
+      .select("id, document_digits")
+      .eq("organization_id", ctx.organizationId)
+      .order("id")
+      .range(de, ate),
+  );
+  // Documento repetido entre empresas internas nunca escolhe "a primeira": vira conflito.
+  const empresasPorDocumento = new Map<string, string[]>();
+  for (const e of empresas) {
+    const digitos = e.document_digits ?? "";
+    if (!digitos) continue;
+    const atual = empresasPorDocumento.get(digitos);
+    if (atual) atual.push(e.id);
+    else empresasPorDocumento.set(digitos, [e.id]);
   }
+
 
   const resumo: ResumoVinculoAutomatico = {
     sincronizados: clientes.length,
