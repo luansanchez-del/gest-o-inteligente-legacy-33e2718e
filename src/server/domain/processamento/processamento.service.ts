@@ -446,6 +446,232 @@ export async function processarSolicitacao(
   );
 }
 
+
+type AchadoParaNotificacao = {
+  severidade: string;
+  titulo: string;
+  detalhe?: string | null;
+  contaCodigo?: string | null;
+  pagina?: number | null;
+  exigeHumano?: boolean;
+};
+
+export function montarMensagemRevisao(input: {
+  clienteNome: string | null;
+  numero: string | null;
+  arquivo: string | null;
+  periodoInicio: string | null;
+  periodoFim: string | null;
+  achados: AchadoParaNotificacao[];
+}) {
+  const periodo =
+    input.periodoInicio && input.periodoFim
+      ? `${input.periodoInicio} a ${input.periodoFim}`
+      : input.periodoInicio ?? input.periodoFim ?? "não identificado";
+
+  const relevantes = input.achados
+    .filter(
+      (a) =>
+        a.severidade === "BLOCKER" ||
+        a.severidade === "ERROR" ||
+        a.severidade === "WARNING" ||
+        a.exigeHumano,
+    )
+    .slice(0, 12);
+
+  const linhas = [
+    "Validação automática do balancete concluída — revisão necessária.",
+    "",
+    `Empresa: ${input.clienteNome ?? "não informada"}`,
+    `Solicitação: ${input.numero ?? "não informada"}`,
+    `Período analisado: ${periodo}`,
+    `Arquivo: ${input.arquivo ?? "não informado"}`,
+    "",
+    "Pontos identificados:",
+    ...relevantes.map((a) => {
+      const conta = a.contaCodigo ? ` (conta ${a.contaCodigo})` : "";
+      const detalhe = a.detalhe ? ` — ${a.detalhe}` : "";
+      const pagina = a.pagina ? ` [página ${a.pagina}]` : "";
+      return `• ${a.titulo}${conta}${detalhe}${pagina}`;
+    }),
+    "",
+    "Solicitamos validar a composição, os documentos de suporte e eventual necessidade de ajuste ou reclassificação contábil.",
+    "A solicitação permanecerá aberta e não será finalizada até a confirmação.",
+  ];
+
+  return mascararTexto(linhas.join("\n")).slice(0, 9000);
+}
+
+function objeto(valor: unknown): Record<string, unknown> {
+  return valor && typeof valor === "object" ? (valor as Record<string, unknown>) : {};
+}
+
+/**
+ * Publica uma mensagem privada com as evidências da última análise em revisão.
+ * Não finaliza, não devolve ao cliente e não reutiliza o ID da postagem de aprovação.
+ */
+export async function notificarRevisaoPier(
+  ctx: AppContext,
+  input: { solicitacaoExternalId: string },
+  deps: Pick<DepsProcessamento, "pier"> = { pier: pierAdapter },
+) {
+  assertCanWrite(ctx);
+  const solicitacao = await carregarSolicitacao(ctx, input.solicitacaoExternalId);
+
+  const { data: processamento, error: procError } = await ctx.db
+    .from("request_processing")
+    .select("outcome, execution_id")
+    .eq("organization_id", ctx.organizationId)
+    .eq("request_id", solicitacao.id)
+    .maybeSingle();
+
+  if (procError)
+    throw new AppError("INESPERADO", "Não foi possível conferir o processamento.", procError.message);
+  if (!processamento || processamento.outcome !== "EM_REVISAO" || !processamento.execution_id)
+    throw new AppError(
+      "REGRA_NEGOCIO",
+      "A solicitação precisa estar em revisão e possuir uma análise concluída antes da notificação.",
+    );
+
+  const execucaoId = processamento.execution_id;
+
+  // Idempotência por solicitação + execução: repetir o clique não duplica a postagem.
+  const { data: eventos } = await ctx.db
+    .from("audit_log")
+    .select("after_data")
+    .eq("organization_id", ctx.organizationId)
+    .eq("correlation_id", solicitacao.external_id)
+    .eq("action", "NOTIFICAR_REVISAO_PIER")
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  for (const evento of eventos ?? []) {
+    const dados = objeto(evento.after_data);
+    if (
+      dados["executionId"] === execucaoId &&
+      typeof dados["postagemId"] === "string" &&
+      dados["postagemId"]
+    ) {
+      return {
+        postagemId: dados["postagemId"] as string,
+        jaEnviada: true,
+        mensagem: "A responsável já foi notificada no PIER para esta análise.",
+      };
+    }
+  }
+
+  const [{ data: execucao, error: execError }, { data: achados, error: achadosError }] =
+    await Promise.all([
+      ctx.db
+        .from("validation_execution")
+        .select("id, attachment_id, instruction_snapshot, totals")
+        .eq("organization_id", ctx.organizationId)
+        .eq("id", execucaoId)
+        .maybeSingle(),
+      ctx.db
+        .from("validation_finding")
+        .select("severity, title, detail, account_code, page, requires_human")
+        .eq("organization_id", ctx.organizationId)
+        .eq("execution_id", execucaoId),
+    ]);
+
+  if (execError || !execucao)
+    throw new AppError("REGRA_NEGOCIO", "A análise usada na revisão não foi encontrada.", execError?.message);
+  if (achadosError)
+    throw new AppError("INESPERADO", "Não foi possível carregar as evidências.", achadosError.message);
+
+  const relevantes = (achados ?? []).filter(
+    (a) =>
+      a.severity === "BLOCKER" ||
+      a.severity === "ERROR" ||
+      a.severity === "WARNING" ||
+      a.requires_human,
+  );
+  if (!relevantes.length)
+    throw new AppError(
+      "REGRA_NEGOCIO",
+      "A análise não possui alerta ou impedimento que justifique uma notificação de revisão.",
+    );
+
+  const { data: anexo } = await ctx.db
+    .from("request_attachment")
+    .select("filename")
+    .eq("organization_id", ctx.organizationId)
+    .eq("id", execucao.attachment_id)
+    .maybeSingle();
+
+  const totais = objeto(execucao.totals);
+  const documento = objeto(totais["documento"]);
+  const snapshot = objeto(execucao.instruction_snapshot);
+  const efetiva = objeto(snapshot["efetiva"]);
+  const interpretado = objeto(efetiva["interpretado"]);
+
+  const mensagem = montarMensagemRevisao({
+    clienteNome: solicitacao.client_name,
+    numero: solicitacao.number,
+    arquivo: anexo?.filename ?? null,
+    periodoInicio:
+      typeof interpretado["inicio"] === "string"
+        ? interpretado["inicio"]
+        : typeof documento["periodoInicio"] === "string"
+          ? documento["periodoInicio"]
+          : null,
+    periodoFim:
+      typeof interpretado["fim"] === "string"
+        ? interpretado["fim"]
+        : typeof documento["periodoFim"] === "string"
+          ? documento["periodoFim"]
+          : null,
+    achados: relevantes.map((a) => ({
+      severidade: a.severity,
+      titulo: a.title,
+      detalhe: a.detail,
+      contaCodigo: a.account_code,
+      pagina: a.page,
+      exigeHumano: a.requires_human,
+    })),
+  });
+
+  let postagem;
+  try {
+    postagem = await deps.pier.createPost({
+      requestExternalId: solicitacao.external_id,
+      mensagem,
+      privada: true,
+    });
+  } catch (error) {
+    throw new AppError(
+      "INESPERADO",
+      `Não foi possível notificar a responsável no PIER. ${erroSeguro(error)}`,
+    );
+  }
+
+  if (!postagem.externalId)
+    throw new AppError(
+      "INESPERADO",
+      "O PIER não confirmou o identificador da postagem privada.",
+    );
+
+  await audit(ctx, {
+    action: "NOTIFICAR_REVISAO_PIER",
+    entity: "request",
+    entityId: solicitacao.id,
+    correlationId: solicitacao.external_id,
+    after: {
+      executionId: execucaoId,
+      postagemId: postagem.externalId,
+      privada: true,
+      finalizou: false,
+    },
+  });
+
+  return {
+    postagemId: postagem.externalId,
+    jaEnviada: false,
+    mensagem: "Responsável notificada no PIER. A solicitação permanece aberta.",
+  };
+}
+
 export interface ResumoLote {
   total: number;
   finalizadas: number;

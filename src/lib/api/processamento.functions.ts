@@ -36,3 +36,18 @@ export const processarEscopo = createServerFn({ method: "POST" })
       return service.processarEscopo(ctx, data);
     }),
   );
+
+
+export const notificarRevisaoPier = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { solicitacaoExternalId: string }) => {
+    if (!input?.solicitacaoExternalId?.trim())
+      throw new Error("VALIDACAO::Solicitação não informada.");
+    return input;
+  })
+  .handler(async ({ data, context }) =>
+    comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
+      const service = await import("@/server/domain/processamento/processamento.service");
+      return service.notificarRevisaoPier(ctx, data);
+    }),
+  );
