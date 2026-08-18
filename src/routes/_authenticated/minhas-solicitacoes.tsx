@@ -1,32 +1,21 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import {
-  AlertTriangle,
   ArrowRight,
-  CheckCircle2,
   FileSearch,
-  Inbox,
   RefreshCw,
-  Route as RouteIcon,
   Search,
   UserRoundCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { AnaliseCaixaDialog } from "@/components/caixa-inteligente/AnaliseCaixaDialog";
 import { PageHeader } from "@/components/common/PageHeader";
 import { ErroConsulta, EstadoVazio } from "@/components/common/EstadoConsulta";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -44,10 +33,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Textarea } from "@/components/ui/textarea";
 import {
-  analisarSolicitacaoInteligente,
-  executarAcaoSolicitacaoInteligente,
   listarMinhaCaixa,
   obterVinculoPier,
   sincronizarMinhaCaixa,
@@ -114,29 +100,11 @@ function dataPt(value: string | null | undefined) {
   }).format(data);
 }
 
-function rotuloAcao(acao: string) {
-  if (acao === "RESPONDER_FINALIZAR") return "Responder e finalizar";
-  if (acao === "RESPONDER_MANTER_ABERTA") return "Responder e manter aberta";
-  if (acao === "ENCAMINHAR") return "Encaminhar";
-  return "Revisão humana";
-}
-
-function classeAcao(acao: string) {
-  if (acao === "RESPONDER_FINALIZAR")
-    return "bg-success-soft text-success-strong";
-  if (acao === "ENCAMINHAR")
-    return "bg-warning-soft text-warning-strong";
-  return "bg-muted text-muted-foreground";
-}
-
 function MinhasSolicitacoesPage() {
   const queryClient = useQueryClient();
   const [busca, setBusca] = useState("");
   const [categoria, setCategoria] = useState<CategoriaFiltro>("TODAS");
   const [selecionada, setSelecionada] = useState<string | null>(null);
-  const [mensagem, setMensagem] = useState("");
-  const [privada, setPrivada] = useState(false);
-  const [confirmarFinalizacao, setConfirmarFinalizacao] = useState(false);
   const [usuarioEscolhido, setUsuarioEscolhido] = useState("");
   const [buscaUsuario, setBuscaUsuario] = useState("");
 
@@ -150,7 +118,8 @@ function MinhasSolicitacoesPage() {
   }, [vinculo.data?.usuario?.id]);
 
   const vincular = useMutation({
-    mutationFn: () => vincularMeuUsuarioPier({ data: { externalId: usuarioEscolhido } }),
+    mutationFn: () =>
+      vincularMeuUsuarioPier({ data: { externalId: usuarioEscolhido } }),
     onSuccess: (usuario) => {
       toast.success(`Usuário PIER vinculado: ${usuario.nome}.`);
       setBuscaUsuario("");
@@ -177,48 +146,10 @@ function MinhasSolicitacoesPage() {
     mutationFn: () => sincronizarMinhaCaixa(),
     onSuccess: (r) => {
       toast.success(
-        `${r.processadas} solicitações atualizadas para ${r.usuario.nome}.${r.possivelmenteParcial ? " A consulta atingiu o limite de páginas do PIER." : ""}`,
+        `${r.processadas} solicitações atualizadas para ${r.usuario.nome}.${
+          r.possivelmenteParcial ? " A sincronização pode estar parcial." : ""
+        }`,
       );
-      void queryClient.invalidateQueries({ queryKey: ["minha-caixa-inteligente"] });
-    },
-    onError: (e) => toast.error(mensagemDeErro(e)),
-  });
-
-  const analise = useQuery({
-    queryKey: ["analise-caixa-inteligente", selecionada],
-    queryFn: () =>
-      analisarSolicitacaoInteligente({
-        data: { solicitacaoExternalId: selecionada! },
-      }),
-    enabled: Boolean(selecionada),
-    staleTime: 0,
-  });
-
-  useEffect(() => {
-    if (analise.data?.respostaSugerida)
-      setMensagem(analise.data.respostaSugerida);
-  }, [analise.data?.respostaSugerida]);
-
-  const executar = useMutation({
-    mutationFn: (
-      acao: "RESPONDER_MANTER_ABERTA" | "RESPONDER_FINALIZAR",
-    ) =>
-      executarAcaoSolicitacaoInteligente({
-        data: {
-          solicitacaoExternalId: selecionada!,
-          acao,
-          mensagem,
-          privada,
-        },
-      }),
-    onSuccess: (r) => {
-      toast.success(
-        r.finalizada
-          ? "Resposta publicada e finalização confirmada no PIER."
-          : "Resposta publicada no PIER. A solicitação permanece aberta.",
-      );
-      setConfirmarFinalizacao(false);
-      setSelecionada(null);
       void queryClient.invalidateQueries({ queryKey: ["minha-caixa-inteligente"] });
     },
     onError: (e) => toast.error(mensagemDeErro(e)),
@@ -266,9 +197,8 @@ function MinhasSolicitacoesPage() {
               usuarioSelecionado &&
               normalizarBuscaUsuario(e.target.value) !==
                 normalizarBuscaUsuario(usuarioSelecionado.nome)
-            ) {
+            )
               setUsuarioEscolhido("");
-            }
           }}
           placeholder="Digite nome, sobrenome, e-mail ou login"
           className="pl-9"
@@ -288,7 +218,9 @@ function MinhasSolicitacoesPage() {
               type="button"
               onClick={() => selecionarUsuario(u)}
               className={`flex w-full flex-col gap-0.5 border-b px-3 py-2.5 text-left last:border-b-0 hover:bg-muted/60 ${
-                usuarioEscolhido === u.id ? "bg-primary/5 ring-1 ring-inset ring-primary/20" : ""
+                usuarioEscolhido === u.id
+                  ? "bg-primary/5 ring-1 ring-inset ring-primary/20"
+                  : ""
               }`}
             >
               <span className="text-sm font-medium">{u.nome}</span>
@@ -300,7 +232,8 @@ function MinhasSolicitacoesPage() {
         </div>
       ) : (
         <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
-          Nenhum usuário encontrado para “{buscaUsuario}”. Tente outro nome, sobrenome ou e-mail.
+          Nenhum usuário encontrado para “{buscaUsuario}”. Tente outro nome,
+          sobrenome ou e-mail.
         </p>
       )}
 
@@ -322,13 +255,11 @@ function MinhasSolicitacoesPage() {
     <div className="space-y-6">
       <PageHeader
         titulo="Minha Caixa de Entrada Inteligente"
-        descricao="Solicitações abertas atribuídas a você no PIER, com leitura do assunto, localizador de responsável/evidências e recomendação de próxima ação."
+        descricao="Solicitações abertas atribuídas a você no PIER, com leitura do assunto, postagens, anexos e recomendação de próxima ação."
         acoes={
           <Button
             onClick={() => sincronizar.mutate()}
-            disabled={
-              sincronizar.isPending || !vinculo.data?.vinculado
-            }
+            disabled={sincronizar.isPending || !vinculo.data?.vinculado}
           >
             <RefreshCw
               className={`mr-2 h-4 w-4 ${sincronizar.isPending ? "animate-spin" : ""}`}
@@ -341,10 +272,7 @@ function MinhasSolicitacoesPage() {
       />
 
       {vinculo.isError ? (
-        <ErroConsulta
-          error={vinculo.error}
-          onRetry={() => void vinculo.refetch()}
-        />
+        <ErroConsulta error={vinculo.error} onRetry={() => void vinculo.refetch()} />
       ) : !vinculo.data?.vinculado ? (
         <Card className="border-primary/20 p-5">
           <div className="flex items-start gap-3">
@@ -352,7 +280,7 @@ function MinhasSolicitacoesPage() {
             <div className="min-w-0 flex-1">
               <p className="font-semibold">Qual usuário do PIER é você?</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Esse vínculo é feito uma vez para que a Caixa traga somente as solicitações atribuídas ao seu usuário. Pesquise pelo nome, sobrenome, e-mail ou login do PIER.
+                Esse vínculo é feito uma vez para que a Caixa traga somente as solicitações atribuídas ao seu usuário.
               </p>
               <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,560px)_auto] lg:items-start">
                 {seletorUsuario}
@@ -402,74 +330,49 @@ function MinhasSolicitacoesPage() {
         <>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Card className="p-4">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                Em aberto
-              </p>
-              <p className="mt-1 text-3xl font-semibold tabular-nums">
-                {dados?.total ?? 0}
-              </p>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Em aberto</p>
+              <p className="mt-1 text-3xl font-semibold tabular-nums">{dados?.total ?? 0}</p>
               <p className="mt-1 text-xs text-muted-foreground">
                 atribuídas a {dados?.usuario.nome ?? vinculo.data.usuario?.nome}
               </p>
             </Card>
             <Card className="p-4">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                Vencidas
-              </p>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Vencidas</p>
               <p className="mt-1 text-3xl font-semibold tabular-nums text-destructive">
                 {dados?.vencidas ?? 0}
               </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                prioridade operacional
-              </p>
+              <p className="mt-1 text-xs text-muted-foreground">prioridade operacional</p>
             </Card>
             <Card className="p-4">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                Vencem hoje
-              </p>
-              <p className="mt-1 text-3xl font-semibold tabular-nums">
-                {dados?.vencemHoje ?? 0}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                prazo não decide tecnicamente
-              </p>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Vencem hoje</p>
+              <p className="mt-1 text-3xl font-semibold tabular-nums">{dados?.vencemHoje ?? 0}</p>
+              <p className="mt-1 text-xs text-muted-foreground">prazo não decide tecnicamente</p>
             </Card>
             <Card className="p-4">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                Com anexos
-              </p>
-              <p className="mt-1 text-3xl font-semibold tabular-nums">
-                {dados?.comAnexo ?? 0}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                evidências para análise
-              </p>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Com anexos</p>
+              <p className="mt-1 text-3xl font-semibold tabular-nums">{dados?.comAnexo ?? 0}</p>
+              <p className="mt-1 text-xs text-muted-foreground">conteúdo lido ao analisar</p>
             </Card>
           </div>
 
           <Card className="p-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
               <div className="min-w-0 flex-1 space-y-1.5">
-                <Label htmlFor="busca-caixa">
-                  Buscar solicitação, cliente ou CNPJ
-                </Label>
+                <Label htmlFor="busca-caixa">Buscar solicitação, cliente ou CNPJ</Label>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     id="busca-caixa"
                     value={busca}
                     onChange={(e) => setBusca(e.target.value)}
-                    placeholder="Ex.: balancete, cliente, número..."
+                    placeholder="Ex.: balancete, nota fiscal, e-mail, cliente, número..."
                     className="pl-9"
                   />
                 </div>
               </div>
               <div className="w-full space-y-1.5 lg:w-[240px]">
                 <Label>Assunto identificado</Label>
-                <Select
-                  value={categoria}
-                  onValueChange={(v) => setCategoria(v as CategoriaFiltro)}
-                >
+                <Select value={categoria} onValueChange={(v) => setCategoria(v as CategoriaFiltro)}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -495,10 +398,7 @@ function MinhasSolicitacoesPage() {
           </Card>
 
           {caixa.isError ? (
-            <ErroConsulta
-              error={caixa.error}
-              onRetry={() => void caixa.refetch()}
-            />
+            <ErroConsulta error={caixa.error} onRetry={() => void caixa.refetch()} />
           ) : null}
 
           <Card className="overflow-hidden">
@@ -527,21 +427,15 @@ function MinhasSolicitacoesPage() {
                 <TableBody>
                   {dados.linhas.map((linha) => (
                     <TableRow key={linha.externalId}>
-                      <TableCell className="font-mono text-xs">
-                        {linha.numero ?? "—"}
-                      </TableCell>
+                      <TableCell className="font-mono text-xs">{linha.numero ?? "—"}</TableCell>
                       <TableCell>
                         <p className="max-w-[260px] truncate font-medium">
                           {linha.clienteNome ?? "Cliente não identificado"}
                         </p>
-                        <p className="text-xs text-muted-foreground">
-                          {linha.documento ?? "—"}
-                        </p>
+                        <p className="text-xs text-muted-foreground">{linha.documento ?? "—"}</p>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="secondary">
-                          {ROTULOS[linha.categoria] ?? linha.categoria}
-                        </Badge>
+                        <Badge variant="secondary">{ROTULOS[linha.categoria] ?? linha.categoria}</Badge>
                         <p className="mt-1 text-[11px] text-muted-foreground">
                           Confiança {linha.confianca.toLowerCase()}
                         </p>
@@ -557,11 +451,7 @@ function MinhasSolicitacoesPage() {
                         ) : null}
                       </TableCell>
                       <TableCell>
-                        <span
-                          className={
-                            linha.vencida ? "font-medium text-destructive" : ""
-                          }
-                        >
+                        <span className={linha.vencida ? "font-medium text-destructive" : ""}>
                           {dataPt(linha.prazoEm)}
                         </span>
                         {linha.venceHoje ? (
@@ -573,15 +463,7 @@ function MinhasSolicitacoesPage() {
                       </TableCell>
                       <TableCell>{linha.status ?? "—"}</TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setMensagem("");
-                            setPrivada(false);
-                            setSelecionada(linha.externalId);
-                          }}
-                        >
+                        <Button variant="ghost" size="sm" onClick={() => setSelecionada(linha.externalId)}>
                           Analisar e resolver
                           <ArrowRight className="ml-1 h-4 w-4" />
                         </Button>
@@ -595,284 +477,13 @@ function MinhasSolicitacoesPage() {
         </>
       ) : null}
 
-      <Dialog
-        open={Boolean(selecionada)}
-        onOpenChange={(aberto) => {
-          if (!aberto && !executar.isPending) {
-            setSelecionada(null);
-            setConfirmarFinalizacao(false);
-          }
-        }}
-      >
-        <DialogContent className="max-h-[92vh] max-w-5xl overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Leitura e Localizador Inteligente</DialogTitle>
-            <DialogDescription>
-              O sistema cruza a solicitação com histórico, fechamento e evidências.
-              Nenhuma ação ocorre sem seu comando.
-            </DialogDescription>
-          </DialogHeader>
-
-          {analise.isLoading ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">
-              Lendo PIER, histórico e evidências…
-            </div>
-          ) : analise.isError ? (
-            <ErroConsulta
-              error={analise.error}
-              onRetry={() => void analise.refetch()}
-            />
-          ) : analise.data ? (
-            <div className="space-y-5">
-              <div className="grid gap-3 md:grid-cols-4">
-                <Card className="p-3">
-                  <p className="text-xs text-muted-foreground">Assunto</p>
-                  <p className="mt-1 font-medium">
-                    {ROTULOS[analise.data.leitura.categoria] ??
-                      analise.data.leitura.categoria}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Confiança {analise.data.leitura.confianca.toLowerCase()}
-                  </p>
-                </Card>
-                <Card className="p-3">
-                  <p className="text-xs text-muted-foreground">Competência</p>
-                  <p className="mt-1 font-medium">
-                    {analise.data.solicitacao.competencia ?? "Não identificada"}
-                  </p>
-                </Card>
-                <Card className="p-3">
-                  <p className="text-xs text-muted-foreground">Responsável atual</p>
-                  <p className="mt-1 font-medium">
-                    {analise.data.solicitacao.responsavelNome ?? "—"}
-                  </p>
-                </Card>
-                <Card className="p-3">
-                  <p className="text-xs text-muted-foreground">Prazo</p>
-                  <p className="mt-1 font-medium">
-                    {dataPt(analise.data.solicitacao.prazoEm)}
-                  </p>
-                </Card>
-              </div>
-
-              <Card className="p-4">
-                <div className="flex items-start gap-3">
-                  <Inbox className="mt-0.5 h-5 w-5 text-primary" />
-                  <div>
-                    <p className="font-medium">O que a solicitação pede</p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {analise.data.solicitacao.descricao ??
-                        analise.data.solicitacao.tipo ??
-                        "Sem descrição disponível."}
-                    </p>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      {analise.data.leitura.postagens} postagem(ns) ·{" "}
-                      {analise.data.leitura.arquivos.length} arquivo(s) no contexto
-                    </p>
-                  </div>
-                </div>
-              </Card>
-
-              <div className="grid gap-4 lg:grid-cols-2">
-                <Card className="p-4">
-                  <div className="flex items-center gap-2">
-                    <RouteIcon className="h-5 w-5" />
-                    <p className="font-medium">Responsável provável</p>
-                  </div>
-                  {analise.data.localizador.responsavelSugerido ? (
-                    <div className="mt-3">
-                      <p className="font-medium">
-                        {analise.data.localizador.responsavelSugerido.nome ??
-                          "Usuário identificado"}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {analise.data.localizador.responsavelSugerido.departamento ??
-                          "Departamento não identificado"}
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="mt-3 text-sm text-muted-foreground">
-                      Nenhum responsável alternativo foi identificado com segurança no
-                      histórico.
-                    </p>
-                  )}
-                  {!analise.data.localizador.encaminhamentoDisponivel ? (
-                    <p className="mt-3 rounded-md bg-muted p-2 text-xs text-muted-foreground">
-                      Encaminhamento automático indisponível: {" "}
-                      {analise.data.localizador.motivoEncaminhamentoIndisponivel}
-                    </p>
-                  ) : null}
-                </Card>
-
-                <Card className="p-4">
-                  <div className="flex items-center gap-2">
-                    <FileSearch className="h-5 w-5" />
-                    <p className="font-medium">Fechamento e documentos</p>
-                  </div>
-                  {analise.data.localizador.fechamento ? (
-                    <div className="mt-3 space-y-2 text-sm">
-                      <div className="flex items-center justify-between gap-3">
-                        <span>Fechamento</span>
-                        <Badge variant="secondary">
-                          {analise.data.localizador.fechamento.status}
-                        </Badge>
-                      </div>
-                      <div className="flex items-center justify-between gap-3">
-                        <span>Balancete localizado</span>
-                        <strong>
-                          {analise.data.localizador.fechamento.balanceteLocalizado
-                            ? "Sim"
-                            : "Não"}
-                        </strong>
-                      </div>
-                      <div className="flex items-center justify-between gap-3">
-                        <span>Conciliação</span>
-                        <strong>
-                          {analise.data.localizador.fechamento.conciliacao ===
-                          "CONFIRMADA_POR_EVIDENCIA"
-                            ? "Evidência localizada"
-                            : "Não comprovada"}
-                        </strong>
-                      </div>
-                      {analise.data.localizador.fechamento.balancetes.length ? (
-                        <div className="rounded-md bg-muted p-2 text-xs text-muted-foreground">
-                          {analise.data.localizador.fechamento.balancetes.join(" · ")}
-                        </div>
-                      ) : null}
-                      <Button variant="outline" size="sm" asChild>
-                        <Link
-                          to="/gestao/solicitacoes/$externalId"
-                          params={{
-                            externalId:
-                              analise.data.localizador.fechamento
-                                .solicitacaoExternalId,
-                          }}
-                        >
-                          Abrir fechamento contábil
-                        </Link>
-                      </Button>
-                    </div>
-                  ) : (
-                    <p className="mt-3 text-sm text-muted-foreground">
-                      Não foi localizado um fechamento contábil correspondente ao cliente
-                      e à competência identificada.
-                    </p>
-                  )}
-                </Card>
-              </div>
-
-              <Card className="border-primary/20 p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                      Próxima ação recomendada
-                    </p>
-                    <span
-                      className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${classeAcao(
-                        analise.data.recomendacao.acao,
-                      )}`}
-                    >
-                      {rotuloAcao(analise.data.recomendacao.acao)}
-                    </span>
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      {analise.data.recomendacao.motivo}
-                    </p>
-                  </div>
-                  {analise.data.recomendacao.acao === "RESPONDER_FINALIZAR" ? (
-                    <CheckCircle2 className="h-6 w-6 text-success-strong" />
-                  ) : analise.data.recomendacao.acao === "ENCAMINHAR" ? (
-                    <RouteIcon className="h-6 w-6 text-warning-strong" />
-                  ) : (
-                    <AlertTriangle className="h-6 w-6 text-muted-foreground" />
-                  )}
-                </div>
-              </Card>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-3">
-                  <Label htmlFor="resposta-caixa">Resposta sugerida — editável</Label>
-                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <input
-                      type="checkbox"
-                      checked={privada}
-                      onChange={(e) => setPrivada(e.target.checked)}
-                    />
-                    postagem privada no PIER
-                  </label>
-                </div>
-                <Textarea
-                  id="resposta-caixa"
-                  value={mensagem}
-                  onChange={(e) => setMensagem(e.target.value)}
-                  rows={7}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Por padrão a resposta é visível ao solicitante. Marque como privada
-                  somente quando a mensagem for interna.
-                </p>
-              </div>
-
-              {confirmarFinalizacao ? (
-                <Card className="border-warning/40 bg-warning-soft p-4">
-                  <p className="font-medium text-warning-strong">
-                    Confirmar resposta e finalização?
-                  </p>
-                  <p className="mt-1 text-sm text-warning-strong">
-                    A resposta será publicada primeiro. A finalização só será considerada
-                    concluída depois que o PIER confirmar o novo status.
-                  </p>
-                  <div className="mt-3 flex justify-end gap-2">
-                    <Button
-                      variant="ghost"
-                      onClick={() => setConfirmarFinalizacao(false)}
-                      disabled={executar.isPending}
-                    >
-                      Cancelar
-                    </Button>
-                    <Button
-                      onClick={() => executar.mutate("RESPONDER_FINALIZAR")}
-                      disabled={executar.isPending || mensagem.trim().length < 10}
-                    >
-                      {executar.isPending ? "Executando…" : "Confirmar e finalizar"}
-                    </Button>
-                  </div>
-                </Card>
-              ) : null}
-            </div>
-          ) : null}
-
-          <DialogFooter className="flex-col gap-2 sm:flex-row">
-            <Button
-              variant="outline"
-              onClick={() => executar.mutate("RESPONDER_MANTER_ABERTA")}
-              disabled={
-                executar.isPending ||
-                mensagem.trim().length < 10 ||
-                !analise.data
-              }
-            >
-              Responder e manter aberta
-            </Button>
-            <Button
-              variant="outline"
-              disabled
-              title="Endpoint de encaminhamento do PIER ainda não foi validado."
-            >
-              Encaminhar responsável
-            </Button>
-            <Button
-              onClick={() => setConfirmarFinalizacao(true)}
-              disabled={
-                executar.isPending ||
-                mensagem.trim().length < 10 ||
-                !analise.data
-              }
-            >
-              Responder e finalizar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <AnaliseCaixaDialog
+        externalId={selecionada}
+        onClose={() => setSelecionada(null)}
+        onConcluido={() =>
+          void queryClient.invalidateQueries({ queryKey: ["minha-caixa-inteligente"] })
+        }
+      />
     </div>
   );
 }
