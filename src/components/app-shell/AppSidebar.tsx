@@ -1,15 +1,10 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
-  BarChart3,
   Building2,
   ClipboardList,
-  Cog,
   Gauge,
   Inbox,
-  ListChecks,
   PlayCircle,
-  Rocket,
-  ShieldCheck,
   Users,
 } from "lucide-react";
 
@@ -30,14 +25,13 @@ const GRUPOS = [
     label: "Gestão",
     itens: [
       { title: "Painel", to: "/", icon: Gauge },
+      { title: "Minha Caixa", to: "/minhas-solicitacoes", icon: Inbox },
       { title: "Carteira", to: "/carteira", icon: Building2 },
       { title: "Gestão", to: "/gestao", icon: PlayCircle },
       { title: "Equipe e departamentos", to: "/equipe", icon: Users },
     ],
   },
 ] as const;
-
-
 
 export function AppSidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -51,7 +45,7 @@ export function AppSidebar() {
           </span>
           <div className="min-w-0 group-data-[collapsible=icon]:hidden">
             <p className="truncate text-sm font-semibold leading-tight">Gestão Inteligente</p>
-            <p className="truncate text-xs text-sidebar-foreground/60">Fechamentos contábeis</p>
+            <p className="truncate text-xs text-sidebar-foreground/60">Operação contábil e solicitações</p>
           </div>
         </div>
       </SidebarHeader>
@@ -64,10 +58,16 @@ export function AppSidebar() {
               <SidebarMenu>
                 {grupo.itens.map((item) => {
                   const ativo =
-                    item.to === "/" ? pathname === "/" : pathname.startsWith(item.to);
+                    item.to === "/"
+                      ? pathname === "/"
+                      : pathname.startsWith(item.to);
                   return (
                     <SidebarMenuItem key={item.to}>
-                      <SidebarMenuButton asChild isActive={ativo} tooltip={item.title}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={ativo}
+                        tooltip={item.title}
+                      >
                         <Link to={item.to}>
                           <item.icon />
                           <span>{item.title}</span>
