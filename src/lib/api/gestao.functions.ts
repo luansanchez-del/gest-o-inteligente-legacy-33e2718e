@@ -19,9 +19,11 @@ type EscopoInput = {
     | "ERRO"
     | "HISTORICO"
     | null;
+  statusPier?: "PENDENTES" | "FINALIZADAS" | "TODOS" | null;
   revisaoCompetencia?: boolean;
   busca?: string | null;
   anexo?: "COM_ANEXO" | "SEM_ANEXO" | null;
+  incluirFinalizadas?: boolean;
 };
 
 const COMPETENCIA = /^\d{4}-\d{2}$/;
@@ -34,10 +36,15 @@ function validarEscopo(input: EscopoInput) {
       "VALIDACAO::Informe a competência final no formato AAAA-MM.",
     );
   if (!input.tipo) throw new Error("VALIDACAO::Informe o tipo de fechamento.");
+  if (
+    input.statusPier &&
+    !["PENDENTES", "FINALIZADAS", "TODOS"].includes(input.statusPier)
+  )
+    throw new Error("VALIDACAO::Status PIER inválido.");
   return input;
 }
 
-function validarIntervalo(input: { inicio: string; fim: string }) {
+function validarIntervalo<T extends { inicio: string; fim: string }>(input: T): T {
   if (
     !COMPETENCIA.test(input?.inicio ?? "") ||
     !COMPETENCIA.test(input?.fim ?? "")
@@ -52,7 +59,10 @@ function validarIntervalo(input: { inicio: string; fim: string }) {
 
 export const previsualizarCarga = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator(validarIntervalo)
+  .inputValidator(
+    (input: { inicio: string; fim: string; incluirFinalizadas?: boolean }) =>
+      validarIntervalo(input),
+  )
   .handler(async ({ data, context }) =>
     comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
       const service = await import("@/server/domain/gestao/carga.service");
@@ -67,6 +77,7 @@ export const abrirCarga = createServerFn({ method: "POST" })
       inicio: string;
       fim: string;
       tipoCarga: "HISTORICA" | "MENSAL";
+      incluirFinalizadas?: boolean;
     }) => {
       validarIntervalo(input);
       return input;
@@ -81,11 +92,17 @@ export const abrirCarga = createServerFn({ method: "POST" })
 
 export const carregarCompetencia = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { competencia: string; runId?: string | null }) => {
-    if (!COMPETENCIA.test(input?.competencia ?? ""))
-      throw new Error("VALIDACAO::Informe a competência no formato AAAA-MM.");
-    return input;
-  })
+  .inputValidator(
+    (input: {
+      competencia: string;
+      runId?: string | null;
+      incluirFinalizadas?: boolean;
+    }) => {
+      if (!COMPETENCIA.test(input?.competencia ?? ""))
+        throw new Error("VALIDACAO::Informe a competência no formato AAAA-MM.");
+      return input;
+    },
+  )
   .handler(async ({ data, context }) =>
     comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
       const service = await import("@/server/domain/gestao/carga.service");
@@ -152,6 +169,9 @@ export const sincronizarSolicitacoes = createServerFn({ method: "POST" })
       return service.sincronizarSolicitacoes(ctx, {
         competencia: data.competencia,
         tipo: data.tipo,
+        incluirFinalizadas:
+          data.incluirFinalizadas ??
+          (data.statusPier === "FINALIZADAS" || data.statusPier === "TODOS"),
       });
     }),
   );

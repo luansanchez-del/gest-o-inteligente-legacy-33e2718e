@@ -3,6 +3,7 @@ import { assertCanWrite, type AppContext } from "../../lib/context";
 import { AppError } from "../../lib/errors";
 import { pierAdapter } from "../../integrations/pier/pier.adapter";
 import { carregarUsuariosPier } from "./pier-user.repo";
+import { selecionarParaCarga } from "./status-pier";
 
 /**
  * IDs reais dos tipos de solicitação no PIER (/api/v2/tipos-solicitacao).
@@ -373,17 +374,37 @@ export async function renomearDepartamento(
   return { id: input.departamentoId, nome };
 }
 
-function normalizarDocumento(value: string | null | undefined) {
-  return (value ?? "").replace(/\D/g, "");
+async function externalIdsJaGravados(ctx: AppContext, ids: string[]) {
+  const existentes = new Set<string>();
+  for (let inicio = 0; inicio < ids.length; inicio += 500) {
+    const { data, error } = await ctx.db
+      .from("request")
+      .select("external_id")
+      .eq("organization_id", ctx.organizationId)
+      .in("external_id", ids.slice(inicio, inicio + 500));
+    if (error)
+      throw new AppError(
+        "INESPERADO",
+        "Não foi possível conferir solicitações já carregadas.",
+        error.message,
+      );
+    for (const linha of data ?? []) existentes.add(linha.external_id);
+  }
+  return existentes;
 }
 
 /**
  * Preparação (somente leitura) das solicitações de fechamento da competência.
- * Guarda em cache, vincula à empresa interna pelo documento e nunca escreve no PIER.
+ * Guarda em cache e nunca escreve no PIER. Por padrão, finalizadas novas são ignoradas;
+ * finalizadas já existentes continuam sendo atualizadas para manter o status local correto.
  */
 export async function sincronizarSolicitacoes(
   ctx: AppContext,
-  input: { competencia: string; tipo: TipoFechamento },
+  input: {
+    competencia: string;
+    tipo: TipoFechamento;
+    incluirFinalizadas?: boolean;
+  },
 ) {
   assertCanWrite(ctx);
   const typeExternalId = await resolverTipoSolicitacao(ctx, input.tipo);
@@ -393,7 +414,11 @@ export async function sincronizarSolicitacoes(
     .insert({
       organization_id: ctx.organizationId,
       kind: "SOLICITACOES",
-      scope: { competencia: input.competencia, tipo: input.tipo } as never,
+      scope: {
+        competencia: input.competencia,
+        tipo: input.tipo,
+        incluirFinalizadas: Boolean(input.incluirFinalizadas),
+      } as never,
       status: "RUNNING",
       started_by: ctx.userId,
     })
@@ -406,7 +431,15 @@ export async function sincronizarSolicitacoes(
       referenceMonth: input.competencia,
     });
 
-    // Sem leitura de company/company_pier_link: a carteira é apenas catálogo.
+    const existentes = await externalIdsJaGravados(
+      ctx,
+      solicitacoes.map((s) => s.externalId),
+    );
+    const { elegiveis, finalizadasIgnoradas } = selecionarParaCarga(
+      solicitacoes,
+      existentes,
+      Boolean(input.incluirFinalizadas),
+    );
 
     const usuarios = await carregarUsuariosPier<{
       external_id: string;
@@ -420,8 +453,8 @@ export async function sincronizarSolicitacoes(
     const LOTE = 250;
     let processados = 0;
 
-    for (let inicio = 0; inicio < solicitacoes.length; inicio += LOTE) {
-      const lote = solicitacoes.slice(inicio, inicio + LOTE);
+    for (let inicio = 0; inicio < elegiveis.length; inicio += LOTE) {
+      const lote = elegiveis.slice(inicio, inicio + LOTE);
       const { error } = await ctx.db.from("request").upsert(
         lote.map((s) => ({
           organization_id: ctx.organizationId,
@@ -441,8 +474,6 @@ export async function sincronizarSolicitacoes(
           client_external_id: s.clientExternalId,
           client_name: s.clientName,
           client_document: s.clientDocument,
-          // company_id deixou de ser preenchido: a solicitação do PIER é a fonte operacional
-          // e não depende de empresa interna nem de vínculo.
           requested_at: s.requestedAt,
           finished_at: s.finishedAt,
           deadline_at: s.deadlineAt,
@@ -466,13 +497,17 @@ export async function sincronizarSolicitacoes(
         .from("sync_run")
         .update({
           status: "COMPLETED",
-          total_items: solicitacoes.length,
+          total_items: elegiveis.length,
           processed_items: processados,
           finished_at: agora,
         })
         .eq("id", run.id);
 
-    return { total: solicitacoes.length, processados };
+    return {
+      total: solicitacoes.length,
+      processados,
+      finalizadasIgnoradas,
+    };
   } catch (error) {
     const mensagem =
       error instanceof AppError

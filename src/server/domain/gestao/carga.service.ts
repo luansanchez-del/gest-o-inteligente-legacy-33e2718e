@@ -4,6 +4,7 @@ import { AppError } from "../../lib/errors";
 import { pierAdapter } from "../../integrations/pier/pier.adapter";
 import { departamentosContabeis, resolverTipoSolicitacao } from "./escopo.service";
 import { carregarUsuariosPier } from "./pier-user.repo";
+import { selecionarParaCarga } from "./status-pier";
 
 const FORMATO = /^\d{4}-\d{2}$/;
 const MAX_MESES = 36;
@@ -20,6 +21,8 @@ export interface ResumoCompetencia {
   semCompetencia: number;
   /** Fora dos departamentos CONTABILIDADE LEGACY/BPO. */
   ignoradasNaoContabeis: number;
+  /** Finalizadas novas ignoradas na carga operacional para reduzir volume. */
+  finalizadasIgnoradas: number;
   erro: string | null;
 }
 
@@ -34,6 +37,7 @@ export interface PreviewCarga {
   totalComAnexo: number;
   totalSemAnexo: number;
   totalSemCompetencia: number;
+  totalFinalizadasIgnoradas: number;
   totalErros: number;
 }
 
@@ -51,7 +55,10 @@ export function listarMeses(inicio: string, fim: string): string[] {
   while (ano < anoFim || (ano === anoFim && mes <= mesFim)) {
     meses.push(`${ano}-${String(mes).padStart(2, "0")}`);
     if (meses.length > MAX_MESES)
-      throw new AppError("VALIDACAO", `A carga aceita no máximo ${MAX_MESES} competências por vez.`);
+      throw new AppError(
+        "VALIDACAO",
+        `A carga aceita no máximo ${MAX_MESES} competências por vez.`,
+      );
     mes += 1;
     if (mes > 12) {
       mes = 1;
@@ -64,7 +71,9 @@ export function listarMeses(inicio: string, fim: string): string[] {
 /** Mês seguinte a uma competência AAAA-MM. */
 export function proximaCompetencia(competencia: string): string {
   const [ano, mes] = competencia.split("-").map(Number) as [number, number];
-  return mes === 12 ? `${ano + 1}-01` : `${ano}-${String(mes + 1).padStart(2, "0")}`;
+  return mes === 12
+    ? `${ano + 1}-01`
+    : `${ano}-${String(mes + 1).padStart(2, "0")}`;
 }
 
 async function contexto(ctx: AppContext) {
@@ -74,7 +83,9 @@ async function contexto(ctx: AppContext) {
     external_id: string;
     department_external_id: string | null;
   }>(ctx, "external_id, department_external_id");
-  const deptoPorUsuario = new Map(usuarios.map((u) => [u.external_id, u.department_external_id]));
+  const deptoPorUsuario = new Map(
+    usuarios.map((u) => [u.external_id, u.department_external_id]),
+  );
   return { typeExternalId, contabeis, deptoPorUsuario };
 }
 
@@ -108,7 +119,11 @@ async function externalIdsJaGravados(ctx: AppContext, ids: string[]) {
       .eq("organization_id", ctx.organizationId)
       .in("external_id", ids.slice(i, i + 500));
     if (error)
-      throw new AppError("INESPERADO", "Não foi possível conferir as solicitações.", error.message);
+      throw new AppError(
+        "INESPERADO",
+        "Não foi possível conferir as solicitações.",
+        error.message,
+      );
     for (const linha of data ?? []) existentes.add(linha.external_id);
   }
   return existentes;
@@ -117,7 +132,7 @@ async function externalIdsJaGravados(ctx: AppContext, ids: string[]) {
 /** Pré-visualização somente leitura: nada é gravado no banco nem no PIER. */
 export async function previsualizarCarga(
   ctx: AppContext,
-  input: { inicio: string; fim: string },
+  input: { inicio: string; fim: string; incluirFinalizadas?: boolean },
 ): Promise<PreviewCarga> {
   const meses = listarMeses(input.inicio, input.fim);
   const amb = await contexto(ctx);
@@ -125,20 +140,29 @@ export async function previsualizarCarga(
 
   for (const competencia of meses) {
     try {
-      const { contabeis, ignoradasNaoContabeis } = await buscarDoMes(competencia, amb);
+      const { contabeis, ignoradasNaoContabeis } = await buscarDoMes(
+        competencia,
+        amb,
+      );
       const existentes = await externalIdsJaGravados(
         ctx,
         contabeis.map((s) => s.externalId),
       );
+      const { elegiveis, finalizadasIgnoradas } = selecionarParaCarga(
+        contabeis,
+        existentes,
+        Boolean(input.incluirFinalizadas),
+      );
       resumos.push({
         competencia,
-        encontradas: contabeis.length,
-        novas: contabeis.filter((s) => !existentes.has(s.externalId)).length,
-        existentes: contabeis.filter((s) => existentes.has(s.externalId)).length,
-        comAnexo: contabeis.filter((s) => s.hasAttachment).length,
-        semAnexo: contabeis.filter((s) => !s.hasAttachment).length,
-        semCompetencia: contabeis.filter((s) => !s.referenceMonth).length,
+        encontradas: elegiveis.length,
+        novas: elegiveis.filter((s) => !existentes.has(s.externalId)).length,
+        existentes: elegiveis.filter((s) => existentes.has(s.externalId)).length,
+        comAnexo: elegiveis.filter((s) => s.hasAttachment).length,
+        semAnexo: elegiveis.filter((s) => !s.hasAttachment).length,
+        semCompetencia: elegiveis.filter((s) => !s.referenceMonth).length,
         ignoradasNaoContabeis,
+        finalizadasIgnoradas,
         erro: null,
       });
     } catch (error) {
@@ -152,13 +176,21 @@ export async function previsualizarCarga(
         semAnexo: 0,
         semCompetencia: 0,
         ignoradasNaoContabeis: 0,
-        erro: error instanceof AppError ? error.userMessage : "Falha ao consultar o PIER.",
+        finalizadasIgnoradas: 0,
+        erro:
+          error instanceof AppError
+            ? error.userMessage
+            : "Falha ao consultar o PIER.",
       });
     }
   }
 
   const soma = (campo: keyof ResumoCompetencia) =>
-    resumos.reduce((total, m) => total + (typeof m[campo] === "number" ? (m[campo] as number) : 0), 0);
+    resumos.reduce(
+      (total, m) =>
+        total + (typeof m[campo] === "number" ? (m[campo] as number) : 0),
+      0,
+    );
 
   return {
     inicio: input.inicio,
@@ -171,6 +203,7 @@ export async function previsualizarCarga(
     totalComAnexo: soma("comAnexo"),
     totalSemAnexo: soma("semAnexo"),
     totalSemCompetencia: soma("semCompetencia"),
+    totalFinalizadasIgnoradas: soma("finalizadasIgnoradas"),
     totalErros: resumos.filter((m) => m.erro).length,
   };
 }
@@ -178,7 +211,12 @@ export async function previsualizarCarga(
 /** Abre o registro da carga (histórica ou mensal) para acompanhar o progresso. */
 export async function abrirCarga(
   ctx: AppContext,
-  input: { inicio: string; fim: string; tipoCarga: "HISTORICA" | "MENSAL" },
+  input: {
+    inicio: string;
+    fim: string;
+    tipoCarga: "HISTORICA" | "MENSAL";
+    incluirFinalizadas?: boolean;
+  },
 ) {
   assertCanWrite(ctx);
   const meses = listarMeses(input.inicio, input.fim);
@@ -187,8 +225,14 @@ export async function abrirCarga(
     .from("sync_run")
     .insert({
       organization_id: ctx.organizationId,
-      kind: input.tipoCarga === "HISTORICA" ? "CARGA_HISTORICA" : "CARGA_MENSAL",
-      scope: { inicio: input.inicio, fim: input.fim, meses } as never,
+      kind:
+        input.tipoCarga === "HISTORICA" ? "CARGA_HISTORICA" : "CARGA_MENSAL",
+      scope: {
+        inicio: input.inicio,
+        fim: input.fim,
+        meses,
+        incluirFinalizadas: Boolean(input.incluirFinalizadas),
+      } as never,
       status: "RUNNING",
       total_items: meses.length,
       started_by: ctx.userId,
@@ -197,13 +241,22 @@ export async function abrirCarga(
     .single();
 
   if (error || !run)
-    throw new AppError("INESPERADO", "Não foi possível iniciar a carga.", error?.message);
+    throw new AppError(
+      "INESPERADO",
+      "Não foi possível iniciar a carga.",
+      error?.message,
+    );
 
   await audit(ctx, {
     action: "ABRIR_CARGA_COMPETENCIAS",
     entity: "sync_run",
     entityId: run.id,
-    after: { inicio: input.inicio, fim: input.fim, tipoCarga: input.tipoCarga },
+    after: {
+      inicio: input.inicio,
+      fim: input.fim,
+      tipoCarga: input.tipoCarga,
+      incluirFinalizadas: Boolean(input.incluirFinalizadas),
+    },
   });
 
   return { runId: run.id, meses };
@@ -211,28 +264,44 @@ export async function abrirCarga(
 
 /**
  * Carrega uma única competência. É idempotente por organization_id + external_id:
- * repetir o mesmo mês atualiza status/anexos sem duplicar linhas.
+ * repetir o mesmo mês atualiza status/anexos sem duplicar linhas. Por padrão,
+ * finalizadas novas são ignoradas; finalizadas já existentes continuam atualizadas.
  */
 export async function carregarCompetencia(
   ctx: AppContext,
-  input: { competencia: string; runId?: string | null },
+  input: {
+    competencia: string;
+    runId?: string | null;
+    incluirFinalizadas?: boolean;
+  },
 ): Promise<ResumoCompetencia> {
   assertCanWrite(ctx);
   if (!FORMATO.test(input.competencia))
-    throw new AppError("VALIDACAO", "Informe a competência no formato AAAA-MM.");
+    throw new AppError(
+      "VALIDACAO",
+      "Informe a competência no formato AAAA-MM.",
+    );
 
   const amb = await contexto(ctx);
   const agora = new Date().toISOString();
 
   try {
-    const { contabeis, ignoradasNaoContabeis } = await buscarDoMes(input.competencia, amb);
+    const { contabeis, ignoradasNaoContabeis } = await buscarDoMes(
+      input.competencia,
+      amb,
+    );
     const existentes = await externalIdsJaGravados(
       ctx,
       contabeis.map((s) => s.externalId),
     );
+    const { elegiveis, finalizadasIgnoradas } = selecionarParaCarga(
+      contabeis,
+      existentes,
+      Boolean(input.incluirFinalizadas),
+    );
 
-    for (let inicio = 0; inicio < contabeis.length; inicio += LOTE) {
-      const lote = contabeis.slice(inicio, inicio + LOTE);
+    for (let inicio = 0; inicio < elegiveis.length; inicio += LOTE) {
+      const lote = elegiveis.slice(inicio, inicio + LOTE);
       const { error } = await ctx.db.from("request").upsert(
         lote.map((s) => ({
           organization_id: ctx.organizationId,
@@ -272,23 +341,30 @@ export async function carregarCompetencia(
 
     const resumo: ResumoCompetencia = {
       competencia: input.competencia,
-      encontradas: contabeis.length,
-      novas: contabeis.filter((s) => !existentes.has(s.externalId)).length,
-      existentes: contabeis.filter((s) => existentes.has(s.externalId)).length,
-      comAnexo: contabeis.filter((s) => s.hasAttachment).length,
-      semAnexo: contabeis.filter((s) => !s.hasAttachment).length,
-      semCompetencia: contabeis.filter((s) => !s.referenceMonth).length,
+      encontradas: elegiveis.length,
+      novas: elegiveis.filter((s) => !existentes.has(s.externalId)).length,
+      existentes: elegiveis.filter((s) => existentes.has(s.externalId)).length,
+      comAnexo: elegiveis.filter((s) => s.hasAttachment).length,
+      semAnexo: elegiveis.filter((s) => !s.hasAttachment).length,
+      semCompetencia: elegiveis.filter((s) => !s.referenceMonth).length,
       ignoradasNaoContabeis,
+      finalizadasIgnoradas,
       erro: null,
     };
 
-    await registrarEvento(ctx, input.runId, "INFO", input.competencia, { ...resumo });
+    await registrarEvento(ctx, input.runId, "INFO", input.competencia, {
+      ...resumo,
+    });
     return resumo;
   } catch (error) {
     const mensagem =
-      error instanceof AppError ? error.userMessage : "Falha inesperada ao carregar a competência.";
+      error instanceof AppError
+        ? error.userMessage
+        : "Falha inesperada ao carregar a competência.";
     // Falha isolada: os meses já carregados permanecem intactos e a carga pode ser retomada.
-    await registrarEvento(ctx, input.runId, "CRITICAL", input.competencia, { erro: mensagem });
+    await registrarEvento(ctx, input.runId, "CRITICAL", input.competencia, {
+      erro: mensagem,
+    });
     throw error;
   }
 }
@@ -327,7 +403,11 @@ async function registrarEvento(
 /** Fecha a carga, mantendo o histórico de cada competência processada. */
 export async function encerrarCarga(
   ctx: AppContext,
-  input: { runId: string; status: "COMPLETED" | "FAILED" | "CANCELLED"; mensagem?: string | null },
+  input: {
+    runId: string;
+    status: "COMPLETED" | "FAILED" | "CANCELLED";
+    mensagem?: string | null;
+  },
 ) {
   assertCanWrite(ctx);
   const { error } = await ctx.db
@@ -341,7 +421,11 @@ export async function encerrarCarga(
     .eq("id", input.runId);
 
   if (error)
-    throw new AppError("INESPERADO", "Não foi possível encerrar a carga.", error.message);
+    throw new AppError(
+      "INESPERADO",
+      "Não foi possível encerrar a carga.",
+      error.message,
+    );
   return { runId: input.runId, status: input.status };
 }
 
@@ -367,7 +451,11 @@ export async function estadoCarga(ctx: AppContext): Promise<EstadoCarga> {
     .eq("type_external_id", typeExternalId);
 
   if (error)
-    throw new AppError("INESPERADO", "Não foi possível ler o estado da carga.", error.message);
+    throw new AppError(
+      "INESPERADO",
+      "Não foi possível ler o estado da carga.",
+      error.message,
+    );
 
   const porCompetencia = new Map<string, number>();
   let emRevisaoCompetencia = 0;
@@ -375,9 +463,15 @@ export async function estadoCarga(ctx: AppContext): Promise<EstadoCarga> {
 
   for (const linha of linhas ?? []) {
     if (linha.reference_month)
-      porCompetencia.set(linha.reference_month, (porCompetencia.get(linha.reference_month) ?? 0) + 1);
+      porCompetencia.set(
+        linha.reference_month,
+        (porCompetencia.get(linha.reference_month) ?? 0) + 1,
+      );
     else emRevisaoCompetencia += 1;
-    if (linha.synced_at && (!ultimaSincronizacao || linha.synced_at > ultimaSincronizacao))
+    if (
+      linha.synced_at &&
+      (!ultimaSincronizacao || linha.synced_at > ultimaSincronizacao)
+    )
       ultimaSincronizacao = linha.synced_at;
   }
 

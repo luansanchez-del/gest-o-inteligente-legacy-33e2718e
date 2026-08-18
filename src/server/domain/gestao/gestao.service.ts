@@ -7,6 +7,10 @@ import {
   type TipoFechamento,
 } from "./escopo.service";
 import { carregarTodasAsLinhas, carregarUsuariosPier } from "./pier-user.repo";
+import {
+  solicitacaoFinalizadaPier,
+  type StatusPierFiltro,
+} from "./status-pier";
 
 /** Fila operacional do fechamento contábil, do documento pendente até a finalização interna. */
 export type StatusFila =
@@ -30,6 +34,8 @@ export interface EscopoFiltro {
   responsavelId?: string | null;
   /** Filtro opcional pela fila operacional. */
   statusFila?: StatusFila | null;
+  /** Filtro operacional pelo estado real do PIER. PENDENTES é a visão padrão de trabalho. */
+  statusPier?: StatusPierFiltro | null;
   /** Lista apenas solicitações sem competência interpretável (revisão de competência). */
   revisaoCompetencia?: boolean;
   /** Busca livre por nome ou CNPJ do cliente. */
@@ -195,8 +201,9 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
     const departamentoId =
       s.department_external_id ?? usuario?.department_external_id ?? null;
     const documentoDisponivel = comAnexoInterno.has(s.id);
+    const finalizadaPier = solicitacaoFinalizadaPier(s.status, s.finished_at);
 
-    const statusFila: StatusFila = Boolean(s.finished_at)
+    const statusFila: StatusFila = finalizadaPier
       ? "HISTORICO"
       : statusAnalise === "FALHOU"
         ? "ERRO"
@@ -266,6 +273,11 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
   } else if (filtro.departamentoId) {
     linhas = linhas.filter((l) => l.departamentoId === filtro.departamentoId);
   }
+
+  if (filtro.statusPier === "PENDENTES")
+    linhas = linhas.filter((l) => l.statusFila !== "HISTORICO");
+  if (filtro.statusPier === "FINALIZADAS")
+    linhas = linhas.filter((l) => l.statusFila === "HISTORICO");
 
   if (filtro.statusFila)
     linhas = linhas.filter((l) => l.statusFila === filtro.statusFila);
@@ -375,6 +387,7 @@ export async function iniciarGestao(
         departamentoNome,
         responsavelId: filtro.responsavelId ?? null,
         responsavelNome,
+        statusPier: filtro.statusPier ?? "TODOS",
       } as never,
       status: "RUNNING",
       total_items: linhas.length,
@@ -442,6 +455,7 @@ export async function iniciarGestao(
       competencia: filtro.competencia,
       departamentoId: filtro.departamentoId ?? null,
       responsavelId: filtro.responsavelId ?? null,
+      statusPier: filtro.statusPier ?? "TODOS",
       empresas: linhas.length,
       alertas,
       erros,
