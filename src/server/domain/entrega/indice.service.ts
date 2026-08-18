@@ -1,6 +1,7 @@
 import type { AppContext } from "../../lib/context";
 import { AppError } from "../../lib/errors";
 import type { Situacao } from "../competencia/competencia.service";
+import { carregarUsuariosPier } from "../gestao/pier-user.repo";
 
 export type Recorte =
   | "GERAL"
@@ -15,6 +16,7 @@ export interface IndicadorFiltro {
   recorte: Recorte;
   empresaId?: string;
   responsavel?: string;
+  departamentoId?: string;
 }
 
 export interface Indicador {
@@ -41,10 +43,33 @@ interface Registro {
 
 const ENTREGUES: Situacao[] = ["CONCLUIDA_NO_PRAZO", "CONCLUIDA_FORA_PRAZO"];
 
+async function nomesDoDepartamento(ctx: AppContext, departamentoId: string) {
+  const usuarios = await carregarUsuariosPier<{
+    name: string;
+    status: string | null;
+    department_external_id: string | null;
+  }>(ctx, "external_id, name, status, department_external_id");
+
+  return usuarios
+    .filter(
+      (u) =>
+        u.department_external_id === departamentoId &&
+        (u.status ?? "").toLowerCase() !== "inativo",
+    )
+    .map((u) => u.name)
+    .filter(Boolean);
+}
+
 async function carregarRegistros(
   ctx: AppContext,
   filtro: IndicadorFiltro,
 ): Promise<Registro[]> {
+  const nomesDepartamento = filtro.departamentoId
+    ? await nomesDoDepartamento(ctx, filtro.departamentoId)
+    : null;
+
+  if (filtro.departamentoId && !nomesDepartamento?.length) return [];
+
   let query = ctx.db
     .from("closing_period")
     .select(
@@ -55,12 +80,20 @@ async function carregarRegistros(
     .lte("reference_month", filtro.competenciaFim);
 
   if (filtro.empresaId) query = query.eq("company_id", filtro.empresaId);
-  if (filtro.responsavel === "SEM_RESPONSAVEL") query = query.is("responsible_name", null);
-  else if (filtro.responsavel) query = query.eq("responsible_name", filtro.responsavel);
+  if (nomesDepartamento?.length)
+    query = query.in("responsible_name", nomesDepartamento);
+  if (filtro.responsavel === "SEM_RESPONSAVEL")
+    query = query.is("responsible_name", null);
+  else if (filtro.responsavel)
+    query = query.eq("responsible_name", filtro.responsavel);
 
   const { data, error } = await query.limit(5000);
   if (error)
-    throw new AppError("INESPERADO", "Não foi possível apurar o índice.", error.message);
+    throw new AppError(
+      "INESPERADO",
+      "Não foi possível apurar o índice.",
+      error.message,
+    );
 
   return (data ?? []).map((row) => {
     const empresa = row.company as unknown as { id: string; name: string };
@@ -86,6 +119,16 @@ function dias(de: string | null, ate: string | null) {
   return (fim - inicio) / 86400000;
 }
 
+function diasAtePrazo(prazo: string | null) {
+  if (!prazo) return null;
+  const alvo = new Date(prazo);
+  if (Number.isNaN(alvo.getTime())) return null;
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  alvo.setHours(0, 0, 0, 0);
+  return Math.round((alvo.getTime() - hoje.getTime()) / 86400000);
+}
+
 function indicador(
   codigo: string,
   titulo: string,
@@ -103,10 +146,34 @@ function indicador(
   return { codigo, titulo, numerador, denominador, regra, formato, valor };
 }
 
+interface SerieIndice {
+  competencia: string;
+  previstos: number;
+  entregues: number;
+  noPrazo: number;
+  foraPrazo: number;
+  atrasadas: number;
+  backlog: number;
+  indice: number;
+  indicePrazo: number;
+}
+
+interface RecorteIndice {
+  chave: string;
+  previstos: number;
+  entregues: number;
+  noPrazo: number;
+  foraPrazo: number;
+  atrasadas: number;
+  backlog: number;
+  indice: number;
+  indicePrazo: number;
+}
+
 export interface PainelIndice {
   indicadores: Indicador[];
-  serie: { competencia: string; entregues: number; previstos: number; indice: number }[];
-  porRecorte: { chave: string; previstos: number; entregues: number; indice: number }[];
+  serie: SerieIndice[];
+  porRecorte: RecorteIndice[];
   totalRegistros: number;
 }
 
@@ -116,9 +183,23 @@ export async function apurarIndice(
 ): Promise<PainelIndice> {
   const registros = await carregarRegistros(ctx, filtro);
   const total = registros.length;
-  const conta = (predicado: (r: Registro) => boolean) => registros.filter(predicado).length;
+  const conta = (predicado: (r: Registro) => boolean) =>
+    registros.filter(predicado).length;
 
   const entregues = conta((r) => ENTREGUES.includes(r.situacao));
+  const noPrazo = conta((r) => r.situacao === "CONCLUIDA_NO_PRAZO");
+  const foraPrazo = conta((r) => r.situacao === "CONCLUIDA_FORA_PRAZO");
+  const atrasadas = conta((r) => r.situacao === "ATRASADA");
+  const backlog = total - entregues;
+  const venceHoje = conta(
+    (r) => !ENTREGUES.includes(r.situacao) && diasAtePrazo(r.prazo) === 0,
+  );
+  const proximosTresDias = conta((r) => {
+    if (ENTREGUES.includes(r.situacao)) return false;
+    const restante = diasAtePrazo(r.prazo);
+    return restante !== null && restante >= 1 && restante <= 3;
+  });
+
   const prazosEntrega = registros
     .filter((r) => ENTREGUES.includes(r.situacao))
     .map((r) => dias(r.prazo, r.entregueEm))
@@ -126,35 +207,56 @@ export async function apurarIndice(
   const atrasos = prazosEntrega.filter((v) => v > 0);
 
   const indicadores: Indicador[] = [
-    indicador("PREVISTO", "Previsto para entrega", total, total, "Competências abertas no recorte."),
+    indicador(
+      "PREVISTO",
+      "Previsto para entrega",
+      total,
+      total,
+      "Competências existentes no recorte selecionado.",
+    ),
     indicador(
       "ENTREGUE",
       "Entregue",
       entregues,
       total,
-      "Competências classificadas como concluídas (no prazo ou fora do prazo).",
+      "Competências concluídas no prazo ou fora do prazo.",
     ),
     indicador(
       "INDICE",
-      "Índice de entrega",
+      "Cobertura de entrega",
       entregues,
       total,
-      "Entregues ÷ previstos, no recorte e período selecionados.",
+      "Entregues ÷ previstos no período selecionado.",
+      "PERCENTUAL",
+    ),
+    indicador(
+      "INDICE_PRAZO",
+      "Índice de entrega no prazo",
+      noPrazo,
+      entregues,
+      "Entregues no prazo ÷ total de entregas concluídas.",
       "PERCENTUAL",
     ),
     indicador(
       "NO_PRAZO",
       "Entregues no prazo",
-      conta((r) => r.situacao === "CONCLUIDA_NO_PRAZO"),
+      noPrazo,
       entregues,
-      "Concluídas até a data de prazo.",
+      "Concluídas até a data limite.",
     ),
     indicador(
       "FORA_PRAZO",
       "Entregues fora do prazo",
-      conta((r) => r.situacao === "CONCLUIDA_FORA_PRAZO"),
+      foraPrazo,
       entregues,
-      "Concluídas após a data de prazo.",
+      "Concluídas após a data limite.",
+    ),
+    indicador(
+      "BACKLOG",
+      "Backlog em aberto",
+      backlog,
+      total,
+      "Previstas no recorte que ainda não foram concluídas.",
     ),
     indicador(
       "EM_ANDAMENTO",
@@ -165,10 +267,24 @@ export async function apurarIndice(
     ),
     indicador(
       "ATRASADA",
-      "Atrasadas",
-      conta((r) => r.situacao === "ATRASADA"),
+      "Vencidas",
+      atrasadas,
       total,
       "Prazo vencido sem conclusão.",
+    ),
+    indicador(
+      "VENCE_HOJE",
+      "Vencem hoje",
+      venceHoje,
+      total,
+      "Solicitações em aberto com prazo no dia atual.",
+    ),
+    indicador(
+      "PROXIMOS_3_DIAS",
+      "Vencem nos próximos 3 dias",
+      proximosTresDias,
+      total,
+      "Solicitações em aberto com prazo entre amanhã e os próximos três dias.",
     ),
     indicador(
       "AGUARDANDO",
@@ -196,14 +312,16 @@ export async function apurarIndice(
       "Sem responsável definido",
       conta((r) => !r.responsavel),
       total,
-      "Competências sem responsável: contam no denominador e nunca são omitidas.",
+      "Competências sem responsável continuam visíveis e contam no recorte.",
     ),
     indicador(
       "PRAZO_MEDIO",
       "Prazo médio de entrega (dias)",
       prazosEntrega.length
         ? Math.round(
-            (prazosEntrega.reduce((soma, valor) => soma + valor, 0) / prazosEntrega.length) * 10,
+            (prazosEntrega.reduce((soma, valor) => soma + valor, 0) /
+              prazosEntrega.length) *
+              10,
           ) / 10
         : 0,
       prazosEntrega.length,
@@ -214,19 +332,44 @@ export async function apurarIndice(
       "ATRASO_MEDIO",
       "Atraso médio (dias)",
       atrasos.length
-        ? Math.round((atrasos.reduce((soma, valor) => soma + valor, 0) / atrasos.length) * 10) / 10
+        ? Math.round(
+            (atrasos.reduce((soma, valor) => soma + valor, 0) /
+              atrasos.length) *
+              10,
+          ) / 10
         : 0,
       atrasos.length,
-      "Média de dias de atraso apenas entre as entregas fora do prazo.",
+      "Média de dias de atraso entre as entregas concluídas fora do prazo.",
       "DIAS",
     ),
   ];
 
-  const porCompetencia = new Map<string, { previstos: number; entregues: number }>();
+  type Grupo = {
+    previstos: number;
+    entregues: number;
+    noPrazo: number;
+    foraPrazo: number;
+    atrasadas: number;
+  };
+  const novoGrupo = (): Grupo => ({
+    previstos: 0,
+    entregues: 0,
+    noPrazo: 0,
+    foraPrazo: 0,
+    atrasadas: 0,
+  });
+  const acumular = (grupo: Grupo, registro: Registro) => {
+    grupo.previstos += 1;
+    if (ENTREGUES.includes(registro.situacao)) grupo.entregues += 1;
+    if (registro.situacao === "CONCLUIDA_NO_PRAZO") grupo.noPrazo += 1;
+    if (registro.situacao === "CONCLUIDA_FORA_PRAZO") grupo.foraPrazo += 1;
+    if (registro.situacao === "ATRASADA") grupo.atrasadas += 1;
+  };
+
+  const porCompetencia = new Map<string, Grupo>();
   for (const registro of registros) {
-    const atual = porCompetencia.get(registro.competencia) ?? { previstos: 0, entregues: 0 };
-    atual.previstos += 1;
-    if (ENTREGUES.includes(registro.situacao)) atual.entregues += 1;
+    const atual = porCompetencia.get(registro.competencia) ?? novoGrupo();
+    acumular(atual, registro);
     porCompetencia.set(registro.competencia, atual);
   }
 
@@ -245,14 +388,24 @@ export async function apurarIndice(
     }
   };
 
-  const agrupado = new Map<string, { previstos: number; entregues: number }>();
+  const agrupado = new Map<string, Grupo>();
   for (const registro of registros) {
     const chave = chaveDoRecorte(registro);
-    const atual = agrupado.get(chave) ?? { previstos: 0, entregues: 0 };
-    atual.previstos += 1;
-    if (ENTREGUES.includes(registro.situacao)) atual.entregues += 1;
+    const atual = agrupado.get(chave) ?? novoGrupo();
+    acumular(atual, registro);
     agrupado.set(chave, atual);
   }
+
+  const completar = (valores: Grupo) => ({
+    ...valores,
+    backlog: valores.previstos - valores.entregues,
+    indice: valores.previstos
+      ? (valores.entregues / valores.previstos) * 100
+      : 0,
+    indicePrazo: valores.entregues
+      ? (valores.noPrazo / valores.entregues) * 100
+      : 0,
+  });
 
   return {
     indicadores,
@@ -260,14 +413,12 @@ export async function apurarIndice(
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([competencia, valores]) => ({
         competencia,
-        ...valores,
-        indice: valores.previstos ? (valores.entregues / valores.previstos) * 100 : 0,
+        ...completar(valores),
       })),
     porRecorte: [...agrupado.entries()]
       .map(([chave, valores]) => ({
         chave,
-        ...valores,
-        indice: valores.previstos ? (valores.entregues / valores.previstos) * 100 : 0,
+        ...completar(valores),
       }))
       .sort((a, b) => b.previstos - a.previstos),
     totalRegistros: total,
@@ -284,10 +435,19 @@ export async function detalharIndicador(
     PREVISTO: () => true,
     ENTREGUE: (r) => ENTREGUES.includes(r.situacao),
     INDICE: (r) => ENTREGUES.includes(r.situacao),
+    INDICE_PRAZO: (r) => r.situacao === "CONCLUIDA_NO_PRAZO",
     NO_PRAZO: (r) => r.situacao === "CONCLUIDA_NO_PRAZO",
     FORA_PRAZO: (r) => r.situacao === "CONCLUIDA_FORA_PRAZO",
+    BACKLOG: (r) => !ENTREGUES.includes(r.situacao),
     EM_ANDAMENTO: (r) => r.situacao === "EM_ANDAMENTO_NO_PRAZO",
     ATRASADA: (r) => r.situacao === "ATRASADA",
+    VENCE_HOJE: (r) =>
+      !ENTREGUES.includes(r.situacao) && diasAtePrazo(r.prazo) === 0,
+    PROXIMOS_3_DIAS: (r) => {
+      if (ENTREGUES.includes(r.situacao)) return false;
+      const restante = diasAtePrazo(r.prazo);
+      return restante !== null && restante >= 1 && restante <= 3;
+    },
     AGUARDANDO: (r) => r.situacao === "AGUARDANDO_CLIENTE",
     SEM_EVIDENCIA: (r) => r.situacao === "SEM_EVIDENCIA",
     REVISAO: (r) => r.situacao === "PRECISA_REVISAO",
