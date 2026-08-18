@@ -261,16 +261,17 @@ export async function sincronizarMinhaCaixa(
 ) {
   assertCanWrite(ctx);
   const usuario = await resolverUsuarioPier(ctx, input.email);
-  let statusConsultado = "Andamento";
-  let solicitacoes: PierRequest[];
-  let maxPages = 60;
-  try {
-    solicitacoes = await pierAdapter.listRequests({ status: statusConsultado, maxPages });
-  } catch {
-    statusConsultado = "Todas";
-    maxPages = 40;
-    solicitacoes = await pierAdapter.listRequests({ status: statusConsultado, maxPages });
-  }
+
+  // A Minha Caixa precisa refletir TODAS as solicitações atribuídas ao usuário,
+  // independentemente do tipo (fechamento, e-mail, fiscal, financeiro etc.) e do
+  // status operacional. Por isso a varredura usa "Todas" e o teto integral da
+  // integração; somente depois filtramos pelo responsável e removemos finalizadas.
+  const statusConsultado = "Todas";
+  const maxPages = 200;
+  const solicitacoes = await pierAdapter.listRequests({
+    status: statusConsultado,
+    maxPages,
+  });
 
   const minhas = solicitacoes.filter(
     (s) =>
@@ -289,6 +290,7 @@ export async function sincronizarMinhaCaixa(
     entity: "request",
     after: {
       usuarioPier: usuario.id,
+      consultadas: solicitacoes.length,
       encontradas: minhas.length,
       processadas,
       statusConsultado,
@@ -298,6 +300,7 @@ export async function sincronizarMinhaCaixa(
 
   return {
     usuario: { id: usuario.id, nome: usuario.nome },
+    consultadas: solicitacoes.length,
     encontradas: minhas.length,
     processadas,
     possivelmenteParcial,
