@@ -1,14 +1,82 @@
 import { audit } from "../../lib/audit";
 import { assertCanWrite, type AppContext } from "../../lib/context";
 import { AppError } from "../../lib/errors";
-import { pierAdapter } from "../../integrations/pier/pier.adapter";
+import { pierGet } from "../../integrations/pier/pier.http";
+import { mapRequest } from "../../integrations/pier/pier.mapper";
 import type { PierRequest } from "../../integrations/pier/pier.types";
 import { solicitacaoFinalizadaPier } from "../gestao/status-pier";
 import { obterVinculoPier } from "./caixa-inteligente.service";
 
-const STATUS_ATIVOS = ["Aberta", "Andamento"] as const;
-const MAX_PAGINAS_POR_STATUS = 80;
-const ITENS_POR_PAGINA = 30;
+type Raw = Record<string, unknown>;
+
+const POR_PAGINA = 30;
+const MAX_PAGINAS = 40;
+
+function asArray(payload: unknown): Raw[] {
+  if (Array.isArray(payload)) return payload as Raw[];
+  if (payload && typeof payload === "object") {
+    const container = payload as Record<string, unknown>;
+    for (const key of ["data", "items", "content", "results", "dados", "registros"]) {
+      if (Array.isArray(container[key])) return container[key] as Raw[];
+    }
+  }
+  return [];
+}
+
+function validarFiltroResponsavel(itens: PierRequest[], usuarioId: string) {
+  const divergentes = itens.filter(
+    (item) => item.responsibleExternalId && item.responsibleExternalId !== usuarioId,
+  );
+  if (divergentes.length) {
+    throw new AppError(
+      "INTEGRACAO_FALHA",
+      "O PIER não aplicou com segurança o filtro de responsável. A sincronização foi interrompida.",
+      `responsável esperado ${usuarioId}; divergentes: ${divergentes
+        .slice(0, 5)
+        .map((item) => `${item.externalId}:${item.responsibleExternalId}`)
+        .join(", ")}`,
+    );
+  }
+
+  if (itens.length > 0 && !itens.some((item) => item.responsibleExternalId === usuarioId)) {
+    throw new AppError(
+      "INTEGRACAO_FALHA",
+      "O PIER não confirmou o responsável nas solicitações retornadas. A sincronização foi interrompida.",
+      `nenhum item retornou idResponsavel=${usuarioId}`,
+    );
+  }
+}
+
+async function consultarSolicitacoesDoResponsavel(usuarioId: string) {
+  const resultados: PierRequest[] = [];
+
+  for (let pagina = 1; pagina <= MAX_PAGINAS; pagina++) {
+    const payload = await pierGet<unknown>("/api/v2/solicitacoes", {
+      pagina,
+      quantidadePorPagina: POR_PAGINA,
+      status: "Todas",
+      idResponsavel: usuarioId,
+    });
+
+    const lote = asArray(payload)
+      .map((raw) => mapRequest(raw))
+      .filter((item) => item.externalId);
+    validarFiltroResponsavel(lote, usuarioId);
+    resultados.push(...lote);
+
+    if (lote.length < POR_PAGINA) {
+      return {
+        itens: resultados,
+        atingiuLimite: false,
+      };
+    }
+  }
+
+  return {
+    itens: resultados,
+    atingiuLimite: true,
+  };
+}
 
 async function gravarSolicitacoes(
   ctx: AppContext,
@@ -63,12 +131,8 @@ async function gravarSolicitacoes(
 }
 
 /**
- * Sincronização segura da Minha Caixa.
- *
- * Evita varrer o universo inteiro de solicitações (inclusive finalizadas), que
- * pode exceder o tempo de execução. Consulta somente os dois status ativos do
- * PIER, sem filtro de tipo, combina os resultados e filtra pelo usuário vinculado.
- * Se um status falhar, preserva o outro e sinaliza resultado parcial.
+ * Sincroniza a Minha Caixa consultando o PIER diretamente pelo responsável.
+ * O filtro é validado contra o próprio retorno antes de qualquer gravação.
  */
 export async function sincronizarMinhaCaixaSegura(
   ctx: AppContext,
@@ -85,85 +149,46 @@ export async function sincronizarMinhaCaixaSegura(
     );
   }
 
-  const consultas = await Promise.all(
-    STATUS_ATIVOS.map(async (status) => {
-      try {
-        const itens = await pierAdapter.listRequests({
-          status,
-          maxPages: MAX_PAGINAS_POR_STATUS,
-        });
-        return {
-          status,
-          itens,
-          erro: null as string | null,
-          atingiuLimite: itens.length >= MAX_PAGINAS_POR_STATUS * ITENS_POR_PAGINA,
-        };
-      } catch (error) {
-        return {
-          status,
-          itens: [] as PierRequest[],
-          erro: error instanceof Error ? error.message : "Falha ao consultar o PIER.",
-          atingiuLimite: false,
-        };
-      }
-    }),
-  );
-
-  if (consultas.every((c) => c.erro)) {
-    throw new AppError(
-      "INTEGRACAO_FALHA",
-      "Não foi possível consultar as solicitações abertas do PIER. Tente novamente.",
-      consultas.map((c) => `${c.status}: ${c.erro}`).join(" | "),
+  try {
+    const consulta = await consultarSolicitacoesDoResponsavel(usuario.id);
+    const minhas = consulta.itens.filter(
+      (s) =>
+        s.responsibleExternalId === usuario.id &&
+        !solicitacaoFinalizadaPier(s.status, s.finishedAt),
     );
-  }
 
-  const unicas = new Map<string, PierRequest>();
-  for (const consulta of consultas) {
-    for (const solicitacao of consulta.itens) {
-      if (solicitacao.externalId) unicas.set(solicitacao.externalId, solicitacao);
-    }
-  }
+    const processadas = await gravarSolicitacoes(ctx, minhas, usuario.departamentoId);
 
-  const solicitacoes = [...unicas.values()];
-  const minhas = solicitacoes.filter(
-    (s) =>
-      s.responsibleExternalId === usuario.id &&
-      !solicitacaoFinalizadaPier(s.status, s.finishedAt),
-  );
-
-  const processadas = await gravarSolicitacoes(ctx, minhas, usuario.departamentoId);
-  const possivelmenteParcial = consultas.some((c) => Boolean(c.erro) || c.atingiuLimite);
-
-  const consultadasPorStatus = Object.fromEntries(
-    consultas.map((c) => [
-      c.status,
-      {
-        consultadas: c.itens.length,
-        erro: c.erro,
-        atingiuLimite: c.atingiuLimite,
+    await audit(ctx, {
+      action: "SINCRONIZAR_CAIXA_INTELIGENTE",
+      entity: "request",
+      after: {
+        modo: "RESPONSAVEL_DIRETO",
+        usuarioPier: usuario.id,
+        consultadas: consulta.itens.length,
+        encontradas: minhas.length,
+        processadas,
+        possivelmenteParcial: consulta.atingiuLimite,
       },
-    ]),
-  );
+    });
 
-  await audit(ctx, {
-    action: "SINCRONIZAR_CAIXA_INTELIGENTE",
-    entity: "request",
-    after: {
-      usuarioPier: usuario.id,
-      consultadas: solicitacoes.length,
-      consultadasPorStatus,
+    return {
+      usuario: { id: usuario.id, nome: usuario.nome },
+      consultadas: consulta.itens.length,
       encontradas: minhas.length,
       processadas,
-      possivelmenteParcial,
-    },
-  });
-
-  return {
-    usuario: { id: usuario.id, nome: usuario.nome },
-    consultadas: solicitacoes.length,
-    consultadasPorStatus,
-    encontradas: minhas.length,
-    processadas,
-    possivelmenteParcial,
-  };
+      possivelmenteParcial: consulta.atingiuLimite,
+    };
+  } catch (error) {
+    await audit(ctx, {
+      action: "SINCRONIZAR_CAIXA_INTELIGENTE_FALHA",
+      entity: "request",
+      after: {
+        modo: "RESPONSAVEL_DIRETO",
+        usuarioPier: usuario.id,
+        erro: error instanceof Error ? error.message : String(error),
+      },
+    });
+    throw error;
+  }
 }
