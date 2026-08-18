@@ -95,6 +95,14 @@ const ROTULOS: Record<string, string> = {
   OUTRO: "Outros",
 };
 
+function normalizarBuscaUsuario(value: string | null | undefined) {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
 function dataPt(value: string | null | undefined) {
   if (!value) return "—";
   const data = new Date(value);
@@ -130,6 +138,7 @@ function MinhasSolicitacoesPage() {
   const [privada, setPrivada] = useState(false);
   const [confirmarFinalizacao, setConfirmarFinalizacao] = useState(false);
   const [usuarioEscolhido, setUsuarioEscolhido] = useState("");
+  const [buscaUsuario, setBuscaUsuario] = useState("");
 
   const vinculo = useQuery({
     queryKey: ["vinculo-usuario-pier"],
@@ -144,6 +153,7 @@ function MinhasSolicitacoesPage() {
     mutationFn: () => vincularMeuUsuarioPier({ data: { externalId: usuarioEscolhido } }),
     onSuccess: (usuario) => {
       toast.success(`Usuário PIER vinculado: ${usuario.nome}.`);
+      setBuscaUsuario("");
       void queryClient.invalidateQueries({ queryKey: ["vinculo-usuario-pier"] });
       void queryClient.invalidateQueries({ queryKey: ["minha-caixa-inteligente"] });
     },
@@ -222,6 +232,92 @@ function MinhasSolicitacoesPage() {
     return [...mapa.entries()].sort((a, b) => b[1] - a[1]);
   }, [dados?.linhas]);
 
+  const usuariosFiltrados = useMemo(() => {
+    const termo = normalizarBuscaUsuario(buscaUsuario);
+    if (termo.length < 2) return [];
+    return (vinculo.data?.opcoes ?? [])
+      .filter((u) =>
+        normalizarBuscaUsuario(
+          `${u.nome ?? ""} ${u.email ?? ""} ${u.login ?? ""}`,
+        ).includes(termo),
+      )
+      .slice(0, 15);
+  }, [buscaUsuario, vinculo.data?.opcoes]);
+
+  const usuarioSelecionado =
+    (vinculo.data?.opcoes ?? []).find((u) => u.id === usuarioEscolhido) ?? null;
+
+  const selecionarUsuario = (usuario: (typeof usuariosFiltrados)[number]) => {
+    setUsuarioEscolhido(usuario.id);
+    setBuscaUsuario(usuario.nome);
+  };
+
+  const seletorUsuario = (
+    <div className="space-y-2">
+      <Label htmlFor="busca-usuario-pier">Localizar usuário no PIER</Label>
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          id="busca-usuario-pier"
+          value={buscaUsuario}
+          onChange={(e) => {
+            setBuscaUsuario(e.target.value);
+            if (
+              usuarioSelecionado &&
+              normalizarBuscaUsuario(e.target.value) !==
+                normalizarBuscaUsuario(usuarioSelecionado.nome)
+            ) {
+              setUsuarioEscolhido("");
+            }
+          }}
+          placeholder="Digite nome, sobrenome, e-mail ou login"
+          className="pl-9"
+          autoComplete="off"
+        />
+      </div>
+
+      {normalizarBuscaUsuario(buscaUsuario).length < 2 ? (
+        <p className="text-xs text-muted-foreground">
+          Digite pelo menos 2 caracteres para localizar o usuário.
+        </p>
+      ) : usuariosFiltrados.length ? (
+        <div className="max-h-72 overflow-y-auto rounded-md border bg-background shadow-sm">
+          {usuariosFiltrados.map((u) => (
+            <button
+              key={u.id}
+              type="button"
+              onClick={() => selecionarUsuario(u)}
+              className={`flex w-full flex-col gap-0.5 border-b px-3 py-2.5 text-left last:border-b-0 hover:bg-muted/60 ${
+                usuarioEscolhido === u.id ? "bg-primary/5 ring-1 ring-inset ring-primary/20" : ""
+              }`}
+            >
+              <span className="text-sm font-medium">{u.nome}</span>
+              <span className="text-xs text-muted-foreground">
+                {u.email ?? u.login ?? "Sem e-mail/login informado"}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+          Nenhum usuário encontrado para “{buscaUsuario}”. Tente outro nome, sobrenome ou e-mail.
+        </p>
+      )}
+
+      {usuarioSelecionado ? (
+        <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+            Usuário selecionado
+          </p>
+          <p className="font-medium">{usuarioSelecionado.nome}</p>
+          <p className="text-xs text-muted-foreground">
+            {usuarioSelecionado.email ?? usuarioSelecionado.login ?? "—"}
+          </p>
+        </div>
+      ) : null}
+    </div>
+  );
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -256,22 +352,12 @@ function MinhasSolicitacoesPage() {
             <div className="min-w-0 flex-1">
               <p className="font-semibold">Qual usuário do PIER é você?</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Esse vínculo é feito uma vez para que a Caixa traga somente as solicitações atribuídas ao seu usuário. Se o e-mail do login já coincidir com o PIER, o sistema vincula automaticamente.
+                Esse vínculo é feito uma vez para que a Caixa traga somente as solicitações atribuídas ao seu usuário. Pesquise pelo nome, sobrenome, e-mail ou login do PIER.
               </p>
-              <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-                <Select value={usuarioEscolhido} onValueChange={setUsuarioEscolhido}>
-                  <SelectTrigger className="sm:max-w-md">
-                    <SelectValue placeholder="Selecione seu usuário no PIER" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-80">
-                    {(vinculo.data?.opcoes ?? []).map((u) => (
-                      <SelectItem key={u.id} value={u.id}>
-                        {u.nome}{u.email ? ` · ${u.email}` : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,560px)_auto] lg:items-start">
+                {seletorUsuario}
                 <Button
+                  className="lg:mt-6"
                   onClick={() => vincular.mutate()}
                   disabled={!usuarioEscolhido || vincular.isPending}
                 >
@@ -282,37 +368,32 @@ function MinhasSolicitacoesPage() {
           </div>
         </Card>
       ) : (
-        <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">
-              Usuário PIER vinculado
-            </p>
-            <p className="font-medium">{vinculo.data.usuario?.nome}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Select value={usuarioEscolhido} onValueChange={setUsuarioEscolhido}>
-              <SelectTrigger className="w-[260px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="max-h-80">
-                {vinculo.data.opcoes.map((u) => (
-                  <SelectItem key={u.id} value={u.id}>
-                    {u.nome}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              variant="outline"
-              onClick={() => vincular.mutate()}
-              disabled={
-                vincular.isPending ||
-                !usuarioEscolhido ||
-                usuarioEscolhido === vinculo.data.usuario?.id
-              }
-            >
-              Trocar vínculo
-            </Button>
+        <Card className="p-4">
+          <div className="grid gap-4 lg:grid-cols-[minmax(220px,1fr)_minmax(0,560px)] lg:items-start">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                Usuário PIER vinculado
+              </p>
+              <p className="font-medium">{vinculo.data.usuario?.nome}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {vinculo.data.usuario?.email ?? vinculo.data.usuario?.login ?? "—"}
+              </p>
+            </div>
+            <div className="space-y-3">
+              <p className="text-sm font-medium">Trocar vínculo</p>
+              {seletorUsuario}
+              <Button
+                variant="outline"
+                onClick={() => vincular.mutate()}
+                disabled={
+                  vincular.isPending ||
+                  !usuarioEscolhido ||
+                  usuarioEscolhido === vinculo.data.usuario?.id
+                }
+              >
+                {vincular.isPending ? "Alterando…" : "Trocar vínculo"}
+              </Button>
+            </div>
           </div>
         </Card>
       )}
