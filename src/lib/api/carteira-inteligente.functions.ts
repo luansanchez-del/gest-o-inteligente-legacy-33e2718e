@@ -34,6 +34,20 @@ export const sincronizarPerfisBpoPier = createServerFn({ method: "POST" })
     }),
   );
 
+export const analisarCurriculoBpo = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { nome: string; mimeType?: string | null; base64: string }) => {
+    if (!input?.nome?.trim()) throw new Error("VALIDACAO::Arquivo de currículo não informado.");
+    if (!input?.base64) throw new Error("VALIDACAO::Conteúdo do currículo não informado.");
+    return input;
+  })
+  .handler(async ({ data, context }) =>
+    comContexto(context.userId, emailDoToken(context.claims), async () => {
+      const service = await import("@/server/domain/carteira-inteligente/curriculo-inteligente.service");
+      return service.analisarCurriculoArquivo(data);
+    }),
+  );
+
 export const salvarPerfilBpo = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: {
