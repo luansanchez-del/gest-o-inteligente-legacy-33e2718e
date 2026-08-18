@@ -64,7 +64,31 @@ export const vincularMeuUsuarioPier = createServerFn({ method: "POST" })
         const service = await import(
           "@/server/domain/caixa-inteligente/caixa-inteligente.service"
         );
-        return service.vincularUsuarioPier(ctx, data);
+        const usuario = await service.vincularUsuarioPier(ctx, data);
+        let sincronizacao:
+          | { ok: true; processadas: number; possivelmenteParcial: boolean }
+          | { ok: false; erro: string };
+
+        try {
+          const resultado = await service.sincronizarMinhaCaixa(ctx, {
+            email: emailDoToken(context.claims),
+          });
+          sincronizacao = {
+            ok: true,
+            processadas: resultado.processadas,
+            possivelmenteParcial: resultado.possivelmenteParcial,
+          };
+        } catch (error) {
+          sincronizacao = {
+            ok: false,
+            erro: error instanceof Error ? error.message : "Falha ao sincronizar a Caixa.",
+          };
+        }
+
+        return {
+          ...usuario,
+          sincronizacao,
+        };
       },
     ),
   );
