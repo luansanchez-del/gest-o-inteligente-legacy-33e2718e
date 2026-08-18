@@ -82,7 +82,7 @@ export const atribuirClienteCarteira = createServerFn({ method: "POST" })
   })
   .handler(async ({ data, context }) =>
     comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
-      const service = await import("@/server/domain/carteira-inteligente/carteira-inteligente.service");
-      return service.atribuirCliente(ctx, data);
+      const service = await import("@/server/domain/carteira-inteligente/carteira-inteligente-write.service");
+      return service.atribuirClienteSeguro(ctx, data);
     }),
   );
