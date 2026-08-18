@@ -3,14 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, Building2, ListChecks, ShieldCheck } from "lucide-react";
 
 import { PageHeader } from "@/components/common/PageHeader";
-import { StatCard } from "@/components/common/StatCard";
-import { CarregandoTabela, ErroConsulta } from "@/components/common/EstadoConsulta";
+import { EvolucaoEquipeContabil } from "@/components/dashboard/EvolucaoEquipeContabil";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { apurarIndice } from "@/lib/api/indice.functions";
 import { listarCarteira } from "@/lib/api/carteira.functions";
 import { listarFilaRevisao } from "@/lib/api/revisao.functions";
-import { competenciaAtual, competenciaDeslocada, formatarCompetencia } from "@/lib/formato";
+import { competenciaAtual, formatarCompetencia } from "@/lib/formato";
 
 export const Route = createFileRoute("/_authenticated/")({
   head: () => ({
@@ -19,12 +17,16 @@ export const Route = createFileRoute("/_authenticated/")({
       {
         name: "description",
         content:
-          "Visão geral da carteira PIER, índice de entrega da competência e fila de revisão humana.",
+          "Visão gerencial da equipe contábil, carteira PIER, índice de entrega, vencimentos e revisão humana.",
       },
-      { property: "og:title", content: "Painel | Gestão Inteligente de Fechamentos" },
+      {
+        property: "og:title",
+        content: "Painel | Gestão Inteligente de Fechamentos",
+      },
       {
         property: "og:description",
-        content: "Acompanhe carteira, índice de entrega e revisões pendentes em um só painel.",
+        content:
+          "Acompanhe evolução da equipe, índice de entrega, vencimentos e backlog em um só painel.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -36,57 +38,36 @@ export const Route = createFileRoute("/_authenticated/")({
 function Painel() {
   const competencia = competenciaAtual();
 
-  const indice = useQuery({
-    queryKey: ["indice", "painel", competencia],
-    queryFn: () =>
-      apurarIndice({
-        data: {
-          competenciaInicio: competenciaDeslocada(-5),
-          competenciaFim: competencia,
-          recorte: "GERAL",
-        },
-      }),
-  });
   const carteira = useQuery({
     queryKey: ["carteira", "resumo"],
     queryFn: () => listarCarteira({ data: {} }),
   });
-  const revisao = useQuery({ queryKey: ["revisao"], queryFn: () => listarFilaRevisao() });
-
-  const destaques = (indice.data?.indicadores ?? []).filter((i) =>
-    ["PREVISTO", "ENTREGUE", "INDICE", "ATRASADA", "AGUARDANDO", "REVISAO"].includes(i.codigo),
-  );
+  const revisao = useQuery({
+    queryKey: ["revisao"],
+    queryFn: () => listarFilaRevisao(),
+  });
 
   return (
     <div className="space-y-6">
       <PageHeader
         titulo="Painel"
-        descricao={`Situação consolidada até a competência ${formatarCompetencia(competencia)}.`}
+        descricao={`Gestão operacional consolidada até a competência ${formatarCompetencia(competencia)}.`}
         acoes={
-          <Button asChild variant="outline">
-            <Link to="/carteira">
-              Abrir carteira
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline">
+              <Link to="/gestao">
+                Abrir Gestão
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link to="/carteira">Abrir carteira</Link>
+            </Button>
+          </div>
         }
       />
 
-      {indice.isError ? (
-        <ErroConsulta error={indice.error} onRetry={() => void indice.refetch()} />
-      ) : indice.isLoading ? (
-        <CarregandoTabela linhas={3} />
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {destaques.map((indicador) => (
-            <StatCard
-              key={indicador.codigo}
-              indicador={indicador}
-              destaque={indicador.codigo === "INDICE"}
-            />
-          ))}
-        </div>
-      )}
+      <EvolucaoEquipeContabil />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="space-y-3 p-5">
@@ -98,8 +79,8 @@ function Painel() {
             {carteira.data?.resumo.total ?? "—"}
           </p>
           <p className="text-sm text-muted-foreground">
-            {carteira.data?.resumo.ativos ?? 0} ativos · {carteira.data?.resumo.inativos ?? 0}{" "}
-            inativos
+            {carteira.data?.resumo.ativos ?? 0} ativos ·{" "}
+            {carteira.data?.resumo.inativos ?? 0} inativos
           </p>
           <Button asChild variant="outline" size="sm">
             <Link to="/carteira">Abrir carteira</Link>
@@ -111,20 +92,31 @@ function Painel() {
             <ShieldCheck className="h-4 w-4 text-primary" />
             Revisão humana
           </div>
-          <p className="text-3xl font-semibold tabular-nums">{revisao.data?.length ?? "—"}</p>
-          <p className="text-sm text-muted-foreground">Itens aguardando decisão de um gestor.</p>
-          <p className="text-xs text-muted-foreground">Fila detalhada disponível em breve.</p>
+          <p className="text-3xl font-semibold tabular-nums">
+            {revisao.data?.length ?? "—"}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Itens aguardando decisão profissional ou justificativa.
+          </p>
+          <Button asChild variant="outline" size="sm">
+            <Link to="/gestao">Revisar solicitações</Link>
+          </Button>
         </Card>
 
         <Card className="space-y-3 p-5">
           <div className="flex items-center gap-2 text-sm font-medium">
             <ListChecks className="h-4 w-4 text-primary" />
-            Acompanhamento
+            Central operacional
           </div>
           <p className="text-sm text-muted-foreground">
-            Consulte o andamento das gestões abertas por competência, responsável e situação.
+            Use os filtros e indicadores acima para localizar responsáveis, backlog e vencimentos antes de atuar no PIER.
           </p>
-          <p className="text-xs text-muted-foreground">Tela de execuções disponível em breve.</p>
+          <Button asChild variant="outline" size="sm">
+            <Link to="/gestao">
+              Abrir solicitações
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Link>
+          </Button>
         </Card>
       </div>
     </div>
