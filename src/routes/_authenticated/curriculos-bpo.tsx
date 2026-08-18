@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { BrainCircuit, FileUp, Save, ShieldCheck, UserRoundSearch } from "lucide-react";
 import { toast } from "sonner";
 
+import { AnalisePerfilCarteira } from "@/components/carteira-inteligente/AnalisePerfilCarteira";
 import { PageHeader } from "@/components/common/PageHeader";
 import { ErroConsulta } from "@/components/common/EstadoConsulta";
 import { Badge } from "@/components/ui/badge";
@@ -226,6 +227,9 @@ function CurriculosBpoPage() {
               {analise.observacoes.length ? (
                 <div className="space-y-2"><p className="text-xs uppercase tracking-wide text-muted-foreground">Observações da leitura</p>{analise.observacoes.map((o, i) => <p key={i} className="text-sm">• {o}</p>)}</div>
               ) : null}
+
+              <AnalisePerfilCarteira analise={analise} linhas={carteira.data?.linhas ?? []} />
+
               <div className="space-y-2">
                 <Label>Texto profissional extraído</Label>
                 <Textarea value={analise.textoProfissional} readOnly rows={9} className="text-xs" />
