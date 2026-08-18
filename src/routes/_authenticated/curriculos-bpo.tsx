@@ -106,7 +106,7 @@ function CurriculosBpoPage() {
         data: {
           pierUserExternalId: selecionado?.pierUserExternalId ?? null,
           nome,
-          email: selecionado?.email ?? emailNovo.trim() || null,
+          email: (selecionado?.email ?? emailNovo.trim()) || null,
           senioridade: analise.senioridade,
           capacidade: selecionado?.capacidade ?? 60,
           regimes: analise.regimes,
