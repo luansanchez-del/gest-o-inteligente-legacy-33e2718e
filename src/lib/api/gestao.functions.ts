@@ -171,8 +171,7 @@ export const sincronizarSolicitacoes = createServerFn({ method: "POST" })
         tipo: data.tipo,
         incluirFinalizadas:
           data.incluirFinalizadas ??
-          data.statusPier === "FINALIZADAS" ||
-          data.statusPier === "TODOS",
+          (data.statusPier === "FINALIZADAS" || data.statusPier === "TODOS"),
       });
     }),
   );
