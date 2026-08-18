@@ -3,6 +3,7 @@ import { assertCanWrite, type AppContext } from "../../lib/context";
 import { AppError } from "../../lib/errors";
 import { pierAdapter } from "../../integrations/pier/pier.adapter";
 import type { PierRequest, PierUser } from "../../integrations/pier/pier.types";
+import { carregarUsuariosPier } from "../gestao/pier-user.repo";
 import { solicitacaoFinalizadaPier } from "../gestao/status-pier";
 
 export type CategoriaSolicitacao =
@@ -82,14 +83,21 @@ function resumirUsuario(u: PierUser) {
 }
 
 async function usuariosAtivos(ctx: AppContext): Promise<PierUser[]> {
-  const { data: cache } = await ctx.db
-    .from("pier_user")
-    .select(
-      "external_id, name, kind, login, email, status, department_external_id, raw",
-    )
-    .eq("organization_id", ctx.organizationId);
+  const cache = await carregarUsuariosPier<{
+    external_id: string;
+    name: string;
+    kind: string | null;
+    login: string | null;
+    email: string | null;
+    status: string | null;
+    department_external_id: string | null;
+    raw: Record<string, unknown> | null;
+  }>(
+    ctx,
+    "external_id, name, kind, login, email, status, department_external_id, raw",
+  );
 
-  const internos = (cache ?? [])
+  const internos = cache
     .filter(
       (u) =>
         TIPOS_INTERNOS.has(normalizar(u.kind)) &&
