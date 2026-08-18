@@ -226,7 +226,7 @@ function CarteiraInteligentePage() {
   return <div className="space-y-6">
     <PageHeader
       titulo="Carteira Inteligente"
-      descricao="Clientes ativos, carteira oficial, grupos, honorários, capacidade profissional e distribuição integrada ao PIER."
+      descricao="Clientes ativos, carteira oficial, grupos, receita de honorários, capacidade profissional e distribuição integrada ao PIER."
       acoes={<div className="flex flex-wrap gap-2">
         <Button variant="outline" onClick={() => perfisPier.mutate()} disabled={perfisPier.isPending}><RefreshCw className={`mr-2 h-4 w-4 ${perfisPier.isPending ? "animate-spin" : ""}`} />Trazer equipe PIER</Button>
         <Button onClick={() => setImportOpen(true)}><FileSpreadsheet className="mr-2 h-4 w-4" />Importar carteira/honorários</Button>
@@ -234,7 +234,7 @@ function CarteiraInteligentePage() {
     />
 
     <Card className="border-primary/25 bg-primary/5 p-4 text-sm">
-      <strong>Base operacional:</strong> somente clientes com status <strong>Ativo</strong> no PIER. Honorário e Grupo vêm da planilha financeira; valores BPO e responsáveis das carteiras individuais são preservados.
+      <strong>Regra financeira:</strong> o <strong>Honorário Atual</strong> é a receita que o cliente paga ao escritório. Ele <strong>não é valor disponível para distribuir ao BPO</strong> e não entra na pontuação de sugestão de carteira. O <strong>Repasse BPO</strong> é um dado separado, vindo das carteiras individuais ou de uma regra específica de cálculo.
     </Card>
 
     {consulta.isError ? <ErroConsulta error={consulta.error} onRetry={() => void consulta.refetch()} /> : null}
@@ -243,13 +243,13 @@ function CarteiraInteligentePage() {
       <Resumo titulo="Clientes ativos" valor={dados?.resumo.clientes ?? 0} icon={BriefcaseBusiness} />
       <Resumo titulo="Sem carteira" valor={dados?.resumo.semCarteira ?? 0} icon={AlertTriangle} destaque />
       <Resumo titulo="Divergências PIER" valor={dados?.resumo.divergenciasPier ?? 0} icon={Scale} />
-      <Resumo titulo="Honorários" texto={moeda(dados?.resumo.honorarios)} icon={WalletCards} />
-      <Resumo titulo="Valor BPO" texto={moeda(dados?.resumo.valorBpo)} icon={Users} />
-      <Resumo titulo="Margem carteira" texto={moeda(dados?.resumo.margemBrutaCarteira)} icon={Sparkles} />
+      <Resumo titulo="Receita de honorários" texto={moeda(dados?.resumo.honorarios)} icon={WalletCards} />
+      <Resumo titulo="Repasse BPO cadastrado" texto={moeda(dados?.resumo.valorBpo)} icon={Users} />
+      <Resumo titulo="Margem após repasses cadastrados" texto={moeda(dados?.resumo.margemBrutaCarteira)} icon={Sparkles} />
     </div>
 
     <div className="text-sm text-muted-foreground">
-      {dados?.resumo.grupos ?? 0} grupo(s) identificado(s) · {dados?.resumo.clientesInclusosEmGrupo ?? 0} cliente(s) com honorário incluído em grupo.
+      {dados?.resumo.grupos ?? 0} grupo(s) identificado(s) · {dados?.resumo.clientesInclusosEmGrupo ?? 0} cliente(s) com receita de honorário incluída no grupo.
     </div>
 
     <Tabs defaultValue="distribuicao" className="space-y-4">
@@ -270,7 +270,7 @@ function CarteiraInteligentePage() {
         <Card className="overflow-hidden">
           {consulta.isLoading ? <div className="p-8 text-sm text-muted-foreground">Carregando clientes ativos…</div> : !linhas.length ? <EstadoVazio titulo="Nenhum cliente neste filtro." descricao="Sincronize o PIER ou importe a planilha financeira." /> : <Table>
             <TableHeader><TableRow>
-              <TableHead>Cliente</TableHead><TableHead>Regime / segmento</TableHead><TableHead>Grupo</TableHead><TableHead>Responsável PIER</TableHead><TableHead>Carteira oficial</TableHead><TableHead>Peso</TableHead><TableHead>Honorário</TableHead><TableHead>Valor BPO</TableHead><TableHead className="text-right">Ação</TableHead>
+              <TableHead>Cliente</TableHead><TableHead>Regime / segmento</TableHead><TableHead>Grupo</TableHead><TableHead>Responsável PIER</TableHead><TableHead>Carteira oficial</TableHead><TableHead>Peso</TableHead><TableHead>Honorário do cliente</TableHead><TableHead>Repasse BPO</TableHead><TableHead className="text-right">Ação</TableHead>
             </TableRow></TableHeader>
             <TableBody>{linhas.map((l) => <TableRow key={l.clientKey}>
               <TableCell><p className="font-medium">{l.nome}</p><p className="text-xs text-muted-foreground">{l.documento ?? "Sem documento"}</p></TableCell>
@@ -279,7 +279,7 @@ function CarteiraInteligentePage() {
               <TableCell>{l.responsavelPier ?? <span className="text-muted-foreground">Sem responsável</span>}</TableCell>
               <TableCell>{l.responsavelCarteira ? <span>{l.responsavelCarteira}</span> : <Badge variant="secondary">Sem carteira</Badge>}{l.divergencia ? <p className="mt-1 text-xs text-warning-strong">Diverge do PIER</p> : null}</TableCell>
               <TableCell className="tabular-nums">{l.peso}</TableCell>
-              <TableCell>{l.honorarioCobertoPorGrupo && l.grupo ? <div><Badge variant="outline">Incluso no grupo</Badge><p className="mt-1 text-xs text-muted-foreground">Grupo: {moeda(l.honorarioGrupo)}</p></div> : <div>{moeda(l.honorario)}{l.grupo && l.honorarioGrupo != null ? <p className="mt-1 text-xs text-muted-foreground">Total grupo: {moeda(l.honorarioGrupo)}</p> : null}</div>}</TableCell>
+              <TableCell>{l.honorarioCobertoPorGrupo && l.grupo ? <div><Badge variant="outline">Receita incluída no grupo</Badge><p className="mt-1 text-xs text-muted-foreground">Receita do grupo: {moeda(l.honorarioGrupo)}</p></div> : <div>{moeda(l.honorario)}{l.grupo && l.honorarioGrupo != null ? <p className="mt-1 text-xs text-muted-foreground">Receita total do grupo: {moeda(l.honorarioGrupo)}</p> : null}</div>}</TableCell>
               <TableCell>{moeda(l.valorBpo)}</TableCell>
               <TableCell className="text-right"><Button size="sm" variant="outline" onClick={() => setClienteSugestao(l.clientKey)}><BrainCircuit className="mr-2 h-4 w-4" />Sugerir</Button></TableCell>
             </TableRow>)}</TableBody>
@@ -289,16 +289,16 @@ function CarteiraInteligentePage() {
 
       <TabsContent value="bpo" className="space-y-4">
         <div className="flex justify-end"><Button onClick={() => setPerfilOpen(true)}><UserPlus className="mr-2 h-4 w-4" />Novo perfil profissional</Button></div>
-        <Card className="overflow-hidden">{!dados?.perfis.length ? <EstadoVazio titulo="Nenhum perfil BPO configurado." descricao="Use Trazer equipe PIER e complete os currículos." /> : <Table><TableHeader><TableRow><TableHead>Profissional</TableHead><TableHead>Senioridade</TableHead><TableHead>Clientes</TableHead><TableHead>Carga</TableHead><TableHead>Regimes</TableHead><TableHead>Valor BPO carteira</TableHead></TableRow></TableHeader><TableBody>
+        <Card className="overflow-hidden">{!dados?.perfis.length ? <EstadoVazio titulo="Nenhum perfil BPO configurado." descricao="Use Trazer equipe PIER e complete os currículos." /> : <Table><TableHeader><TableRow><TableHead>Profissional</TableHead><TableHead>Senioridade</TableHead><TableHead>Clientes</TableHead><TableHead>Carga</TableHead><TableHead>Regimes</TableHead><TableHead>Repasse BPO da carteira</TableHead></TableRow></TableHeader><TableBody>
           {dados.perfis.map((p) => <TableRow key={p.id}><TableCell><p className="font-medium">{p.nome}</p><p className="text-xs text-muted-foreground">{p.email ?? "—"}</p></TableCell><TableCell>{p.senioridade ?? "A definir"}</TableCell><TableCell>{p.clientes}</TableCell><TableCell><strong className={p.utilizacao > 100 ? "text-destructive" : p.utilizacao > 85 ? "text-warning-strong" : ""}>{p.utilizacao}%</strong><p className="text-xs text-muted-foreground">{p.pontosUsados}/{p.capacidade} pts</p></TableCell><TableCell className="max-w-52 text-xs">{p.regimes.length ? p.regimes.join(" · ") : "Não informado"}</TableCell><TableCell>{moeda(p.valorBpo)}</TableCell></TableRow>)}
         </TableBody></Table>}</Card>
       </TabsContent>
 
-      <TabsContent value="capacidade"><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{(dados?.perfis ?? []).map((p) => <Card key={p.id} className="p-4"><div className="flex items-start justify-between"><div><p className="font-semibold">{p.nome}</p><p className="text-xs text-muted-foreground">{p.clientes} clientes · {p.pontosUsados}/{p.capacidade} pontos</p></div><Badge variant={p.utilizacao > 100 ? "destructive" : "secondary"}>{p.utilizacao}%</Badge></div><div className="mt-4 grid grid-cols-2 gap-3 text-sm"><div><p className="text-xs text-muted-foreground">Honorários sob gestão</p><p className="font-medium">{moeda(p.honorarios)}</p></div><div><p className="text-xs text-muted-foreground">Valor BPO</p><p className="font-medium">{moeda(p.valorBpo)}</p></div></div></Card>)}</div></TabsContent>
+      <TabsContent value="capacidade"><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{(dados?.perfis ?? []).map((p) => <Card key={p.id} className="p-4"><div className="flex items-start justify-between"><div><p className="font-semibold">{p.nome}</p><p className="text-xs text-muted-foreground">{p.clientes} clientes · {p.pontosUsados}/{p.capacidade} pontos</p></div><Badge variant={p.utilizacao > 100 ? "destructive" : "secondary"}>{p.utilizacao}%</Badge></div><div className="mt-4 grid grid-cols-2 gap-3 text-sm"><div><p className="text-xs text-muted-foreground">Receita dos clientes sob gestão</p><p className="font-medium">{moeda(p.honorarios)}</p></div><div><p className="text-xs text-muted-foreground">Repasse BPO cadastrado</p><p className="font-medium">{moeda(p.valorBpo)}</p></div></div></Card>)}</div></TabsContent>
     </Tabs>
 
-    <Dialog open={importOpen} onOpenChange={setImportOpen}><DialogContent className="max-w-2xl"><DialogHeader><DialogTitle>Importar carteira e honorários</DialogTitle><DialogDescription>
-      Reconhece Status, Cliente, CNPJ, Tributação, Grupo, Responsável, Honorário Atual e Valor BPO. Na planilha geral de honorários/grupos, somente clientes Ativos são usados e o responsável/valor BPO já definido não é sobrescrito.
+    <Dialog open={importOpen} onOpenChange={setImportOpen}><DialogContent className="max-w-2xl"><DialogHeader><DialogTitle>Importar carteira, receita e repasse BPO</DialogTitle><DialogDescription>
+      <strong>Honorário Atual</strong> é a receita paga pelo cliente ao escritório. <strong>Repasse BPO / Valor BPO</strong> é outro dado e nunca é calculado automaticamente a partir do honorário nesta importação. Na planilha geral de honorários/grupos, somente clientes Ativos são usados e o responsável/repasse BPO já definido é preservado.
     </DialogDescription></DialogHeader>
       <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void carregarArquivo(f); }} />
       <Card className="border-dashed p-5 text-center"><FileSpreadsheet className="mx-auto h-8 w-8 text-muted-foreground" /><p className="mt-2 font-medium">{arquivoNome || "Selecione Excel ou CSV"}</p><p className="mt-1 text-sm text-muted-foreground">{linhasImportacao.length ? `${linhasImportacao.length} cliente(s) ativo(s) reconhecido(s)` : "A importação cruza CNPJ/nome com o catálogo ativo do PIER."}</p><Button className="mt-4" variant="outline" onClick={() => fileRef.current?.click()}>Escolher arquivo</Button></Card>
@@ -312,7 +312,7 @@ function CarteiraInteligentePage() {
     </DialogContent></Dialog>
 
     <Dialog open={Boolean(clienteSugestao)} onOpenChange={(o) => !o && setClienteSugestao(null)}><DialogContent className="max-w-3xl"><DialogHeader><DialogTitle>Sugestão de distribuição</DialogTitle><DialogDescription>{sugestao.data?.cliente.nome ?? "Analisando cliente…"}</DialogDescription></DialogHeader>
-      {sugestao.isLoading ? <div className="p-8 text-center text-sm text-muted-foreground">Calculando aderência profissional e capacidade…</div> : sugestao.isError ? <ErroConsulta error={sugestao.error} onRetry={() => void sugestao.refetch()} /> : sugestao.data ? <div className="space-y-3"><Card className="bg-muted/40 p-3 text-xs text-muted-foreground">{sugestao.data.criterio}</Card>{!sugestao.data.candidatos.length ? <EstadoVazio titulo="Sem perfis profissionais para comparar." descricao="Traga a equipe do PIER e complete os perfis BPO." /> : sugestao.data.candidatos.map((c, idx) => <Card key={c.profileId} className="p-4"><div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"><div><div className="flex flex-wrap items-center gap-2"><span className="text-sm text-muted-foreground">#{idx + 1}</span><p className="font-semibold">{c.nome}</p><Badge variant="secondary">Aderência {c.aderencia}%</Badge></div><p className="mt-2 text-sm text-muted-foreground">{c.motivos.join(" · ")}</p><p className="mt-1 text-xs text-muted-foreground">Carga atual {c.utilizacaoAtual}% · {c.clientesAtuais} clientes · {c.pontosAtuais}/{c.capacidade} pontos</p></div><div className="flex shrink-0 flex-wrap gap-2"><Button size="sm" onClick={() => atribuir.mutate(c.profileId)} disabled={atribuir.isPending}>Definir carteira</Button><Button size="sm" variant="outline" disabled title="Aguardando endpoint PIER validado.">Atribuir carteira no PIER</Button></div></div></Card>)}</div> : null}
+      {sugestao.isLoading ? <div className="p-8 text-center text-sm text-muted-foreground">Calculando aderência profissional e capacidade…</div> : sugestao.isError ? <ErroConsulta error={sugestao.error} onRetry={() => void sugestao.refetch()} /> : sugestao.data ? <div className="space-y-3"><Card className="bg-muted/40 p-3 text-xs text-muted-foreground"><p>{sugestao.data.criterio}</p><p className="mt-2 font-medium text-foreground">O honorário pago pelo cliente é receita do escritório e não participa da pontuação nem define o repasse BPO.</p></Card>{!sugestao.data.candidatos.length ? <EstadoVazio titulo="Sem perfis profissionais para comparar." descricao="Traga a equipe do PIER e complete os perfis BPO." /> : sugestao.data.candidatos.map((c, idx) => <Card key={c.profileId} className="p-4"><div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"><div><div className="flex flex-wrap items-center gap-2"><span className="text-sm text-muted-foreground">#{idx + 1}</span><p className="font-semibold">{c.nome}</p><Badge variant="secondary">Aderência {c.aderencia}%</Badge></div><p className="mt-2 text-sm text-muted-foreground">{c.motivos.join(" · ")}</p><p className="mt-1 text-xs text-muted-foreground">Carga atual {c.utilizacaoAtual}% · {c.clientesAtuais} clientes · {c.pontosAtuais}/{c.capacidade} pontos</p></div><div className="flex shrink-0 flex-wrap gap-2"><Button size="sm" onClick={() => atribuir.mutate(c.profileId)} disabled={atribuir.isPending}>Definir carteira</Button><Button size="sm" variant="outline" disabled title="Aguardando endpoint PIER validado.">Atribuir carteira no PIER</Button></div></div></Card>)}</div> : null}
     </DialogContent></Dialog>
   </div>;
 }
