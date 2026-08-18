@@ -9,6 +9,7 @@ type IndiceInput = {
   recorte: "GERAL" | "EMPRESA" | "RESPONSAVEL" | "TIPO" | "SITUACAO";
   empresaId?: string;
   responsavel?: string;
+  departamentoId?: string;
 };
 
 function validar(input: IndiceInput) {
@@ -16,6 +17,8 @@ function validar(input: IndiceInput) {
     throw new Error("VALIDACAO::Informe a competência inicial no formato AAAA-MM.");
   if (!/^\d{4}-\d{2}$/.test(input?.competenciaFim ?? ""))
     throw new Error("VALIDACAO::Informe a competência final no formato AAAA-MM.");
+  if (input.competenciaInicio > input.competenciaFim)
+    throw new Error("VALIDACAO::A competência inicial não pode ser posterior à final.");
   return input;
 }
 
