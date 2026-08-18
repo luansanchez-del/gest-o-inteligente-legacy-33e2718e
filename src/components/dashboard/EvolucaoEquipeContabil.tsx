@@ -9,10 +9,15 @@ import {
   Gauge,
   RotateCcw,
   Users,
+  type LucideIcon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import { CarregandoTabela, ErroConsulta, EstadoVazio } from "@/components/common/EstadoConsulta";
+import {
+  CarregandoTabela,
+  ErroConsulta,
+  EstadoVazio,
+} from "@/components/common/EstadoConsulta";
 import { StatCard } from "@/components/common/StatCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,7 +42,11 @@ import {
 } from "@/components/ui/table";
 import { listarEquipeCompleta } from "@/lib/api/equipe.functions";
 import { apurarIndice, detalharIndicador } from "@/lib/api/indice.functions";
-import { competenciaAtual, competenciaDeslocada, formatarCompetencia } from "@/lib/formato";
+import {
+  competenciaAtual,
+  competenciaDeslocada,
+  formatarCompetencia,
+} from "@/lib/formato";
 
 const TODOS_DEPARTAMENTOS = "__TODOS__";
 const TODOS_RESPONSAVEIS = "__TODOS_RESPONSAVEIS__";
@@ -53,6 +62,19 @@ const SITUACOES: Record<string, string> = {
   PRECISA_REVISAO: "Revisão humana",
 };
 
+const SAUDE_OPERACAO: {
+  codigo: string;
+  rotulo: string;
+  icone: LucideIcon;
+}[] = [
+  { codigo: "ATRASADA", rotulo: "Vencidas", icone: AlertTriangle },
+  { codigo: "VENCE_HOJE", rotulo: "Vencem hoje", icone: CalendarClock },
+  { codigo: "PROXIMOS_3_DIAS", rotulo: "Próximos 3 dias", icone: Clock3 },
+  { codigo: "REVISAO", rotulo: "Revisão humana", icone: Users },
+  { codigo: "AGUARDANDO", rotulo: "Aguardando cliente", icone: Clock3 },
+  { codigo: "SEM_RESPONSAVEL", rotulo: "Sem responsável", icone: Users },
+];
+
 function percentual(valor: number) {
   return `${Math.round(valor * 10) / 10}%`.replace(".", ",");
 }
@@ -60,15 +82,28 @@ function percentual(valor: number) {
 function dataCurta(valor: string | null) {
   if (!valor) return "—";
   const data = new Date(valor);
-  return Number.isNaN(data.getTime()) ? "—" : data.toLocaleDateString("pt-BR");
+  return Number.isNaN(data.getTime())
+    ? "—"
+    : data.toLocaleDateString("pt-BR");
+}
+
+function competenciaLegivel(valor: string) {
+  return /^\d{4}-\d{2}$/.test(valor) ? formatarCompetencia(valor) : "—";
 }
 
 export function EvolucaoEquipeContabil() {
-  const [competenciaInicio, setCompetenciaInicio] = useState(competenciaDeslocada(-5));
+  const [competenciaInicio, setCompetenciaInicio] = useState(
+    competenciaDeslocada(-5),
+  );
   const [competenciaFim, setCompetenciaFim] = useState(competenciaAtual());
   const [departamentoId, setDepartamentoId] = useState(TODOS_DEPARTAMENTOS);
   const [responsavelId, setResponsavelId] = useState(TODOS_RESPONSAVEIS);
   const [drillCodigo, setDrillCodigo] = useState<string | null>(null);
+
+  const periodoValido =
+    /^\d{4}-\d{2}$/.test(competenciaInicio) &&
+    /^\d{4}-\d{2}$/.test(competenciaFim) &&
+    competenciaInicio <= competenciaFim;
 
   const equipe = useQuery({
     queryKey: ["equipe-completa", "dashboard"],
@@ -82,7 +117,8 @@ export function EvolucaoEquipeContabil() {
     return usuarios.filter((u) => u.departamentoId === departamentoId);
   }, [departamentoId, usuarios]);
 
-  const responsavelSelecionado = usuarios.find((u) => u.id === responsavelId) ?? null;
+  const responsavelSelecionado =
+    usuarios.find((u) => u.id === responsavelId) ?? null;
   const departamentoFiltro =
     departamentoId === TODOS_DEPARTAMENTOS ? undefined : departamentoId;
   const responsavelFiltro = responsavelSelecionado?.nome || undefined;
@@ -110,10 +146,7 @@ export function EvolucaoEquipeContabil() {
           recorte: "GERAL",
         },
       }),
-    enabled:
-      /^\d{4}-\d{2}$/.test(competenciaInicio) &&
-      /^\d{4}-\d{2}$/.test(competenciaFim) &&
-      competenciaInicio <= competenciaFim,
+    enabled: periodoValido,
   });
 
   const ranking = useQuery({
@@ -133,10 +166,7 @@ export function EvolucaoEquipeContabil() {
           recorte: "RESPONSAVEL",
         },
       }),
-    enabled:
-      /^\d{4}-\d{2}$/.test(competenciaInicio) &&
-      /^\d{4}-\d{2}$/.test(competenciaFim) &&
-      competenciaInicio <= competenciaFim,
+    enabled: periodoValido,
   });
 
   const drill = useQuery({
@@ -157,11 +187,14 @@ export function EvolucaoEquipeContabil() {
           codigo: drillCodigo!,
         },
       }),
-    enabled: Boolean(drillCodigo) && painel.isSuccess,
+    enabled: Boolean(drillCodigo) && painel.isSuccess && periodoValido,
   });
 
   const indicadores = new Map(
-    (painel.data?.indicadores ?? []).map((indicador) => [indicador.codigo, indicador]),
+    (painel.data?.indicadores ?? []).map((indicador) => [
+      indicador.codigo,
+      indicador,
+    ]),
   );
   const destaques = [
     "INDICE_PRAZO",
@@ -172,7 +205,9 @@ export function EvolucaoEquipeContabil() {
     "BACKLOG",
   ]
     .map((codigo) => indicadores.get(codigo))
-    .filter(Boolean);
+    .filter((indicador): indicador is NonNullable<typeof indicador> =>
+      Boolean(indicador),
+    );
 
   const cobertura = indicadores.get("INDICE")?.valor ?? 0;
   const noPrazo = indicadores.get("INDICE_PRAZO")?.valor ?? 0;
@@ -193,13 +228,12 @@ export function EvolucaoEquipeContabil() {
   }
 
   function abrirGestao() {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || !periodoValido) return;
     const atual = (() => {
       try {
-        return JSON.parse(window.sessionStorage.getItem(CHAVE_FILTROS_GESTAO) ?? "{}") as Record<
-          string,
-          unknown
-        >;
+        return JSON.parse(
+          window.sessionStorage.getItem(CHAVE_FILTROS_GESTAO) ?? "{}",
+        ) as Record<string, unknown>;
       } catch {
         return {};
       }
@@ -209,7 +243,8 @@ export function EvolucaoEquipeContabil() {
       JSON.stringify({
         ...atual,
         competencia: competenciaInicio,
-        competenciaFim: competenciaInicio === competenciaFim ? "" : competenciaFim,
+        competenciaFim:
+          competenciaInicio === competenciaFim ? "" : competenciaFim,
         tipo: "CONTABIL",
         departamento: departamentoId,
         responsavel: responsavelId,
@@ -228,7 +263,8 @@ export function EvolucaoEquipeContabil() {
             <h2 className="text-lg font-semibold">Evolução da Equipe Contábil</h2>
           </div>
           <p className="text-sm text-muted-foreground">
-            Entregas, vencimentos e backlog por período, departamento e responsável.
+            Entregas, vencimentos e backlog por período, departamento e
+            responsável.
           </p>
         </div>
 
@@ -241,7 +277,7 @@ export function EvolucaoEquipeContabil() {
               id="evolucao-inicio"
               type="month"
               value={competenciaInicio}
-              max={competenciaFim}
+              max={competenciaFim || undefined}
               onChange={(e) => {
                 setCompetenciaInicio(e.target.value);
                 setDrillCodigo(null);
@@ -256,7 +292,7 @@ export function EvolucaoEquipeContabil() {
               id="evolucao-fim"
               type="month"
               value={competenciaFim}
-              min={competenciaInicio}
+              min={competenciaInicio || undefined}
               onChange={(e) => {
                 setCompetenciaFim(e.target.value);
                 setDrillCodigo(null);
@@ -265,7 +301,10 @@ export function EvolucaoEquipeContabil() {
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Departamento</Label>
-            <Select value={departamentoId} onValueChange={selecionarDepartamento}>
+            <Select
+              value={departamentoId}
+              onValueChange={selecionarDepartamento}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -306,10 +345,13 @@ export function EvolucaoEquipeContabil() {
 
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
         <span>
-          Escopo: {formatarCompetencia(competenciaInicio)} a {formatarCompetencia(competenciaFim)}
-          {responsavelSelecionado ? ` · ${responsavelSelecionado.nome}` : " · equipe inteira"}
+          Escopo: {competenciaLegivel(competenciaInicio)} a{" "}
+          {competenciaLegivel(competenciaFim)}
+          {responsavelSelecionado
+            ? ` · ${responsavelSelecionado.nome}`
+            : " · equipe inteira"}
         </span>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
             size="sm"
             variant="ghost"
@@ -324,15 +366,27 @@ export function EvolucaoEquipeContabil() {
             <RotateCcw className="mr-1 h-3.5 w-3.5" />
             Limpar filtros
           </Button>
-          <Button size="sm" variant="outline" onClick={abrirGestao}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={abrirGestao}
+            disabled={!periodoValido}
+          >
             <Filter className="mr-1 h-3.5 w-3.5" />
             Abrir Gestão neste escopo
           </Button>
         </div>
       </div>
 
-      {painel.isError ? (
-        <ErroConsulta error={painel.error} onRetry={() => void painel.refetch()} />
+      {!periodoValido ? (
+        <Card className="border-warning/40 bg-warning-soft p-3 text-sm text-warning-strong">
+          Informe um período válido para apurar os indicadores.
+        </Card>
+      ) : painel.isError ? (
+        <ErroConsulta
+          error={painel.error}
+          onRetry={() => void painel.refetch()}
+        />
       ) : painel.isLoading ? (
         <CarregandoTabela linhas={4} />
       ) : (
@@ -340,19 +394,19 @@ export function EvolucaoEquipeContabil() {
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             {destaques.map((indicador) => (
               <StatCard
-                key={indicador!.codigo}
-                indicador={indicador!}
-                destaque={indicador!.codigo === "INDICE_PRAZO"}
+                key={indicador.codigo}
+                indicador={indicador}
+                destaque={indicador.codigo === "INDICE_PRAZO"}
                 onDrill={(codigo) => setDrillCodigo(codigo)}
                 icone={
-                  indicador!.codigo === "INDICE_PRAZO" ? (
+                  indicador.codigo === "INDICE_PRAZO" ? (
                     <CheckCircle2 className="h-4 w-4" />
-                  ) : indicador!.codigo === "ATRASADA" ? (
+                  ) : indicador.codigo === "ATRASADA" ? (
                     <AlertTriangle className="h-4 w-4" />
-                  ) : indicador!.codigo === "VENCE_HOJE" ||
-                    indicador!.codigo === "PROXIMOS_3_DIAS" ? (
+                  ) : indicador.codigo === "VENCE_HOJE" ||
+                    indicador.codigo === "PROXIMOS_3_DIAS" ? (
                     <CalendarClock className="h-4 w-4" />
-                  ) : indicador!.codigo === "BACKLOG" ? (
+                  ) : indicador.codigo === "BACKLOG" ? (
                     <Clock3 className="h-4 w-4" />
                   ) : (
                     <Gauge className="h-4 w-4" />
@@ -368,16 +422,22 @@ export function EvolucaoEquipeContabil() {
                 <div>
                   <p className="text-sm font-medium">Evolução por competência</p>
                   <p className="text-xs text-muted-foreground">
-                    Mostra se o backlog e os vencimentos estão sendo reduzidos ao longo do tempo.
+                    Mostra se o backlog e os vencimentos estão sendo reduzidos
+                    ao longo do tempo.
                   </p>
                 </div>
-                <Badge variant="secondary">{painel.data?.totalRegistros ?? 0} registros</Badge>
+                <Badge variant="secondary">
+                  {painel.data?.totalRegistros ?? 0} registros
+                </Badge>
               </div>
 
               {(painel.data?.serie ?? []).length ? (
                 <div className="space-y-3">
                   {painel.data!.serie.map((item) => (
-                    <div key={item.competencia} className="grid gap-2 sm:grid-cols-[88px_1fr_190px] sm:items-center">
+                    <div
+                      key={item.competencia}
+                      className="grid gap-2 sm:grid-cols-[88px_1fr_190px] sm:items-center"
+                    >
                       <span className="text-xs font-medium">
                         {formatarCompetencia(item.competencia)}
                       </span>
@@ -386,11 +446,20 @@ export function EvolucaoEquipeContabil() {
                           <span>Índice no prazo</span>
                           <span>{percentual(item.indicePrazo)}</span>
                         </div>
-                        <Progress value={Math.min(100, Math.max(0, item.indicePrazo))} />
+                        <Progress
+                          value={Math.min(
+                            100,
+                            Math.max(0, item.indicePrazo),
+                          )}
+                        />
                       </div>
                       <div className="flex flex-wrap gap-1 text-[11px]">
-                        <Badge variant="secondary">{item.entregues} entregues</Badge>
-                        <Badge variant="outline">{item.backlog} backlog</Badge>
+                        <Badge variant="secondary">
+                          {item.entregues} entregues
+                        </Badge>
+                        <Badge variant="outline">
+                          {item.backlog} backlog
+                        </Badge>
                         {item.atrasadas ? (
                           <Badge className="bg-destructive/10 text-destructive">
                             {item.atrasadas} vencidas
@@ -409,31 +478,30 @@ export function EvolucaoEquipeContabil() {
               <div>
                 <p className="text-sm font-medium">Saúde da operação</p>
                 <p className="text-xs text-muted-foreground">
-                  Indicadores para priorização gerencial. Clique para abrir o detalhamento.
+                  Indicadores para priorização gerencial. Clique para abrir o
+                  detalhamento.
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                {[
-                  ["ATRASADA", "Vencidas", AlertTriangle],
-                  ["VENCE_HOJE", "Vencem hoje", CalendarClock],
-                  ["PROXIMOS_3_DIAS", "Próximos 3 dias", Clock3],
-                  ["REVISAO", "Revisão humana", Users],
-                  ["AGUARDANDO", "Aguardando cliente", Clock3],
-                  ["SEM_RESPONSAVEL", "Sem responsável", Users],
-                ].map(([codigo, rotulo, Icone]) => {
-                  const indicador = indicadores.get(String(codigo));
+                {SAUDE_OPERACAO.map((item) => {
+                  const indicador = indicadores.get(item.codigo);
+                  const Icone = item.icone;
                   return (
                     <button
-                      key={String(codigo)}
+                      key={item.codigo}
                       type="button"
-                      onClick={() => setDrillCodigo(String(codigo))}
+                      onClick={() => setDrillCodigo(item.codigo)}
                       className="rounded-lg border border-border p-3 text-left transition-colors hover:border-primary/40 hover:bg-primary/[0.03]"
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs text-muted-foreground">{String(rotulo)}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {item.rotulo}
+                        </span>
                         <Icone className="h-3.5 w-3.5 text-muted-foreground" />
                       </div>
-                      <p className="mt-1 text-xl font-semibold tabular-nums">{indicador?.valor ?? 0}</p>
+                      <p className="mt-1 text-xl font-semibold tabular-nums">
+                        {indicador?.valor ?? 0}
+                      </p>
                     </button>
                   );
                 })}
@@ -441,15 +509,21 @@ export function EvolucaoEquipeContabil() {
               <div className="grid gap-3 sm:grid-cols-3">
                 <div>
                   <p className="text-xs text-muted-foreground">Cobertura</p>
-                  <p className="text-lg font-semibold">{percentual(cobertura)}</p>
+                  <p className="text-lg font-semibold">
+                    {percentual(cobertura)}
+                  </p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">No prazo</p>
-                  <p className="text-lg font-semibold">{percentual(noPrazo)}</p>
+                  <p className="text-lg font-semibold">
+                    {percentual(noPrazo)}
+                  </p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Atraso médio</p>
-                  <p className="text-lg font-semibold">{atrasoMedio.toFixed(1).replace(".", ",")} d</p>
+                  <p className="text-lg font-semibold">
+                    {atrasoMedio.toFixed(1).replace(".", ",")} d
+                  </p>
                 </div>
               </div>
             </Card>
@@ -460,13 +534,19 @@ export function EvolucaoEquipeContabil() {
       <Card className="space-y-3 p-4">
         <div className="flex items-center justify-between gap-2">
           <div>
-            <p className="text-sm font-medium">Performance operacional por responsável</p>
+            <p className="text-sm font-medium">
+              Performance operacional por responsável
+            </p>
             <p className="text-xs text-muted-foreground">
               Selecione uma linha para filtrar todo o painel pelo responsável.
             </p>
           </div>
           {responsavelSelecionado ? (
-            <Button size="sm" variant="ghost" onClick={() => setResponsavelId(TODOS_RESPONSAVEIS)}>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setResponsavelId(TODOS_RESPONSAVEIS)}
+            >
               Ver equipe inteira
             </Button>
           ) : null}
@@ -475,7 +555,10 @@ export function EvolucaoEquipeContabil() {
         {ranking.isLoading ? (
           <CarregandoTabela linhas={5} />
         ) : ranking.isError ? (
-          <ErroConsulta error={ranking.error} onRetry={() => void ranking.refetch()} />
+          <ErroConsulta
+            error={ranking.error}
+            onRetry={() => void ranking.refetch()}
+          />
         ) : (ranking.data?.porRecorte ?? []).length ? (
           <div className="overflow-x-auto">
             <Table>
@@ -497,12 +580,24 @@ export function EvolucaoEquipeContabil() {
                     className="cursor-pointer"
                     onClick={() => selecionarResponsavelPorNome(linha.chave)}
                   >
-                    <TableCell className="font-medium">{linha.chave}</TableCell>
-                    <TableCell className="text-right tabular-nums">{linha.previstos}</TableCell>
-                    <TableCell className="text-right tabular-nums">{linha.entregues}</TableCell>
-                    <TableCell className="text-right tabular-nums">{linha.noPrazo}</TableCell>
-                    <TableCell className="text-right tabular-nums">{linha.atrasadas}</TableCell>
-                    <TableCell className="text-right tabular-nums">{linha.backlog}</TableCell>
+                    <TableCell className="font-medium">
+                      {linha.chave}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {linha.previstos}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {linha.entregues}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {linha.noPrazo}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {linha.atrasadas}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {linha.backlog}
+                    </TableCell>
                     <TableCell className="text-right font-medium tabular-nums">
                       {percentual(linha.indicePrazo)}
                     </TableCell>
@@ -521,7 +616,8 @@ export function EvolucaoEquipeContabil() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <p className="text-sm font-medium">
-                Detalhamento · {indicadores.get(drillCodigo)?.titulo ?? drillCodigo}
+                Detalhamento ·{" "}
+                {indicadores.get(drillCodigo)?.titulo ?? drillCodigo}
               </p>
               <p className="text-xs text-muted-foreground">
                 Empresas e competências que compõem o indicador selecionado.
@@ -532,7 +628,11 @@ export function EvolucaoEquipeContabil() {
                 Ir para Gestão
                 <ArrowRight className="ml-1 h-3.5 w-3.5" />
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => setDrillCodigo(null)}>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setDrillCodigo(null)}
+              >
                 Fechar
               </Button>
             </div>
@@ -541,7 +641,10 @@ export function EvolucaoEquipeContabil() {
           {drill.isLoading ? (
             <CarregandoTabela linhas={4} />
           ) : drill.isError ? (
-            <ErroConsulta error={drill.error} onRetry={() => void drill.refetch()} />
+            <ErroConsulta
+              error={drill.error}
+              onRetry={() => void drill.refetch()}
+            />
           ) : (drill.data ?? []).length ? (
             <div className="overflow-x-auto">
               <Table>
@@ -557,10 +660,18 @@ export function EvolucaoEquipeContabil() {
                 <TableBody>
                   {(drill.data ?? []).slice(0, 40).map((registro) => (
                     <TableRow key={registro.id}>
-                      <TableCell className="font-medium">{registro.empresaNome}</TableCell>
-                      <TableCell>{formatarCompetencia(registro.competencia)}</TableCell>
-                      <TableCell>{registro.responsavel ?? "Sem responsável"}</TableCell>
-                      <TableCell>{SITUACOES[registro.situacao] ?? registro.situacao}</TableCell>
+                      <TableCell className="font-medium">
+                        {registro.empresaNome}
+                      </TableCell>
+                      <TableCell>
+                        {formatarCompetencia(registro.competencia)}
+                      </TableCell>
+                      <TableCell>
+                        {registro.responsavel ?? "Sem responsável"}
+                      </TableCell>
+                      <TableCell>
+                        {SITUACOES[registro.situacao] ?? registro.situacao}
+                      </TableCell>
                       <TableCell>{dataCurta(registro.prazo)}</TableCell>
                     </TableRow>
                   ))}
@@ -568,7 +679,8 @@ export function EvolucaoEquipeContabil() {
               </Table>
               {(drill.data ?? []).length > 40 ? (
                 <p className="mt-2 text-xs text-muted-foreground">
-                  Exibindo 40 de {drill.data!.length} registros. Abra a Gestão para trabalhar o escopo completo.
+                  Exibindo 40 de {drill.data!.length} registros. Abra a Gestão
+                  para trabalhar o escopo completo.
                 </p>
               ) : null}
             </div>
