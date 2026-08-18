@@ -2,6 +2,15 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { comContexto, emailDoToken } from "./contexto";
 
+function identidadeEmail(value: string | null | undefined) {
+  const bruto = (value ?? "").trim().toLowerCase();
+  const local = bruto.includes("@") ? bruto.split("@")[0] ?? "" : bruto;
+  return local
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/g, "");
+}
+
 export const obterVinculoPier = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) =>
@@ -12,9 +21,30 @@ export const obterVinculoPier = createServerFn({ method: "GET" })
         const service = await import(
           "@/server/domain/caixa-inteligente/caixa-inteligente.service"
         );
-        return service.obterVinculoPier(ctx, {
-          email: emailDoToken(context.claims),
-        });
+        const email = emailDoToken(context.claims);
+        let resultado = await service.obterVinculoPier(ctx, { email });
+
+        // O login do app pode usar um domínio diferente do cadastro no PIER
+        // (ex.: nome.sobrenome@gmail.com x nome.sobrenome@empresa.com.br).
+        // Quando o identificador local normalizado for único, vinculamos com segurança.
+        if (!resultado.vinculado && email) {
+          const identidade = identidadeEmail(email);
+          if (identidade.length >= 5) {
+            const candidatos = resultado.opcoes.filter((u) =>
+              [u.email, u.login].some(
+                (valor) => identidadeEmail(valor) === identidade,
+              ),
+            );
+            if (candidatos.length === 1) {
+              await service.vincularUsuarioPier(ctx, {
+                externalId: candidatos[0].id,
+              });
+              resultado = await service.obterVinculoPier(ctx, { email });
+            }
+          }
+        }
+
+        return resultado;
       },
     ),
   );
