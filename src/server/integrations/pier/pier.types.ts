@@ -84,6 +84,11 @@ export interface PierAdapter {
   }): Promise<PierUser[]>;
   /** Tipos ativos disponíveis no PIER, usados para descobrir IDs sem hardcode. */
   listRequestTypes(): Promise<PierRequestType[]>;
+  /** Lista solicitações sem amarrar o fluxo a um tipo específico. */
+  listRequests(options?: {
+    status?: string;
+    maxPages?: number;
+  }): Promise<PierRequest[]>;
   /** Solicitações de um tipo (ex.: Fechamento Contábil) filtradas pela competência. */
   listRequestsByType(input: {
     typeExternalId: string;
