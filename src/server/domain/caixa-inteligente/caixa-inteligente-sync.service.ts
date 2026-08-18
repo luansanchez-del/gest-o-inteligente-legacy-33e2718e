@@ -58,7 +58,9 @@ async function consultarSolicitacoesDoResponsavel(usuarioId: string) {
       idResponsavel: usuarioId,
     });
 
-    const lote = asArray(payload).map(mapRequest).filter((item) => item.externalId);
+    const lote = asArray(payload)
+      .map((raw) => mapRequest(raw))
+      .filter((item) => item.externalId);
     validarFiltroResponsavel(lote, usuarioId);
     resultados.push(...lote);
 
