@@ -88,6 +88,8 @@ const TODAS_FILAS = "__TODAS_FILAS__";
 const TODOS_ANEXOS = "__TODOS_ANEXOS__";
 const CHAVE_FILTROS_GESTAO = "gestao-inteligente:filtros-gestao";
 
+type StatusPierFiltro = "PENDENTES" | "FINALIZADAS" | "TODOS";
+
 interface FiltrosGestaoSalvos {
   competencia: string;
   tipo: "CONTABIL" | "MOVIMENTO_FINANCEIRO";
@@ -97,6 +99,7 @@ interface FiltrosGestaoSalvos {
   departamento: string;
   responsavel: string;
   fila: string;
+  statusPier: StatusPierFiltro;
   anexo: string;
   incluirInativos: boolean;
 }
@@ -146,6 +149,7 @@ function filtrosPadrao(): FiltrosGestaoSalvos {
     departamento: TODOS_DEPARTAMENTOS,
     responsavel: TODOS_USUARIOS,
     fila: TODAS_FILAS,
+    statusPier: "PENDENTES",
     anexo: TODOS_ANEXOS,
     incluirInativos: false,
   };
@@ -169,6 +173,11 @@ function carregarFiltrosGestao(): FiltrosGestaoSalvos {
         salvo.tipo === "MOVIMENTO_FINANCEIRO"
           ? "MOVIMENTO_FINANCEIRO"
           : "CONTABIL",
+      statusPier: ["PENDENTES", "FINALIZADAS", "TODOS"].includes(
+        salvo.statusPier ?? "",
+      )
+        ? (salvo.statusPier as StatusPierFiltro)
+        : "PENDENTES",
     };
   } catch {
     return padrao;
@@ -194,6 +203,9 @@ function GestaoPage() {
   );
   const [responsavel, setResponsavel] = useState(filtrosIniciais.responsavel);
   const [fila, setFila] = useState(filtrosIniciais.fila);
+  const [statusPier, setStatusPier] = useState<StatusPierFiltro>(
+    filtrosIniciais.statusPier,
+  );
   const [anexo, setAnexo] = useState(filtrosIniciais.anexo);
   const [incluirInativos, setIncluirInativos] = useState(
     filtrosIniciais.incluirInativos,
@@ -214,6 +226,7 @@ function GestaoPage() {
         departamento,
         responsavel,
         fila,
+        statusPier,
         anexo,
         incluirInativos,
       } satisfies FiltrosGestaoSalvos),
@@ -228,6 +241,7 @@ function GestaoPage() {
     incluirInativos,
     responsavel,
     revisaoCompetencia,
+    statusPier,
     tipo,
   ]);
 
@@ -246,6 +260,7 @@ function GestaoPage() {
     departamentoId: departamento === TODOS_DEPARTAMENTOS ? null : departamento,
     responsavelId: responsavel === TODOS_USUARIOS ? null : responsavel,
     statusFila: fila === TODAS_FILAS ? null : (fila as never),
+    statusPier,
     anexo: anexo === TODOS_ANEXOS ? null : (anexo as "COM_ANEXO" | "SEM_ANEXO"),
   };
 
@@ -260,6 +275,7 @@ function GestaoPage() {
       filtro.departamentoId,
       filtro.responsavelId,
       fila,
+      statusPier,
       anexo,
     ],
     queryFn: () => montarPreview({ data: filtro }),
@@ -281,9 +297,16 @@ function GestaoPage() {
   });
 
   const prepararSolicitacoes = useMutation({
-    mutationFn: () => sincronizarSolicitacoes({ data: { competencia, tipo } }),
+    mutationFn: () =>
+      sincronizarSolicitacoes({ data: { competencia, tipo, statusPier } }),
     onSuccess: (r) => {
-      toast.success(`${r.processados} solicitações carregadas da competência.`);
+      const ignoradas =
+        "finalizadasIgnoradas" in r && typeof r.finalizadasIgnoradas === "number"
+          ? r.finalizadasIgnoradas
+          : 0;
+      toast.success(
+        `${r.processados} solicitações atualizadas da competência.${ignoradas ? ` ${ignoradas} finalizada(s) nova(s) ignorada(s).` : ""}`,
+      );
       void queryClient.invalidateQueries({ queryKey: ["preview-gestao"] });
     },
     onError: (e) => toast.error(mensagemDeErro(e)),
@@ -294,7 +317,7 @@ function GestaoPage() {
       iniciarGestao({
         data: {
           ...filtro,
-          idempotencyKey: `${competencia}|${tipo}|${filtro.departamentoId ?? "todos"}|${filtro.responsavelId ?? "todos"}|${anexo}`,
+          idempotencyKey: `${competencia}|${tipo}|${filtro.departamentoId ?? "todos"}|${filtro.responsavelId ?? "todos"}|${statusPier}|${anexo}`,
         },
       }),
     onSuccess: (r) => {
@@ -311,9 +334,9 @@ function GestaoPage() {
   const processarLote = useMutation({
     mutationFn: async () => {
       await iniciar.mutateAsync();
-      const solicitacoes = (preview.data?.empresas ?? []).map(
-        (e) => e.solicitacaoId,
-      );
+      const solicitacoes = (preview.data?.empresas ?? [])
+        .filter((e) => e.statusFila !== "HISTORICO")
+        .map((e) => e.solicitacaoId);
       const total = {
         total: 0,
         finalizadas: 0,
@@ -378,6 +401,7 @@ function GestaoPage() {
     departamento !== TODOS_DEPARTAMENTOS ||
     responsavel !== TODOS_USUARIOS ||
     fila !== TODAS_FILAS ||
+    statusPier !== "PENDENTES" ||
     anexo !== TODOS_ANEXOS ||
     competenciaFim !== "" ||
     busca !== "" ||
@@ -391,6 +415,7 @@ function GestaoPage() {
     setDepartamento(TODOS_DEPARTAMENTOS);
     setResponsavel(TODOS_USUARIOS);
     setFila(TODAS_FILAS);
+    setStatusPier("PENDENTES");
     setAnexo(TODOS_ANEXOS);
     setCompetenciaFim("");
     setBusca("");
@@ -418,6 +443,10 @@ function GestaoPage() {
       percentual: total ? Math.round((analisadas / total) * 100) : 0,
     };
   }, [dados]);
+
+  const totalProcessaveis = (dados?.empresas ?? []).filter(
+    (empresa) => empresa.statusFila !== "HISTORICO",
+  ).length;
 
   return (
     <div className="space-y-6">
@@ -580,6 +609,30 @@ function GestaoPage() {
               </SelectContent>
             </Select>
           </div>
+
+          <div className="min-w-[170px] space-y-1">
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              Status PIER
+            </Label>
+            <Select
+              value={statusPier}
+              onValueChange={(value) => {
+                const proximo = value as StatusPierFiltro;
+                setStatusPier(proximo);
+                if (proximo === "FINALIZADAS") setFila(TODAS_FILAS);
+              }}
+            >
+              <SelectTrigger aria-label="Status PIER">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="PENDENTES">Em aberto</SelectItem>
+                <SelectItem value="FINALIZADAS">Finalizadas</SelectItem>
+                <SelectItem value="TODOS">Todas</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="min-w-[190px] space-y-1">
             <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
               Situação
@@ -747,11 +800,17 @@ function GestaoPage() {
           </div>
           <Button
             onClick={() => setConfirmarProcessamento(true)}
+            title={
+              statusPier === "FINALIZADAS"
+                ? "Solicitações finalizadas são exibidas somente para consulta."
+                : undefined
+            }
             disabled={
+              statusPier === "FINALIZADAS" ||
               iniciar.isPending ||
               processarLote.isPending ||
               !dados ||
-              dados.totalEmpresas === 0
+              totalProcessaveis === 0
             }
           >
             <PlayCircle
@@ -769,8 +828,9 @@ function GestaoPage() {
             <DialogHeader>
               <DialogTitle>Processar o escopo filtrado?</DialogTitle>
               <DialogDescription>
-                {dados?.totalEmpresas ?? 0} solicitação(ões) do escopo atual
-                serão processadas em lote. O sistema conferirá o estado real no
+                {totalProcessaveis} solicitação(ões) abertas do escopo atual
+                serão processadas em lote. Solicitações já finalizadas no PIER
+                ficam fora da execução. O sistema conferirá o estado real no
                 PIER e lerá os anexos conforme o tipo de solicitação
                 selecionado. Resultados sem apontamentos podem seguir o fluxo
                 automático; alertas ficam disponíveis para aprovação com
@@ -786,9 +846,9 @@ function GestaoPage() {
               </Button>
               <Button
                 onClick={() => processarLote.mutate()}
-                disabled={processarLote.isPending || !dados?.totalEmpresas}
+                disabled={processarLote.isPending || !totalProcessaveis}
               >
-                Processar {dados?.totalEmpresas ?? 0} solicitação(ões)
+                Processar {totalProcessaveis} solicitação(ões)
               </Button>
             </DialogFooter>
           </DialogContent>
