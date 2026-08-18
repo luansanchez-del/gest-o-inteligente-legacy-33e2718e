@@ -20,6 +20,23 @@ function objeto(valor: unknown): Record<string, unknown> {
     : {};
 }
 
+async function gravarProcessamento(
+  ctx: AppContext,
+  requestId: string,
+  dados: Record<string, unknown>,
+) {
+  await ctx.db.from("request_processing").upsert(
+    {
+      organization_id: ctx.organizationId,
+      request_id: requestId,
+      processed_by: ctx.userId,
+      updated_at: new Date().toISOString(),
+      ...dados,
+    } as never,
+    { onConflict: "organization_id,request_id" },
+  );
+}
+
 async function fingerprint(texto: string) {
   const bytes = new TextEncoder().encode(texto);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -95,21 +112,30 @@ export async function executarDecisaoInteligente(
   }
 
   if (pareceFinalizada(estadoReal.status, estadoReal.finishedAt)) {
+    const finalizadaEm = estadoReal.finishedAt ?? solicitacao.finished_at;
     await ctx.db
       .from("request")
       .update({
         status: estadoReal.status,
-        finished_at: estadoReal.finishedAt ?? solicitacao.finished_at,
+        finished_at: finalizadaEm,
       })
       .eq("organization_id", ctx.organizationId)
       .eq("id", solicitacao.id);
+
+    await gravarProcessamento(ctx, solicitacao.id, {
+      outcome: "JA_FINALIZADA",
+      reason: "A solicitação já estava finalizada no PIER.",
+      pier_status: estadoReal.status,
+      finalized_at: finalizadaEm,
+      execution_id: input.execucaoId ?? decisao.execucaoId,
+    });
 
     return {
       situacao: "JA_FINALIZADA" as const,
       mensagem:
         "A solicitação já está finalizada no PIER. Nenhuma nova ação foi executada.",
       postagemId: null,
-      finalizadaEm: estadoReal.finishedAt,
+      finalizadaEm,
     };
   }
 
@@ -182,6 +208,16 @@ export async function executarDecisaoInteligente(
   }
 
   if (!finalizar) {
+    await gravarProcessamento(ctx, solicitacao.id, {
+      outcome: "EM_REVISAO",
+      reason: "Resposta publicada no PIER; solicitação mantida aberta por decisão humana.",
+      pier_status: estadoReal.status,
+      pier_post_external_id: postagemId,
+      posted_at: new Date().toISOString(),
+      execution_id: input.execucaoId ?? decisao.execucaoId,
+      finalized_at: null,
+    });
+
     return {
       situacao: "RESPONDIDA" as const,
       mensagem: "Resposta publicada no PIER. A solicitação permaneceu aberta.",
@@ -195,6 +231,14 @@ export async function executarDecisaoInteligente(
       requestExternalId: solicitacao.external_id,
     });
   } catch (error) {
+    await gravarProcessamento(ctx, solicitacao.id, {
+      outcome: "PENDENTE",
+      reason: "Resposta publicada, mas a finalização no PIER falhou.",
+      pier_status: estadoReal.status,
+      pier_post_external_id: postagemId,
+      posted_at: new Date().toISOString(),
+      execution_id: input.execucaoId ?? decisao.execucaoId,
+    });
     throw new AppError(
       "INTEGRACAO_FALHA",
       "A resposta foi publicada, mas a finalização falhou. Uma nova tentativa reutilizará a postagem já confirmada.",
@@ -208,6 +252,14 @@ export async function executarDecisaoInteligente(
       requestExternalId: solicitacao.external_id,
     });
   } catch (error) {
+    await gravarProcessamento(ctx, solicitacao.id, {
+      outcome: "PENDENTE",
+      reason: "Finalização enviada ao PIER; confirmação ainda pendente.",
+      pier_status: estadoReal.status,
+      pier_post_external_id: postagemId,
+      posted_at: new Date().toISOString(),
+      execution_id: input.execucaoId ?? decisao.execucaoId,
+    });
     throw new AppError(
       "INTEGRACAO_FALHA",
       "A finalização foi enviada, mas não foi possível confirmar o novo estado no PIER.",
@@ -215,11 +267,20 @@ export async function executarDecisaoInteligente(
     );
   }
 
-  if (!pareceFinalizada(confirmacao.status, confirmacao.finishedAt))
+  if (!pareceFinalizada(confirmacao.status, confirmacao.finishedAt)) {
+    await gravarProcessamento(ctx, solicitacao.id, {
+      outcome: "PENDENTE",
+      reason: "O PIER ainda não confirmou a finalização.",
+      pier_status: confirmacao.status,
+      pier_post_external_id: postagemId,
+      posted_at: new Date().toISOString(),
+      execution_id: input.execucaoId ?? decisao.execucaoId,
+    });
     throw new AppError(
       "INTEGRACAO_FALHA",
       "O PIER ainda não confirmou a finalização. A postagem foi preservada e não será duplicada em uma nova tentativa.",
     );
+  }
 
   const finalizadaEm = confirmacao.finishedAt ?? new Date().toISOString();
   await ctx.db
@@ -227,6 +288,18 @@ export async function executarDecisaoInteligente(
     .update({ status: confirmacao.status, finished_at: finalizadaEm })
     .eq("organization_id", ctx.organizationId)
     .eq("id", solicitacao.id);
+
+  await gravarProcessamento(ctx, solicitacao.id, {
+    outcome: "FINALIZADO",
+    reason: decisao.recomendacao.exigeJustificativa
+      ? "Aprovada com justificativa humana, respondida e finalizada no PIER."
+      : "Respondida e finalizada no PIER por decisão humana confirmada.",
+    pier_status: confirmacao.status,
+    pier_post_external_id: postagemId,
+    posted_at: new Date().toISOString(),
+    finalized_at: finalizadaEm,
+    execution_id: input.execucaoId ?? decisao.execucaoId,
+  });
 
   await audit(ctx, {
     action: "DECISAO_INTELIGENTE_PIER",
