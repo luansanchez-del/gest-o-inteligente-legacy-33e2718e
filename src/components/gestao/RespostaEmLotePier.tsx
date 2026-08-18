@@ -50,6 +50,7 @@ type AcaoEdicao =
   | "PULAR"
   | "RESPONDER_MANTER_ABERTA"
   | "RESPONDER_FINALIZAR";
+type ModoExecucao = "TODAS" | "APROVAR_TUDO";
 
 interface FiltrosSalvos {
   competencia?: string;
@@ -101,7 +102,10 @@ function lerFiltros() {
       salvo.competenciaFim && /^\d{4}-\d{2}$/.test(salvo.competenciaFim)
         ? salvo.competenciaFim
         : null,
-    tipo: salvo.tipo === "MOVIMENTO_FINANCEIRO" ? ("MOVIMENTO_FINANCEIRO" as const) : ("CONTABIL" as const),
+    tipo:
+      salvo.tipo === "MOVIMENTO_FINANCEIRO"
+        ? ("MOVIMENTO_FINANCEIRO" as const)
+        : ("CONTABIL" as const),
     busca: salvo.busca?.trim() || null,
     revisaoCompetencia: Boolean(salvo.revisaoCompetencia),
     departamentoId:
@@ -122,7 +126,10 @@ function lerFiltros() {
 }
 
 function acaoPadrao(tipo: string): AcaoEdicao {
-  if (tipo === "APROVAR_FINALIZAR" || tipo === "APROVAR_COM_JUSTIFICATIVA")
+  if (
+    tipo === "APROVAR_FINALIZAR" ||
+    tipo === "APROVAR_COM_JUSTIFICATIVA"
+  )
     return "RESPONDER_FINALIZAR";
   if (tipo === "SOLICITAR_CORRECAO") return "RESPONDER_MANTER_ABERTA";
   return "PULAR";
@@ -130,15 +137,19 @@ function acaoPadrao(tipo: string): AcaoEdicao {
 
 function rotuloTipo(tipo: string) {
   if (tipo === "APROVAR_FINALIZAR") return "Apta para finalizar";
-  if (tipo === "APROVAR_COM_JUSTIFICATIVA") return "Aprovar com justificativa";
+  if (tipo === "APROVAR_COM_JUSTIFICATIVA")
+    return "Aprovar com justificativa";
   if (tipo === "SOLICITAR_CORRECAO") return "Solicitar correção";
   return "Revisão humana";
 }
 
 function classeTipo(tipo: string) {
-  if (tipo === "APROVAR_FINALIZAR") return "bg-success-soft text-success-strong";
-  if (tipo === "APROVAR_COM_JUSTIFICATIVA") return "bg-warning-soft text-warning-strong";
-  if (tipo === "SOLICITAR_CORRECAO") return "bg-destructive/10 text-destructive";
+  if (tipo === "APROVAR_FINALIZAR")
+    return "bg-success-soft text-success-strong";
+  if (tipo === "APROVAR_COM_JUSTIFICATIVA")
+    return "bg-warning-soft text-warning-strong";
+  if (tipo === "SOLICITAR_CORRECAO")
+    return "bg-destructive/10 text-destructive";
   return "bg-muted text-muted-foreground";
 }
 
@@ -151,6 +162,7 @@ export function RespostaEmLotePier() {
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
   const [edicoes, setEdicoes] = useState<EdicaoItem[]>([]);
   const [justificativaComum, setJustificativaComum] = useState("");
+  const [confirmarAprovarTudo, setConfirmarAprovarTudo] = useState(false);
   const [resultado, setResultado] = useState<Awaited<ReturnType<typeof executarDecisaoLote>> | null>(null);
 
   const carregarEscopo = useMutation({
@@ -163,6 +175,8 @@ export function RespostaEmLotePier() {
         .slice(0, 100);
       setSelecionadas(new Set(candidatos));
       setEdicoes([]);
+      setJustificativaComum("");
+      setConfirmarAprovarTudo(false);
       setResultado(null);
       setEtapa("SELECIONAR");
       setAberto(true);
@@ -221,30 +235,43 @@ export function RespostaEmLotePier() {
   });
 
   const executar = useMutation({
-    mutationFn: () => {
+    mutationFn: (modo: ModoExecucao = "TODAS") => {
       const itens = edicoes
-        .filter((item) => item.acao !== "PULAR")
+        .filter((item) =>
+          modo === "APROVAR_TUDO"
+            ? item.podeFinalizar && item.acao === "RESPONDER_FINALIZAR"
+            : item.acao !== "PULAR",
+        )
         .map((item) => ({
           solicitacaoExternalId: item.solicitacaoExternalId,
           execucaoId: item.execucaoId,
-          acao: item.acao as "RESPONDER_MANTER_ABERTA" | "RESPONDER_FINALIZAR",
+          acao: item.acao as
+            | "RESPONDER_MANTER_ABERTA"
+            | "RESPONDER_FINALIZAR",
           mensagem: item.mensagem,
           justificativa: item.justificativa.trim() || null,
         }));
       return executarDecisaoLote({ data: { itens } });
     },
     onSuccess: (retorno) => {
+      setConfirmarAprovarTudo(false);
       setResultado(retorno);
       setEtapa("RESULTADO");
       void queryClient.invalidateQueries({ queryKey: ["preview-gestao"] });
-      void queryClient.invalidateQueries({ queryKey: ["decisao-inteligente-pier"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["decisao-inteligente-pier"],
+      });
     },
     onError: (error) => toast.error(mensagemDeErro(error)),
   });
 
   const totalExecutar = edicoes.filter((item) => item.acao !== "PULAR").length;
+  const totalAprovaveis = edicoes.filter(
+    (item) => item.podeFinalizar && item.acao === "RESPONDER_FINALIZAR",
+  ).length;
   const pendenciasJustificativa = edicoes.filter(
     (item) =>
+      item.podeFinalizar &&
       item.acao === "RESPONDER_FINALIZAR" &&
       item.exigeJustificativa &&
       item.justificativa.trim().length < 10,
@@ -252,6 +279,17 @@ export function RespostaEmLotePier() {
   const respostasInvalidas = edicoes.filter(
     (item) => item.acao !== "PULAR" && item.mensagem.trim().length < 10,
   ).length;
+  const respostasInvalidasAprovacao = edicoes.filter(
+    (item) =>
+      item.podeFinalizar &&
+      item.acao === "RESPONDER_FINALIZAR" &&
+      item.mensagem.trim().length < 10,
+  ).length;
+  const podeAprovarTudo =
+    totalAprovaveis > 0 &&
+    pendenciasJustificativa === 0 &&
+    respostasInvalidasAprovacao === 0 &&
+    !executar.isPending;
 
   const resumoRevisao = useMemo(() => {
     return {
@@ -284,7 +322,9 @@ export function RespostaEmLotePier() {
           : item,
       ),
     );
-    toast.success("Justificativa aplicada às aprovações com ressalva.");
+    toast.success(
+      "Justificativa aplicada. As aprovações elegíveis foram liberadas para o lote.",
+    );
   }
 
   function confirmarExecucao() {
@@ -302,7 +342,27 @@ export function RespostaEmLotePier() {
       );
       return;
     }
-    executar.mutate();
+    executar.mutate("TODAS");
+  }
+
+  function abrirConfirmacaoAprovarTudo() {
+    if (!totalAprovaveis) {
+      toast.error("Nenhuma solicitação está elegível para aprovação.");
+      return;
+    }
+    if (respostasInvalidasAprovacao) {
+      toast.error(
+        `${respostasInvalidasAprovacao} resposta(s) de aprovação precisam ser revisadas.`,
+      );
+      return;
+    }
+    if (pendenciasJustificativa) {
+      toast.error(
+        `Aplique a justificativa às ${pendenciasJustificativa} aprovação(ões) com ressalva.`,
+      );
+      return;
+    }
+    setConfirmarAprovarTudo(true);
   }
 
   return (
@@ -554,18 +614,34 @@ export function RespostaEmLotePier() {
                 </div>
               </ScrollArea>
 
-              <DialogFooter className="border-t px-6 py-4">
+              <DialogFooter className="border-t px-6 py-4 sm:items-center">
+                <div className="mr-auto text-xs text-muted-foreground">
+                  {pendenciasJustificativa > 0
+                    ? `Aplique a justificativa às ressalvas para liberar ${totalAprovaveis} aprovação(ões).`
+                    : totalAprovaveis > 0
+                      ? `${totalAprovaveis} solicitação(ões) elegível(is) para aprovação.`
+                      : "Nenhuma solicitação elegível para aprovação neste lote."}
+                </div>
                 <Button variant="ghost" onClick={() => setEtapa("SELECIONAR")}>Voltar</Button>
+                {resumoRevisao.manter > 0 ? (
+                  <Button
+                    variant="outline"
+                    onClick={confirmarExecucao}
+                    disabled={executar.isPending || !totalExecutar}
+                  >
+                    Executar todas as ações ({totalExecutar})
+                  </Button>
+                ) : null}
                 <Button
-                  onClick={confirmarExecucao}
-                  disabled={executar.isPending || !totalExecutar}
+                  onClick={abrirConfirmacaoAprovarTudo}
+                  disabled={!podeAprovarTudo}
                 >
                   {executar.isPending ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : (
                     <CheckCircle2 className="mr-2 h-4 w-4" />
                   )}
-                  Executar {totalExecutar} ação(ões)
+                  Aprovar tudo — {totalAprovaveis}
                 </Button>
               </DialogFooter>
             </>
@@ -613,6 +689,43 @@ export function RespostaEmLotePier() {
               </DialogFooter>
             </>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmarAprovarTudo} onOpenChange={setConfirmarAprovarTudo}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmar aprovação em lote?</DialogTitle>
+            <DialogDescription>
+              {totalAprovaveis} solicitação(ões) elegível(is) receberão a resposta técnica e serão finalizadas no PIER. Solicitações bloqueadas, puladas ou de correção não entram nesta aprovação.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-md bg-muted/40 p-3 text-sm">
+            <p className="font-medium">O que será executado</p>
+            <p className="mt-1 text-muted-foreground">
+              Publicar a resposta individual, acrescentar a justificativa quando houver ressalva e confirmar a finalização no PIER.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setConfirmarAprovarTudo(false)}
+              disabled={executar.isPending}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => executar.mutate("APROVAR_TUDO")}
+              disabled={!podeAprovarTudo}
+            >
+              {executar.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="mr-2 h-4 w-4" />
+              )}
+              Confirmar e aprovar {totalAprovaveis}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
