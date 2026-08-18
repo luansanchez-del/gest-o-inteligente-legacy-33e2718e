@@ -10,6 +10,7 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { DecisaoInteligentePier } from "@/components/gestao/DecisaoInteligentePier";
+import { RespostaEmLotePier } from "@/components/gestao/RespostaEmLotePier";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -140,6 +141,7 @@ function RootComponent() {
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
       <DecisaoInteligentePier />
+      <RespostaEmLotePier />
       <Toaster richColors position="top-right" />
     </QueryClientProvider>
   );
