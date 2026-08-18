@@ -2,6 +2,43 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { comContexto, emailDoToken } from "./contexto";
 
+export const obterVinculoPier = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) =>
+    comContexto(
+      context.userId,
+      emailDoToken(context.claims),
+      async (ctx) => {
+        const service = await import(
+          "@/server/domain/caixa-inteligente/caixa-inteligente.service"
+        );
+        return service.obterVinculoPier(ctx, {
+          email: emailDoToken(context.claims),
+        });
+      },
+    ),
+  );
+
+export const vincularMeuUsuarioPier = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { externalId: string }) => {
+    if (!input?.externalId)
+      throw new Error("VALIDACAO::Selecione seu usuário do PIER.");
+    return input;
+  })
+  .handler(async ({ data, context }) =>
+    comContexto(
+      context.userId,
+      emailDoToken(context.claims),
+      async (ctx) => {
+        const service = await import(
+          "@/server/domain/caixa-inteligente/caixa-inteligente.service"
+        );
+        return service.vincularUsuarioPier(ctx, data);
+      },
+    ),
+  );
+
 export const sincronizarMinhaCaixa = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) =>
