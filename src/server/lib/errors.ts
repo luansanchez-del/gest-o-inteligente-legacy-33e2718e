@@ -5,6 +5,7 @@
  */
 export type AppErrorCode =
   | "CONFIGURACAO"
+  | "INTEGRACAO"
   | "INTEGRACAO_INDISPONIVEL"
   | "INTEGRACAO_FALHA"
   | "VALIDACAO"
@@ -43,7 +44,8 @@ export const regraNegocio = (msg: string) => new AppError("REGRA_NEGOCIO", msg);
  */
 export function toClientError(error: unknown): Error {
   if (error instanceof AppError) {
-    if (error.detail) console.error(`[${error.code}] ${error.userMessage} :: ${error.detail}`);
+    if (error.detail)
+      console.error(`[${error.code}] ${error.userMessage} :: ${error.detail}`);
     return new Error(`${error.code}::${error.userMessage}`);
   }
   console.error(error);
