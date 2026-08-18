@@ -6,8 +6,8 @@ export const listarCarteiraInteligente = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) =>
     comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
-      const service = await import("@/server/domain/carteira-inteligente/carteira-inteligente.service");
-      return service.listarCarteiraInteligente(ctx);
+      const service = await import("@/server/domain/carteira-inteligente/carteira-inteligente-view.service");
+      return service.listarCarteiraInteligenteAtiva(ctx);
     }),
   );
 
@@ -20,8 +20,8 @@ export const importarCarteiraInteligente = createServerFn({ method: "POST" })
   })
   .handler(async ({ data, context }) =>
     comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
-      const service = await import("@/server/domain/carteira-inteligente/carteira-inteligente.service");
-      return service.importarCarteira(ctx, data.rows as any[]);
+      const service = await import("@/server/domain/carteira-inteligente/carteira-inteligente-import.service");
+      return service.importarCarteiraSeguro(ctx, data.rows as any[]);
     }),
   );
 
@@ -83,8 +83,8 @@ export const sugerirDistribuicaoCarteira = createServerFn({ method: "GET" })
   })
   .handler(async ({ data, context }) =>
     comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
-      const service = await import("@/server/domain/carteira-inteligente/carteira-inteligente.service");
-      return service.sugerirDistribuicao(ctx, data);
+      const service = await import("@/server/domain/carteira-inteligente/carteira-inteligente-view.service");
+      return service.sugerirDistribuicaoAtiva(ctx, data);
     }),
   );
 
