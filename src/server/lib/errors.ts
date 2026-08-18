@@ -5,7 +5,6 @@
  */
 export type AppErrorCode =
   | "CONFIGURACAO"
-  | "INTEGRACAO"
   | "INTEGRACAO_INDISPONIVEL"
   | "INTEGRACAO_FALHA"
   | "VALIDACAO"
