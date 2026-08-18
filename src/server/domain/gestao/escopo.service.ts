@@ -499,7 +499,6 @@ export async function sincronizarSolicitacoes(
           status: "COMPLETED",
           total_items: elegiveis.length,
           processed_items: processados,
-          skipped_items: finalizadasIgnoradas,
           finished_at: agora,
         })
         .eq("id", run.id);
