@@ -24,9 +24,6 @@ export const obterVinculoPier = createServerFn({ method: "GET" })
         const email = emailDoToken(context.claims);
         let resultado = await service.obterVinculoPier(ctx, { email });
 
-        // O login do app pode usar um domínio diferente do cadastro no PIER
-        // (ex.: nome.sobrenome@gmail.com x nome.sobrenome@empresa.com.br).
-        // Quando o identificador local normalizado for único, vinculamos com segurança.
         if (!resultado.vinculado && email) {
           const identidade = identidadeEmail(email);
           if (identidade.length >= 5) {
@@ -148,9 +145,9 @@ export const analisarSolicitacaoInteligente = createServerFn({ method: "GET" })
       emailDoToken(context.claims),
       async (ctx) => {
         const service = await import(
-          "@/server/domain/caixa-inteligente/caixa-inteligente.service"
+          "@/server/domain/caixa-inteligente/caixa-inteligente-v2.service"
         );
-        return service.analisarSolicitacao(ctx, {
+        return service.analisarSolicitacaoV2(ctx, {
           email: emailDoToken(context.claims),
           solicitacaoExternalId: data.solicitacaoExternalId,
         });
@@ -163,19 +160,25 @@ export const executarAcaoSolicitacaoInteligente = createServerFn({ method: "POST
   .inputValidator(
     (input: {
       solicitacaoExternalId: string;
-      acao: "RESPONDER_MANTER_ABERTA" | "RESPONDER_FINALIZAR";
-      mensagem: string;
+      acao:
+        | "RESPONDER_MANTER_ABERTA"
+        | "RESPONDER_FINALIZAR"
+        | "FINALIZAR_SEM_RESPONDER";
+      mensagem?: string;
       privada?: boolean;
+      justificativaFinalizacao?: string;
     }) => {
       if (!input?.solicitacaoExternalId)
         throw new Error("VALIDACAO::Solicitação não informada.");
       if (
-        !["RESPONDER_MANTER_ABERTA", "RESPONDER_FINALIZAR"].includes(
-          input.acao,
-        )
+        ![
+          "RESPONDER_MANTER_ABERTA",
+          "RESPONDER_FINALIZAR",
+          "FINALIZAR_SEM_RESPONDER",
+        ].includes(input.acao)
       )
         throw new Error("VALIDACAO::Ação inválida.");
-      if (!input.mensagem?.trim())
+      if (input.acao !== "FINALIZAR_SEM_RESPONDER" && !input.mensagem?.trim())
         throw new Error("VALIDACAO::Informe a resposta antes de publicar.");
       return input;
     },
@@ -186,9 +189,9 @@ export const executarAcaoSolicitacaoInteligente = createServerFn({ method: "POST
       emailDoToken(context.claims),
       async (ctx) => {
         const service = await import(
-          "@/server/domain/caixa-inteligente/caixa-inteligente.service"
+          "@/server/domain/caixa-inteligente/caixa-inteligente-v2.service"
         );
-        return service.executarAcao(ctx, {
+        return service.executarAcaoV2(ctx, {
           email: emailDoToken(context.claims),
           ...data,
         });
