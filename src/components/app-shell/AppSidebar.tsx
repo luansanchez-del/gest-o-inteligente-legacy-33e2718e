@@ -1,5 +1,6 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
+  BrainCircuit,
   Building2,
   ClipboardList,
   Gauge,
@@ -26,8 +27,9 @@ const GRUPOS = [
     itens: [
       { title: "Painel", to: "/", icon: Gauge },
       { title: "Minha Caixa", to: "/minhas-solicitacoes", icon: Inbox },
-      { title: "Carteira", to: "/carteira", icon: Building2 },
       { title: "Gestão", to: "/gestao", icon: PlayCircle },
+      { title: "Carteira Inteligente", to: "/carteira-inteligente", icon: BrainCircuit },
+      { title: "Carteira PIER", to: "/carteira", icon: Building2 },
       { title: "Equipe e departamentos", to: "/equipe", icon: Users },
     ],
   },
