@@ -100,6 +100,37 @@ export const pierAdapter: PierAdapter = {
   },
 
   /**
+   * Listagem genérica usada pela Caixa de Entrada Inteligente. Não assume tipo,
+   * competência nem responsável: esses recortes são feitos pelo domínio depois
+   * da normalização. O status utiliza o mesmo parâmetro já empregado pela API.
+   */
+  async listRequests(options) {
+    const resultados: PierRequest[] = [];
+    const limite = Math.min(Math.max(options?.maxPages ?? 60, 1), MAX_PAGINAS);
+
+    for (let bloco = 0; bloco < limite; bloco += CONCORRENCIA) {
+      const paginas = Array.from(
+        { length: Math.min(CONCORRENCIA, limite - bloco) },
+        (_, i) => bloco + i + 1,
+      );
+      const lotes = await Promise.all(
+        paginas.map((pagina) =>
+          pierGet<unknown>("/api/v2/solicitacoes", {
+            pagina,
+            quantidadePorPagina: POR_PAGINA_SOLICITACOES,
+            status: options?.status ?? "Todas",
+          }).then(asArray),
+        ),
+      );
+
+      for (const lote of lotes) resultados.push(...lote.map(mapRequest));
+      if (lotes.some((lote) => lote.length < POR_PAGINA_SOLICITACOES)) break;
+    }
+
+    return resultados.filter((request) => request.externalId);
+  },
+
+  /**
    * Busca as solicitações de um tipo para a competência. O PIER não filtra por
    * competência, então usamos `busca` com MM/AAAA e conferimos a descrição.
    */
