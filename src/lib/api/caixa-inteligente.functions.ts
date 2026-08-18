@@ -70,7 +70,10 @@ export const vincularMeuUsuarioPier = createServerFn({ method: "POST" })
           | { ok: false; erro: string };
 
         try {
-          const resultado = await service.sincronizarMinhaCaixa(ctx, {
+          const syncService = await import(
+            "@/server/domain/caixa-inteligente/caixa-inteligente-sync.service"
+          );
+          const resultado = await syncService.sincronizarMinhaCaixaSegura(ctx, {
             email: emailDoToken(context.claims),
           });
           sincronizacao = {
@@ -100,10 +103,10 @@ export const sincronizarMinhaCaixa = createServerFn({ method: "POST" })
       context.userId,
       emailDoToken(context.claims),
       async (ctx) => {
-        const service = await import(
-          "@/server/domain/caixa-inteligente/caixa-inteligente.service"
+        const syncService = await import(
+          "@/server/domain/caixa-inteligente/caixa-inteligente-sync.service"
         );
-        return service.sincronizarMinhaCaixa(ctx, {
+        return syncService.sincronizarMinhaCaixaSegura(ctx, {
           email: emailDoToken(context.claims),
         });
       },
