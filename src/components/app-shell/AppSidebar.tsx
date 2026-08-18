@@ -6,6 +6,7 @@ import {
   Gauge,
   Inbox,
   PlayCircle,
+  UserRoundSearch,
   Users,
 } from "lucide-react";
 
@@ -29,6 +30,7 @@ const GRUPOS = [
       { title: "Minha Caixa", to: "/minhas-solicitacoes", icon: Inbox },
       { title: "Gestão", to: "/gestao", icon: PlayCircle },
       { title: "Carteira Inteligente", to: "/carteira-inteligente", icon: BrainCircuit },
+      { title: "Currículos BPO", to: "/curriculos-bpo", icon: UserRoundSearch },
       { title: "Carteira PIER", to: "/carteira", icon: Building2 },
       { title: "Equipe e departamentos", to: "/equipe", icon: Users },
     ],
