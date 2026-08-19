@@ -81,13 +81,20 @@ export async function montarPreviewComRespostas(
     };
   });
 
-  const statusResposta = filtro.statusResposta ?? "TODAS";
-  if (statusResposta === "SEM_RESPOSTA")
-    empresas = empresas.filter((e) => e.statusResposta === "NAO_RESPONDIDA");
-  if (statusResposta === "RESPONDIDAS")
-    empresas = empresas.filter((e) => e.statusResposta === "RESPONDIDA");
-  if (statusResposta === "NAO_VERIFICADAS")
-    empresas = empresas.filter((e) => e.statusResposta === "NAO_VERIFICADA");
+  const statusResposta = filtro.statusResposta;
+  if (!statusResposta) {
+    // Chamadores antigos, como o modal de resposta em lote, não conhecem o novo filtro.
+    // Neles, solicitações já confirmadas como respondidas ficam fora por padrão;
+    // não verificadas continuam no fluxo e são conferidas ao vivo antes da postagem.
+    empresas = empresas.filter((e) => e.statusResposta !== "RESPONDIDA");
+  } else {
+    if (statusResposta === "SEM_RESPOSTA")
+      empresas = empresas.filter((e) => e.statusResposta === "NAO_RESPONDIDA");
+    if (statusResposta === "RESPONDIDAS")
+      empresas = empresas.filter((e) => e.statusResposta === "RESPONDIDA");
+    if (statusResposta === "NAO_VERIFICADAS")
+      empresas = empresas.filter((e) => e.statusResposta === "NAO_VERIFICADA");
+  }
 
   const porResponsavel = new Map<
     string,
