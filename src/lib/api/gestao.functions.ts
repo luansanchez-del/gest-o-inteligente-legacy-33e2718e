@@ -20,6 +20,12 @@ type EscopoInput = {
     | "HISTORICO"
     | null;
   statusPier?: "PENDENTES" | "FINALIZADAS" | "TODOS" | null;
+  statusResposta?:
+    | "TODAS"
+    | "SEM_RESPOSTA"
+    | "RESPONDIDAS"
+    | "NAO_VERIFICADAS"
+    | null;
   revisaoCompetencia?: boolean;
   busca?: string | null;
   anexo?: "COM_ANEXO" | "SEM_ANEXO" | null;
@@ -41,6 +47,13 @@ function validarEscopo(input: EscopoInput) {
     !["PENDENTES", "FINALIZADAS", "TODOS"].includes(input.statusPier)
   )
     throw new Error("VALIDACAO::Status PIER inválido.");
+  if (
+    input.statusResposta &&
+    !["TODAS", "SEM_RESPOSTA", "RESPONDIDAS", "NAO_VERIFICADAS"].includes(
+      input.statusResposta,
+    )
+  )
+    throw new Error("VALIDACAO::Status de resposta inválido.");
   return input;
 }
 
@@ -173,6 +186,25 @@ export const sincronizarSolicitacoes = createServerFn({ method: "POST" })
           data.incluirFinalizadas ??
           (data.statusPier === "FINALIZADAS" || data.statusPier === "TODOS"),
       });
+    }),
+  );
+
+export const sincronizarRespostasPier = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { solicitacoes: string[] }) => {
+    const solicitacoes = [
+      ...new Set((input?.solicitacoes ?? []).map((id) => id.trim()).filter(Boolean)),
+    ];
+    if (!solicitacoes.length)
+      throw new Error("VALIDACAO::Nenhuma solicitação foi informada.");
+    if (solicitacoes.length > 100)
+      throw new Error("VALIDACAO::Verifique no máximo 100 solicitações por vez.");
+    return { solicitacoes };
+  })
+  .handler(async ({ data, context }) =>
+    comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
+      const service = await import("@/server/domain/gestao/resposta-pier.service");
+      return service.sincronizarRespostasPier(ctx, data);
     }),
   );
 
