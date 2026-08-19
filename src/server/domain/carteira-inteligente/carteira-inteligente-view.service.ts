@@ -27,6 +27,16 @@ function chaveCliente(input: { externalId?: string | null; document?: string | n
   return `nome:${normalizar(input.name)}`;
 }
 
+function chaveResponsavel(externalId?: string | null, nome?: string | null) {
+  if (externalId) return `pier:${externalId}`;
+  return nome ? `nome:${normalizar(nome)}` : "";
+}
+
+function chaveGrupo(grupo?: string | null, responsavelExternalId?: string | null, responsavelNome?: string | null) {
+  if (!grupo) return "";
+  return `${normalizar(grupo)}|${chaveResponsavel(responsavelExternalId, responsavelNome)}`;
+}
+
 async function carregarTudo<T>(
   buscar: (de: number, ate: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
 ) {
@@ -41,14 +51,14 @@ async function carregarTudo<T>(
 }
 
 export async function listarCarteiraInteligenteAtiva(ctx: AppContext) {
-  const [clientesPier, assignments, profiles] = await Promise.all([
+  const [clientesPier, assignments, profiles, groupPayments] = await Promise.all([
     carregarTudo<any>((de, ate) => ctx.db.from("pier_client")
       .select("external_id,name,document,status,tax_regime,responsible_name,synced_at")
       .eq("organization_id", ctx.organizationId)
       .eq("status", "Ativo")
       .range(de, ate)),
     carregarTudo<any>((de, ate) => (ctx.db as any).from("portfolio_assignment")
-      .select("id,client_key,client_external_id,client_document,client_name,official_responsible_external_id,official_responsible_name,tax_regime,segment,monthly_fee,bpo_budget,complexity_points,source,notes,group_name,fee_in_group,active,updated_at")
+      .select("id,client_key,client_external_id,client_document,client_name,official_responsible_external_id,official_responsible_name,tax_regime,segment,monthly_fee,monthly_fee_source,bpo_budget,complexity_points,source,notes,group_name,fee_in_group,active,updated_at")
       .eq("organization_id", ctx.organizationId)
       .eq("active", true)
       .range(de, ate)),
@@ -57,13 +67,30 @@ export async function listarCarteiraInteligenteAtiva(ctx: AppContext) {
       .eq("organization_id", ctx.organizationId)
       .eq("active", true)
       .range(de, ate)),
+    carregarTudo<any>((de, ate) => (ctx.db as any).from("bpo_group_payment")
+      .select("id,group_key,group_name,responsible_external_id,responsible_name,monthly_amount,source,active,updated_at")
+      .eq("organization_id", ctx.organizationId)
+      .eq("active", true)
+      .range(de, ate)),
   ]);
 
   const aPorExt = new Map(assignments.filter((a: any) => a.client_external_id).map((a: any) => [a.client_external_id, a]));
   const aPorDoc = new Map(assignments.filter((a: any) => documento(a.client_document)).map((a: any) => [documento(a.client_document), a]));
+  const pagamentoGrupoPorChave = new Map(
+    groupPayments.map((g: any) => [
+      chaveGrupo(g.group_name, g.responsible_external_id, g.responsible_name),
+      g,
+    ]),
+  );
 
   const linhas = clientesPier.map((p: any) => {
     const a = aPorExt.get(p.external_id) || aPorDoc.get(documento(p.document)) || null;
+    const pagamentoGrupo = a?.group_name && a?.official_responsible_name
+      ? pagamentoGrupoPorChave.get(chaveGrupo(a.group_name, a.official_responsible_external_id, a.official_responsible_name)) ?? null
+      : null;
+    const repasseIndividual = a?.bpo_budget == null ? null : Number(a.bpo_budget);
+    const repasseGrupo = pagamentoGrupo?.monthly_amount == null ? null : Number(pagamentoGrupo.monthly_amount);
+
     return {
       clientKey: a?.client_key ?? chaveCliente({ externalId: p.external_id, document: p.document, name: p.name }),
       externalId: p.external_id,
@@ -78,7 +105,12 @@ export async function listarCarteiraInteligenteAtiva(ctx: AppContext) {
       responsavelCarteira: a?.official_responsible_name ?? null,
       responsavelCarteiraId: a?.official_responsible_external_id ?? null,
       honorario: a?.monthly_fee == null ? null : Number(a.monthly_fee),
-      valorBpo: a?.bpo_budget == null ? null : Number(a.bpo_budget),
+      honorarioFonte: a?.monthly_fee == null ? null : (a?.monthly_fee_source ?? "PLANILHA"),
+      repasseBpoIndividual: repasseIndividual,
+      repasseBpoGrupo: repasseGrupo,
+      repasseBpoTipo: repasseGrupo != null ? "GRUPO" as const : repasseIndividual != null ? "EMPRESA" as const : null,
+      repasseBpoGrupoNome: pagamentoGrupo?.group_name ?? null,
+      valorBpo: repasseIndividual,
       peso: Number(a?.complexity_points ?? 1),
       source: a?.source ?? "PIER",
       divergencia: Boolean(a?.official_responsible_name && normalizar(a.official_responsible_name) !== normalizar(p.responsible_name)),
@@ -97,20 +129,28 @@ export async function listarCarteiraInteligenteAtiva(ctx: AppContext) {
     honorarioGrupo: l.grupo ? totalPorGrupo.get(normalizar(l.grupo)) ?? 0 : null,
   }));
 
-  const cargaPorNome = new Map<string, { clientes: number; pontos: number; honorarios: number; bpo: number }>();
+  const cargaPorResponsavel = new Map<string, { clientes: number; pontos: number; honorarios: number; bpoIndividual: number; bpoGrupo: number }>();
   for (const l of linhasComGrupo) {
     if (!l.responsavelCarteira) continue;
-    const k = normalizar(l.responsavelCarteira);
-    const c = cargaPorNome.get(k) ?? { clientes: 0, pontos: 0, honorarios: 0, bpo: 0 };
+    const k = chaveResponsavel(l.responsavelCarteiraId, l.responsavelCarteira);
+    const c = cargaPorResponsavel.get(k) ?? { clientes: 0, pontos: 0, honorarios: 0, bpoIndividual: 0, bpoGrupo: 0 };
     c.clientes += 1;
     c.pontos += l.peso;
     c.honorarios += l.honorario ?? 0;
-    c.bpo += l.valorBpo ?? 0;
-    cargaPorNome.set(k, c);
+    c.bpoIndividual += l.repasseBpoIndividual ?? 0;
+    cargaPorResponsavel.set(k, c);
+  }
+  for (const g of groupPayments) {
+    const k = chaveResponsavel(g.responsible_external_id, g.responsible_name);
+    if (!k) continue;
+    const c = cargaPorResponsavel.get(k) ?? { clientes: 0, pontos: 0, honorarios: 0, bpoIndividual: 0, bpoGrupo: 0 };
+    c.bpoGrupo += Number(g.monthly_amount ?? 0);
+    cargaPorResponsavel.set(k, c);
   }
 
   const perfis = profiles.map((p: any) => {
-    const c = cargaPorNome.get(normalizar(p.name)) ?? { clientes: 0, pontos: 0, honorarios: 0, bpo: 0 };
+    const k = chaveResponsavel(p.pier_user_external_id, p.name);
+    const c = cargaPorResponsavel.get(k) ?? { clientes: 0, pontos: 0, honorarios: 0, bpoIndividual: 0, bpoGrupo: 0 };
     const capacidade = Number(p.max_capacity_points ?? 60);
     return {
       id: p.id,
@@ -123,7 +163,9 @@ export async function listarCarteiraInteligenteAtiva(ctx: AppContext) {
       utilizacao: capacidade > 0 ? Math.round((c.pontos / capacidade) * 100) : 0,
       clientes: c.clientes,
       honorarios: c.honorarios,
-      valorBpo: c.bpo,
+      repasseBpoIndividual: c.bpoIndividual,
+      repasseBpoGrupo: c.bpoGrupo,
+      valorBpo: c.bpoIndividual + c.bpoGrupo,
       regimes: Array.isArray(p.tax_regimes) ? p.tax_regimes : [],
       segmentos: Array.isArray(p.sectors) ? p.sectors : [],
       sistemas: Array.isArray(p.systems) ? p.systems : [],
@@ -133,7 +175,9 @@ export async function listarCarteiraInteligenteAtiva(ctx: AppContext) {
   });
 
   const totalHonorarios = linhasComGrupo.reduce((s, l) => s + Math.max(0, l.honorario ?? 0), 0);
-  const totalBpo = linhasComGrupo.reduce((s, l) => s + Math.max(0, l.valorBpo ?? 0), 0);
+  const totalBpoIndividual = linhasComGrupo.reduce((s, l) => s + Math.max(0, l.repasseBpoIndividual ?? 0), 0);
+  const totalBpoGrupo = groupPayments.reduce((s: number, g: any) => s + Math.max(0, Number(g.monthly_amount ?? 0)), 0);
+  const totalBpo = totalBpoIndividual + totalBpoGrupo;
   const grupos = new Set(linhasComGrupo.map((l) => l.grupo ? normalizar(l.grupo) : "").filter(Boolean));
 
   return {
@@ -143,15 +187,30 @@ export async function listarCarteiraInteligenteAtiva(ctx: AppContext) {
       semCarteira: linhasComGrupo.filter((l) => l.semCarteira).length,
       divergenciasPier: linhasComGrupo.filter((l) => l.divergencia).length,
       honorarios: totalHonorarios,
+      honorariosFontePier: linhasComGrupo.filter((l) => l.honorarioFonte === "PIER").length,
+      honorariosFonteImportada: linhasComGrupo.filter((l) => l.honorario != null && l.honorarioFonte !== "PIER").length,
       valorBpo: totalBpo,
+      repasseBpoIndividual: totalBpoIndividual,
+      repasseBpoGrupo: totalBpoGrupo,
       margemBrutaCarteira: totalHonorarios - totalBpo,
       perfisBpo: perfis.length,
       grupos: grupos.size,
+      gruposComRepasseBpo: groupPayments.length,
       clientesInclusosEmGrupo: linhasComGrupo.filter((l) => l.honorarioCobertoPorGrupo && l.grupo).length,
       semHonorarioLocalizado: linhasComGrupo.filter((l) => (l.honorario ?? 0) <= 0 && !l.grupo).length,
     },
     linhas: linhasComGrupo.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")),
     perfis: perfis.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")),
+    repassesGrupo: groupPayments
+      .map((g: any) => ({
+        id: g.id,
+        grupo: g.group_name,
+        responsavel: g.responsible_name,
+        responsavelExternalId: g.responsible_external_id,
+        valor: Number(g.monthly_amount ?? 0),
+        source: g.source,
+      }))
+      .sort((a: any, b: any) => a.grupo.localeCompare(b.grupo, "pt-BR")),
   };
 }
 
@@ -206,6 +265,6 @@ export async function sugerirDistribuicaoAtiva(ctx: AppContext, input: { clientK
   return {
     cliente,
     candidatos: candidatos.slice(0, 8),
-    criterio: "Somente clientes ativos. Critérios profissionais: capacidade, regime, segmento, complexidade e senioridade. A decisão final é do gestor.",
+    criterio: "Somente clientes ativos. A aderência usa capacidade, regime, segmento, complexidade e senioridade. Honorário do cliente e valor de repasse BPO não entram na pontuação. A decisão final é do gestor.",
   };
 }
