@@ -152,7 +152,7 @@ export async function importarCarteiraSeguro(ctx: AppContext, rows: LinhaImporta
       : perfilBpo?.pier_user_external_id ?? (respNomePlanilha ? null : existente?.official_responsible_external_id ?? null);
     const responsavelNome = financeOnly
       ? existente?.official_responsible_name ?? null
-      : perfilBpo?.name ?? respNomePlanilha || existente?.official_responsible_name || null;
+      : perfilBpo?.name ?? (respNomePlanilha || existente?.official_responsible_name || null);
 
     payload.push({
       organization_id: ctx.organizationId,
