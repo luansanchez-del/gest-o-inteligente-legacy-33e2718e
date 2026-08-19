@@ -17,6 +17,10 @@ function normalizar(v: unknown) {
     .trim();
 }
 
+function grupoKey(v: unknown) {
+  return texto(v).toLowerCase().replace(/\s+/g, " ").trim();
+}
+
 function documento(v: unknown) {
   return texto(v).replace(/\D/g, "");
 }
@@ -75,6 +79,81 @@ export type LinhaImportacao = {
   tipoImportacao?: "HONORARIOS_GRUPOS" | "CARTEIRA_BPO" | string;
 };
 
+async function reconciliarRepassesGrupo(ctx: AppContext) {
+  const atuais = await carregarTudo<any>((de, ate) => (ctx.db as any).from("portfolio_assignment")
+    .select("id,group_name,official_responsible_external_id,official_responsible_name,bpo_budget,active")
+    .eq("organization_id", ctx.organizationId)
+    .eq("active", true)
+    .range(de, ate));
+
+  const buckets = new Map<string, any[]>();
+  for (const a of atuais) {
+    if (!a.group_name || !a.official_responsible_name) continue;
+    const key = `${grupoKey(a.group_name)}|${normalizar(a.official_responsible_name)}`;
+    const arr = buckets.get(key) ?? [];
+    arr.push(a);
+    buckets.set(key, arr);
+  }
+
+  const groupPayload: any[] = [];
+  const clearIds: string[] = [];
+  const gruposIndividuais: Array<{ groupKey: string; responsavel: string }> = [];
+
+  for (const members of buckets.values()) {
+    if (members.length < 2) continue;
+    const positivos = members.filter((m) => Number(m.bpo_budget ?? 0) > 0);
+    const zerados = members.filter((m) => Number(m.bpo_budget ?? 0) === 0);
+    const primeiro = members[0];
+
+    if (positivos.length === 1 && zerados.length >= 1) {
+      groupPayload.push({
+        organization_id: ctx.organizationId,
+        group_key: grupoKey(primeiro.group_name),
+        group_name: primeiro.group_name,
+        responsible_external_id: primeiro.official_responsible_external_id ?? null,
+        responsible_name: primeiro.official_responsible_name,
+        monthly_amount: Number(positivos[0].bpo_budget),
+        source: "PLANILHA_GRUPO_DETECTADO",
+        active: true,
+        updated_by: ctx.userId,
+        created_by: ctx.userId,
+      });
+      clearIds.push(...members.map((m) => m.id));
+    } else if (positivos.length > 1) {
+      gruposIndividuais.push({
+        groupKey: grupoKey(primeiro.group_name),
+        responsavel: primeiro.official_responsible_name,
+      });
+    }
+  }
+
+  if (groupPayload.length) {
+    const { error } = await (ctx.db as any).from("bpo_group_payment").upsert(groupPayload, {
+      onConflict: "organization_id,group_key,responsible_name",
+    });
+    if (error) throw new AppError("INESPERADO", "Não foi possível consolidar os repasses BPO por grupo.", error.message);
+  }
+
+  for (let i = 0; i < clearIds.length; i += 200) {
+    const { error } = await (ctx.db as any).from("portfolio_assignment")
+      .update({ bpo_budget: null, updated_by: ctx.userId })
+      .eq("organization_id", ctx.organizationId)
+      .in("id", clearIds.slice(i, i + 200));
+    if (error) throw new AppError("INESPERADO", "Não foi possível remover a duplicidade do repasse por grupo.", error.message);
+  }
+
+  for (const g of gruposIndividuais) {
+    const { error } = await (ctx.db as any).from("bpo_group_payment")
+      .update({ active: false, updated_by: ctx.userId })
+      .eq("organization_id", ctx.organizationId)
+      .eq("group_key", g.groupKey)
+      .eq("responsible_name", g.responsavel);
+    if (error) throw new AppError("INESPERADO", "Não foi possível atualizar a regra de repasse BPO.", error.message);
+  }
+
+  return { gruposConsolidados: groupPayload.length, clientesMovidosParaGrupo: clearIds.length };
+}
+
 export async function importarCarteiraSeguro(ctx: AppContext, rows: LinhaImportacao[]) {
   assertCanWrite(ctx);
   if (!Array.isArray(rows) || rows.length === 0)
@@ -92,7 +171,7 @@ export async function importarCarteiraSeguro(ctx: AppContext, rows: LinhaImporta
       .eq("organization_id", ctx.organizationId)
       .range(de, ate)),
     carregarTudo<any>((de, ate) => (ctx.db as any).from("portfolio_assignment")
-      .select("id,client_key,client_external_id,client_document,client_name,official_responsible_external_id,official_responsible_name,tax_regime,segment,monthly_fee,bpo_budget,complexity_points,source,notes,group_name,fee_in_group,active")
+      .select("id,client_key,client_external_id,client_document,client_name,official_responsible_external_id,official_responsible_name,tax_regime,segment,monthly_fee,monthly_fee_source,bpo_budget,complexity_points,source,notes,group_name,fee_in_group,active,created_by")
       .eq("organization_id", ctx.organizationId)
       .range(de, ate)),
   ]);
@@ -153,14 +232,15 @@ export async function importarCarteiraSeguro(ctx: AppContext, rows: LinhaImporta
         : respNome || existente?.official_responsible_name || null,
       tax_regime: texto(r.regime) || existente?.tax_regime || pier?.tax_regime || null,
       segment: texto(r.segmento) || existente?.segment || null,
-      monthly_fee: fee ?? existente?.monthly_fee ?? null,
+      monthly_fee: financeOnly ? fee ?? existente?.monthly_fee ?? null : existente?.monthly_fee ?? null,
+      monthly_fee_source: financeOnly && fee != null ? "PLANILHA_FALLBACK" : existente?.monthly_fee_source ?? "PLANILHA",
       bpo_budget: financeOnly ? existente?.bpo_budget ?? null : bpo ?? existente?.bpo_budget ?? null,
       complexity_points: Math.max(0.5, Math.min(peso ?? Number(existente?.complexity_points ?? 1), 20)),
       group_name: nomeGrupo ?? existente?.group_name ?? null,
       fee_in_group: financeOnly
         ? Boolean((fee ?? Number(existente?.monthly_fee ?? 0)) === 0 && nomeGrupo)
         : Boolean(existente?.fee_in_group ?? false),
-      source: existente?.source ?? (financeOnly ? "HONORARIOS_PLANILHA" : "PLANILHA"),
+      source: existente?.source ?? (financeOnly ? "HONORARIOS_PLANILHA" : "PLANILHA_BPO"),
       notes: texto(r.observacao) || existente?.notes || null,
       active: true,
       updated_by: ctx.userId,
@@ -175,6 +255,8 @@ export async function importarCarteiraSeguro(ctx: AppContext, rows: LinhaImporta
     if (error) throw new AppError("INESPERADO", "Não foi possível importar a carteira.", error.message);
   }
 
+  const repasses = await reconciliarRepassesGrupo(ctx);
+
   await audit(ctx, {
     action: "IMPORTAR_CARTEIRA_INTELIGENTE",
     entity: "portfolio_assignment",
@@ -184,9 +266,18 @@ export async function importarCarteiraSeguro(ctx: AppContext, rows: LinhaImporta
       ignoradasInativas,
       financeiras,
       carteirasBpo,
+      ...repasses,
       falhas: falhas.slice(0, 50),
     },
   });
 
-  return { recebidas: rows.length, importadas: payload.length, ignoradasInativas, financeiras, carteirasBpo, falhas };
+  return {
+    recebidas: rows.length,
+    importadas: payload.length,
+    ignoradasInativas,
+    financeiras,
+    carteirasBpo,
+    ...repasses,
+    falhas,
+  };
 }
