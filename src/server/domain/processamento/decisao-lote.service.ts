@@ -36,31 +36,28 @@ export async function prepararDecisaoLote(
         decisao: Awaited<ReturnType<typeof obterDecisaoInteligente>>;
       }
     | {
-        status: "JA_RESPONDIDA";
-        solicitacaoExternalId: string;
-        autor: string | null;
-        respondidaEm: string | null;
-      }
-    | {
         status: "ERRO";
         solicitacaoExternalId: string;
         erro: string;
       }
   > = [];
+  let jaRespondidas = 0;
 
   for (const solicitacaoExternalId of ids) {
     try {
-      // Fail-safe: antes de gerar qualquer resposta, confere o PIER ao vivo.
       const resposta = await verificarRespostaPierPorExternalId(
         ctx,
         solicitacaoExternalId,
       );
       if (resposta.status === "RESPONDIDA") {
+        jaRespondidas += 1;
+        const detalhe = resposta.authorName
+          ? ` por ${resposta.authorName}${resposta.postedAt ? ` em ${resposta.postedAt}` : ""}`
+          : "";
         itens.push({
-          status: "JA_RESPONDIDA",
+          status: "ERRO",
           solicitacaoExternalId,
-          autor: resposta.authorName,
-          respondidaEm: resposta.postedAt,
+          erro: `Já respondida no PIER${detalhe}. Esta solicitação foi retirada do lote para evitar duplicidade.`,
         });
         continue;
       }
@@ -70,7 +67,6 @@ export async function prepararDecisaoLote(
       });
       itens.push({ status: "OK", solicitacaoExternalId, decisao });
     } catch (error) {
-      // Se a verificação falhar, a solicitação NÃO fica elegível para postagem.
       itens.push({
         status: "ERRO",
         solicitacaoExternalId,
@@ -92,8 +88,9 @@ export async function prepararDecisaoLote(
       comJustificativa: conta("APROVAR_COM_JUSTIFICATIVA"),
       solicitarCorrecao: conta("SOLICITAR_CORRECAO"),
       revisaoHumana: conta("REVISAO_HUMANA"),
-      jaRespondidas: itens.filter((item) => item.status === "JA_RESPONDIDA").length,
-      errosPreparacao: itens.filter((item) => item.status === "ERRO").length,
+      jaRespondidas,
+      errosPreparacao:
+        itens.filter((item) => item.status === "ERRO").length - jaRespondidas,
     },
     itens,
   };
@@ -129,7 +126,6 @@ export async function executarDecisaoLote(
 
   for (const item of itens) {
     try {
-      // Segunda conferência, imediatamente antes da escrita no PIER.
       const resposta = await verificarRespostaPierPorExternalId(
         ctx,
         item.solicitacaoExternalId,
