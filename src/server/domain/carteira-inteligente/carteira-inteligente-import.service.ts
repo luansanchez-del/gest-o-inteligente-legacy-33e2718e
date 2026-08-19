@@ -1,6 +1,7 @@
 import { audit } from "../../lib/audit";
 import { assertCanWrite, type AppContext } from "../../lib/context";
 import { AppError } from "../../lib/errors";
+import { localizarPerfilBpo } from "./bpo-name-match";
 
 const PAGINA = 1000;
 
@@ -82,14 +83,15 @@ export async function importarCarteiraSeguro(ctx: AppContext, rows: LinhaImporta
   if (rows.length > 5000)
     throw new AppError("VALIDACAO", "Importe no máximo 5.000 clientes por vez.");
 
-  const [clientesPier, usuariosPier, assignments] = await Promise.all([
+  const [clientesPier, perfisBpo, assignments] = await Promise.all([
     carregarTudo<any>((de, ate) => ctx.db.from("pier_client")
       .select("external_id,name,document,status,tax_regime,responsible_name")
       .eq("organization_id", ctx.organizationId)
       .range(de, ate)),
-    carregarTudo<any>((de, ate) => ctx.db.from("pier_user")
-      .select("external_id,name,email,status,kind")
+    carregarTudo<any>((de, ate) => ctx.db.from("bpo_profile")
+      .select("id,pier_user_external_id,name,email,active")
       .eq("organization_id", ctx.organizationId)
+      .eq("active", true)
       .range(de, ate)),
     carregarTudo<any>((de, ate) => (ctx.db as any).from("portfolio_assignment")
       .select("id,client_key,client_external_id,client_document,client_name,official_responsible_external_id,official_responsible_name,tax_regime,segment,monthly_fee,bpo_budget,complexity_points,source,notes,group_name,fee_in_group,active")
@@ -99,7 +101,6 @@ export async function importarCarteiraSeguro(ctx: AppContext, rows: LinhaImporta
 
   const pierPorDoc = new Map(clientesPier.map((c: any) => [documento(c.document), c]).filter(([d]) => d));
   const pierPorNome = new Map(clientesPier.map((c: any) => [normalizar(c.name), c]));
-  const userPorNome = new Map(usuariosPier.map((u: any) => [normalizar(u.name), u]));
   const aPorExt = new Map(assignments.filter((a: any) => a.client_external_id).map((a: any) => [a.client_external_id, a]));
   const aPorDoc = new Map(assignments.filter((a: any) => documento(a.client_document)).map((a: any) => [documento(a.client_document), a]));
   const aPorKey = new Map(assignments.map((a: any) => [a.client_key, a]));
@@ -109,6 +110,8 @@ export async function importarCarteiraSeguro(ctx: AppContext, rows: LinhaImporta
   let ignoradasInativas = 0;
   let financeiras = 0;
   let carteirasBpo = 0;
+  let responsaveisNormalizados = 0;
+  let responsaveisNaoLocalizados = 0;
 
   rows.forEach((r, idx) => {
     const status = normalizar(r.status);
@@ -129,8 +132,8 @@ export async function importarCarteiraSeguro(ctx: AppContext, rows: LinhaImporta
     const keyCalculada = chaveCliente({ externalId: pier?.external_id, document: doc || pier?.document, name: nomeFinal });
     const existente = (pier?.external_id && aPorExt.get(pier.external_id)) || (doc && aPorDoc.get(doc)) || aPorKey.get(keyCalculada) || null;
     const financeOnly = r.tipoImportacao === "HONORARIOS_GRUPOS";
-    const respNome = texto(r.responsavel);
-    const usuario = respNome ? userPorNome.get(normalizar(respNome)) : null;
+    const respNomePlanilha = texto(r.responsavel);
+    const perfilBpo = !financeOnly && respNomePlanilha ? localizarPerfilBpo(perfisBpo, respNomePlanilha) : null;
     const fee = numero(r.honorario);
     const bpo = numero(r.valorBpo);
     const nomeGrupo = grupo(r.grupo);
@@ -139,18 +142,26 @@ export async function importarCarteiraSeguro(ctx: AppContext, rows: LinhaImporta
     if (financeOnly) financeiras += 1;
     else carteirasBpo += 1;
 
+    if (!financeOnly && respNomePlanilha) {
+      if (perfilBpo) responsaveisNormalizados += 1;
+      else responsaveisNaoLocalizados += 1;
+    }
+
+    const responsavelExternalId = financeOnly
+      ? existente?.official_responsible_external_id ?? null
+      : perfilBpo?.pier_user_external_id ?? (respNomePlanilha ? null : existente?.official_responsible_external_id ?? null);
+    const responsavelNome = financeOnly
+      ? existente?.official_responsible_name ?? null
+      : perfilBpo?.name ?? respNomePlanilha || existente?.official_responsible_name || null;
+
     payload.push({
       organization_id: ctx.organizationId,
       client_key: existente?.client_key ?? keyCalculada,
       client_external_id: pier?.external_id ?? existente?.client_external_id ?? null,
       client_document: doc || documento(pier?.document) || existente?.client_document || null,
       client_name: nomeFinal || existente?.client_name,
-      official_responsible_external_id: financeOnly
-        ? existente?.official_responsible_external_id ?? null
-        : usuario?.external_id ?? existente?.official_responsible_external_id ?? null,
-      official_responsible_name: financeOnly
-        ? existente?.official_responsible_name ?? null
-        : respNome || existente?.official_responsible_name || null,
+      official_responsible_external_id: responsavelExternalId,
+      official_responsible_name: responsavelNome,
       tax_regime: texto(r.regime) || existente?.tax_regime || pier?.tax_regime || null,
       segment: texto(r.segmento) || existente?.segment || null,
       monthly_fee: fee ?? existente?.monthly_fee ?? null,
@@ -160,7 +171,7 @@ export async function importarCarteiraSeguro(ctx: AppContext, rows: LinhaImporta
       fee_in_group: financeOnly
         ? Boolean((fee ?? Number(existente?.monthly_fee ?? 0)) === 0 && nomeGrupo)
         : Boolean(existente?.fee_in_group ?? false),
-      source: existente?.source ?? (financeOnly ? "HONORARIOS_PLANILHA" : "PLANILHA"),
+      source: financeOnly ? "HONORARIOS_PLANILHA" : "PLANILHA_BPO",
       notes: texto(r.observacao) || existente?.notes || null,
       active: true,
       updated_by: ctx.userId,
@@ -184,9 +195,21 @@ export async function importarCarteiraSeguro(ctx: AppContext, rows: LinhaImporta
       ignoradasInativas,
       financeiras,
       carteirasBpo,
+      responsaveisNormalizados,
+      responsaveisNaoLocalizados,
+      regraResponsavel: "Para CARTEIRA_BPO, a planilha é a fonte oficial do responsável; o PIER é apenas referência cadastral.",
       falhas: falhas.slice(0, 50),
     },
   });
 
-  return { recebidas: rows.length, importadas: payload.length, ignoradasInativas, financeiras, carteirasBpo, falhas };
+  return {
+    recebidas: rows.length,
+    importadas: payload.length,
+    ignoradasInativas,
+    financeiras,
+    carteirasBpo,
+    responsaveisNormalizados,
+    responsaveisNaoLocalizados,
+    falhas,
+  };
 }
