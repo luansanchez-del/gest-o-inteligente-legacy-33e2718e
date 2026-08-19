@@ -1,6 +1,7 @@
 import type { AppContext } from "../../lib/context";
 import { audit } from "../../lib/audit";
 import { erroSeguro } from "../../lib/mascara";
+import { verificarRespostaPierPorExternalId } from "../gestao/resposta-pier.service";
 import { obterDecisaoInteligente } from "./decisao-inteligente.service";
 import {
   executarDecisaoInteligente,
@@ -35,6 +36,12 @@ export async function prepararDecisaoLote(
         decisao: Awaited<ReturnType<typeof obterDecisaoInteligente>>;
       }
     | {
+        status: "JA_RESPONDIDA";
+        solicitacaoExternalId: string;
+        autor: string | null;
+        respondidaEm: string | null;
+      }
+    | {
         status: "ERRO";
         solicitacaoExternalId: string;
         erro: string;
@@ -43,11 +50,27 @@ export async function prepararDecisaoLote(
 
   for (const solicitacaoExternalId of ids) {
     try {
+      // Fail-safe: antes de gerar qualquer resposta, confere o PIER ao vivo.
+      const resposta = await verificarRespostaPierPorExternalId(
+        ctx,
+        solicitacaoExternalId,
+      );
+      if (resposta.status === "RESPONDIDA") {
+        itens.push({
+          status: "JA_RESPONDIDA",
+          solicitacaoExternalId,
+          autor: resposta.authorName,
+          respondidaEm: resposta.postedAt,
+        });
+        continue;
+      }
+
       const decisao = await obterDecisaoInteligente(ctx, {
         solicitacaoExternalId,
       });
       itens.push({ status: "OK", solicitacaoExternalId, decisao });
     } catch (error) {
+      // Se a verificação falhar, a solicitação NÃO fica elegível para postagem.
       itens.push({
         status: "ERRO",
         solicitacaoExternalId,
@@ -56,9 +79,11 @@ export async function prepararDecisaoLote(
     }
   }
 
-  const validos = itens.filter((item) => item.status === "OK");
   const conta = (tipo: string) =>
-    validos.filter((item) => item.decisao.recomendacao.tipo === tipo).length;
+    itens.filter(
+      (item) =>
+        item.status === "OK" && item.decisao.recomendacao.tipo === tipo,
+    ).length;
 
   return {
     total: itens.length,
@@ -67,6 +92,7 @@ export async function prepararDecisaoLote(
       comJustificativa: conta("APROVAR_COM_JUSTIFICATIVA"),
       solicitarCorrecao: conta("SOLICITAR_CORRECAO"),
       revisaoHumana: conta("REVISAO_HUMANA"),
+      jaRespondidas: itens.filter((item) => item.status === "JA_RESPONDIDA").length,
       errosPreparacao: itens.filter((item) => item.status === "ERRO").length,
     },
     itens,
@@ -103,6 +129,25 @@ export async function executarDecisaoLote(
 
   for (const item of itens) {
     try {
+      // Segunda conferência, imediatamente antes da escrita no PIER.
+      const resposta = await verificarRespostaPierPorExternalId(
+        ctx,
+        item.solicitacaoExternalId,
+      );
+      if (resposta.status === "RESPONDIDA") {
+        resultados.push({
+          solicitacaoExternalId: item.solicitacaoExternalId,
+          status: "SUCESSO",
+          situacao: "JA_RESPONDIDA",
+          mensagem: resposta.authorName
+            ? `Ignorada: já havia resposta no PIER por ${resposta.authorName}. Nenhuma nova postagem foi criada.`
+            : "Ignorada: já havia resposta no PIER. Nenhuma nova postagem foi criada.",
+          postagemId: resposta.postExternalId,
+          finalizadaEm: null,
+        });
+        continue;
+      }
+
       const retorno = await executarDecisaoInteligente(ctx, {
         solicitacaoExternalId: item.solicitacaoExternalId,
         execucaoId: item.execucaoId ?? null,
@@ -135,12 +180,16 @@ export async function executarDecisaoLote(
   const respondidasAbertas = sucesso.filter(
     (item) => item.situacao === "RESPONDIDA",
   ).length;
+  const jaRespondidas = sucesso.filter(
+    (item) => item.situacao === "JA_RESPONDIDA",
+  ).length;
 
   const resumo = {
     total: resultados.length,
     sucesso: sucesso.length,
     finalizadas,
     respondidasAbertas,
+    jaRespondidas,
     erros: resultados.filter((item) => item.status === "ERRO").length,
   };
 
