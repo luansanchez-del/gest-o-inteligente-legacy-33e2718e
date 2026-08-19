@@ -112,6 +112,28 @@ export async function verificarRespostaPier(
   return estado;
 }
 
+export async function verificarRespostaPierPorExternalId(
+  ctx: AppContext,
+  solicitacaoExternalId: string,
+) {
+  const { data: request, error } = await ctx.db
+    .from("request")
+    .select("id, external_id")
+    .eq("organization_id", ctx.organizationId)
+    .eq("external_id", solicitacaoExternalId)
+    .maybeSingle();
+  if (error || !request)
+    throw new AppError(
+      "VALIDACAO",
+      "A solicitação não foi localizada na base da Gestão.",
+      error?.message,
+    );
+  return verificarRespostaPier(ctx, {
+    requestId: request.id,
+    requestExternalId: request.external_id,
+  });
+}
+
 export async function sincronizarRespostasPier(
   ctx: AppContext,
   input: { solicitacoes: string[] },
