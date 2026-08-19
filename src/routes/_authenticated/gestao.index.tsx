@@ -7,6 +7,7 @@ import {
   FilterX,
   Pencil,
   PlayCircle,
+  RefreshCw,
   Users,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -51,6 +52,7 @@ import {
   montarPreview,
   renomearDepartamento,
   sincronizarEquipe,
+  sincronizarRespostasPier,
   sincronizarSolicitacoes,
 } from "@/lib/api/gestao.functions";
 import { processarEscopo } from "@/lib/api/processamento.functions";
@@ -66,17 +68,6 @@ export const Route = createFileRoute("/_authenticated/gestao/")({
         content:
           "Defina o escopo do fechamento contábil por competência, departamento e responsável do PIER antes de iniciar a gestão.",
       },
-      {
-        property: "og:title",
-        content: "Gestão de fechamentos | Gestão Inteligente",
-      },
-      {
-        property: "og:description",
-        content:
-          "Escopo por departamento e responsável, com pré-visualização antes de executar.",
-      },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
     ],
   }),
   component: GestaoPage,
@@ -89,6 +80,11 @@ const TODOS_ANEXOS = "__TODOS_ANEXOS__";
 const CHAVE_FILTROS_GESTAO = "gestao-inteligente:filtros-gestao";
 
 type StatusPierFiltro = "PENDENTES" | "FINALIZADAS" | "TODOS";
+type StatusRespostaFiltro =
+  | "TODAS"
+  | "SEM_RESPOSTA"
+  | "RESPONDIDAS"
+  | "NAO_VERIFICADAS";
 
 interface FiltrosGestaoSalvos {
   competencia: string;
@@ -100,11 +96,11 @@ interface FiltrosGestaoSalvos {
   responsavel: string;
   fila: string;
   statusPier: StatusPierFiltro;
+  statusResposta: StatusRespostaFiltro;
   anexo: string;
   incluirInativos: boolean;
 }
 
-/** Fila operacional do fechamento contábil. */
 const FILA: Record<string, { rotulo: string; classe: string }> = {
   AGUARDANDO_DOCUMENTO: {
     rotulo: "Aguardando documento",
@@ -139,6 +135,19 @@ function competenciaAtual() {
   return `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}`;
 }
 
+function formatarDataHora(value: string | null | undefined) {
+  if (!value) return null;
+  const data = new Date(value);
+  if (Number.isNaN(data.getTime())) return null;
+  return data.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function filtrosPadrao(): FiltrosGestaoSalvos {
   return {
     competencia: competenciaAtual(),
@@ -150,6 +159,7 @@ function filtrosPadrao(): FiltrosGestaoSalvos {
     responsavel: TODOS_USUARIOS,
     fila: TODAS_FILAS,
     statusPier: "PENDENTES",
+    statusResposta: "TODAS",
     anexo: TODOS_ANEXOS,
     incluirInativos: false,
   };
@@ -178,6 +188,14 @@ function carregarFiltrosGestao(): FiltrosGestaoSalvos {
       )
         ? (salvo.statusPier as StatusPierFiltro)
         : "PENDENTES",
+      statusResposta: [
+        "TODAS",
+        "SEM_RESPOSTA",
+        "RESPONDIDAS",
+        "NAO_VERIFICADAS",
+      ].includes(salvo.statusResposta ?? "")
+        ? (salvo.statusResposta as StatusRespostaFiltro)
+        : "TODAS",
     };
   } catch {
     return padrao;
@@ -206,6 +224,9 @@ function GestaoPage() {
   const [statusPier, setStatusPier] = useState<StatusPierFiltro>(
     filtrosIniciais.statusPier,
   );
+  const [statusResposta, setStatusResposta] = useState<StatusRespostaFiltro>(
+    filtrosIniciais.statusResposta,
+  );
   const [anexo, setAnexo] = useState(filtrosIniciais.anexo);
   const [incluirInativos, setIncluirInativos] = useState(
     filtrosIniciais.incluirInativos,
@@ -227,6 +248,7 @@ function GestaoPage() {
         responsavel,
         fila,
         statusPier,
+        statusResposta,
         anexo,
         incluirInativos,
       } satisfies FiltrosGestaoSalvos),
@@ -242,6 +264,7 @@ function GestaoPage() {
     responsavel,
     revisaoCompetencia,
     statusPier,
+    statusResposta,
     tipo,
   ]);
 
@@ -261,7 +284,11 @@ function GestaoPage() {
     responsavelId: responsavel === TODOS_USUARIOS ? null : responsavel,
     statusFila: fila === TODAS_FILAS ? null : (fila as never),
     statusPier,
-    anexo: anexo === TODOS_ANEXOS ? null : (anexo as "COM_ANEXO" | "SEM_ANEXO"),
+    statusResposta,
+    anexo:
+      anexo === TODOS_ANEXOS
+        ? null
+        : (anexo as "COM_ANEXO" | "SEM_ANEXO"),
   };
 
   const preview = useQuery({
@@ -276,6 +303,7 @@ function GestaoPage() {
       filtro.responsavelId,
       fila,
       statusPier,
+      statusResposta,
       anexo,
     ],
     queryFn: () => montarPreview({ data: filtro }),
@@ -306,6 +334,33 @@ function GestaoPage() {
           : 0;
       toast.success(
         `${r.processados} solicitações atualizadas da competência.${ignoradas ? ` ${ignoradas} finalizada(s) nova(s) ignorada(s).` : ""}`,
+      );
+      void queryClient.invalidateQueries({ queryKey: ["preview-gestao"] });
+    },
+    onError: (e) => toast.error(mensagemDeErro(e)),
+  });
+
+  const atualizarRespostas = useMutation({
+    mutationFn: async () => {
+      const escopoCompleto = await montarPreview({
+        data: { ...filtro, statusResposta: "TODAS" },
+      });
+      const ids = escopoCompleto.empresas.map((e) => e.solicitacaoId);
+      const total = { total: 0, respondidas: 0, semResposta: 0, erros: 0 };
+      for (let inicio = 0; inicio < ids.length; inicio += 100) {
+        const r = await sincronizarRespostasPier({
+          data: { solicitacoes: ids.slice(inicio, inicio + 100) },
+        });
+        total.total += r.resumo.total;
+        total.respondidas += r.resumo.respondidas;
+        total.semResposta += r.resumo.semResposta;
+        total.erros += r.resumo.erros;
+      }
+      return total;
+    },
+    onSuccess: (r) => {
+      toast.success(
+        `${r.total} verificadas no PIER: ${r.respondidas} já respondidas, ${r.semResposta} sem resposta${r.erros ? `, ${r.erros} não verificadas por falha` : ""}.`,
       );
       void queryClient.invalidateQueries({ queryKey: ["preview-gestao"] });
     },
@@ -402,6 +457,7 @@ function GestaoPage() {
     responsavel !== TODOS_USUARIOS ||
     fila !== TODAS_FILAS ||
     statusPier !== "PENDENTES" ||
+    statusResposta !== "TODAS" ||
     anexo !== TODOS_ANEXOS ||
     competenciaFim !== "" ||
     busca !== "" ||
@@ -416,6 +472,7 @@ function GestaoPage() {
     setResponsavel(TODOS_USUARIOS);
     setFila(TODAS_FILAS);
     setStatusPier("PENDENTES");
+    setStatusResposta("TODAS");
     setAnexo(TODOS_ANEXOS);
     setCompetenciaFim("");
     setBusca("");
@@ -460,9 +517,7 @@ function GestaoPage() {
               onClick={() => sincEquipe.mutate()}
               disabled={sincEquipe.isPending}
             >
-              <Users
-                className={`mr-2 h-4 w-4 ${sincEquipe.isPending ? "animate-pulse" : ""}`}
-              />
+              <Users className="mr-2 h-4 w-4" />
               Sincronizar equipe
             </Button>
             <Button
@@ -470,10 +525,20 @@ function GestaoPage() {
               onClick={() => prepararSolicitacoes.mutate()}
               disabled={prepararSolicitacoes.isPending}
             >
-              <Download
-                className={`mr-2 h-4 w-4 ${prepararSolicitacoes.isPending ? "animate-pulse" : ""}`}
-              />
+              <Download className="mr-2 h-4 w-4" />
               Carregar solicitações da competência
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => atualizarRespostas.mutate()}
+              disabled={atualizarRespostas.isPending || !preview.data?.empresas.length}
+            >
+              <RefreshCw
+                className={`mr-2 h-4 w-4 ${atualizarRespostas.isPending ? "animate-spin" : ""}`}
+              />
+              {atualizarRespostas.isPending
+                ? "Verificando respostas…"
+                : "Atualizar respostas PIER"}
             </Button>
           </div>
         }
@@ -540,10 +605,7 @@ function GestaoPage() {
                   setResponsavel(TODOS_USUARIOS);
                 }}
               >
-                <SelectTrigger
-                  aria-label="Departamento responsável"
-                  className="flex-1"
-                >
+                <SelectTrigger className="flex-1">
                   <SelectValue placeholder="Todos os departamentos" />
                 </SelectTrigger>
                 <SelectContent className="max-h-80">
@@ -552,10 +614,7 @@ function GestaoPage() {
                   </SelectItem>
                   {departamentos.map((d) => (
                     <SelectItem key={d.id} value={d.id}>
-                      {d.nome}
-                      <span className="ml-1 text-muted-foreground">
-                        · {d.totalUsuarios}
-                      </span>
+                      {d.nome} · {d.totalUsuarios}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -565,8 +624,6 @@ function GestaoPage() {
                   type="button"
                   variant="ghost"
                   size="icon"
-                  aria-label="Renomear departamento"
-                  title="Definir nome legível do departamento"
                   onClick={() => {
                     setNovoNomeDepartamento(
                       departamentoSelecionado?.nome ?? "",
@@ -585,14 +642,13 @@ function GestaoPage() {
               <button
                 type="button"
                 onClick={() => setIncluirInativos((v) => !v)}
-                aria-pressed={incluirInativos}
                 className="text-[11px] text-muted-foreground underline-offset-2 hover:underline"
               >
                 {incluirInativos ? "ativos + inativos" : "somente ativos"}
               </button>
             </div>
             <Select value={responsavel} onValueChange={setResponsavel}>
-              <SelectTrigger aria-label="Usuário responsável">
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="max-h-80">
@@ -622,7 +678,7 @@ function GestaoPage() {
                 if (proximo === "FINALIZADAS") setFila(TODAS_FILAS);
               }}
             >
-              <SelectTrigger aria-label="Status PIER">
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -635,10 +691,32 @@ function GestaoPage() {
 
           <div className="min-w-[190px] space-y-1">
             <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              Resposta
+            </Label>
+            <Select
+              value={statusResposta}
+              onValueChange={(value) =>
+                setStatusResposta(value as StatusRespostaFiltro)
+              }
+            >
+              <SelectTrigger aria-label="Filtrar por resposta">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="TODAS">Todas</SelectItem>
+                <SelectItem value="SEM_RESPOSTA">Sem resposta</SelectItem>
+                <SelectItem value="RESPONDIDAS">Já respondidas</SelectItem>
+                <SelectItem value="NAO_VERIFICADAS">Não verificadas</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="min-w-[190px] space-y-1">
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
               Situação
             </Label>
             <Select value={fila} onValueChange={setFila}>
-              <SelectTrigger aria-label="Situação da fila">
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="max-h-80">
@@ -657,7 +735,7 @@ function GestaoPage() {
               Anexos
             </Label>
             <Select value={anexo} onValueChange={setAnexo}>
-              <SelectTrigger aria-label="Filtrar por anexos">
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -705,16 +783,13 @@ function GestaoPage() {
           <DialogHeader>
             <DialogTitle>Nome do departamento</DialogTitle>
             <DialogDescription>
-              O PIER disponibiliza apenas o código do departamento (
-              {departamentoSelecionado?.codigo}
-              ). Defina aqui o nome que aparecerá nos filtros.
+              Defina o nome legível exibido nos filtros.
             </DialogDescription>
           </DialogHeader>
           <Input
             value={novoNomeDepartamento}
             onChange={(e) => setNovoNomeDepartamento(e.target.value)}
             placeholder="Ex.: Contábil - Equipe 1"
-            aria-label="Nome do departamento"
           />
           <DialogFooter>
             <Button variant="ghost" onClick={() => setRenomeando(false)}>
@@ -746,30 +821,21 @@ function GestaoPage() {
           },
           {
             rotulo: "Aguardando documento",
-            valor: totaisFila["AGUARDANDO_DOCUMENTO"],
+            valor: totaisFila.AGUARDANDO_DOCUMENTO,
           },
           {
             rotulo: "Prontas para validar",
-            valor: totaisFila["PRONTO_PARA_ANALISE"],
+            valor: totaisFila.PRONTO_PARA_ANALISE,
           },
-          {
-            rotulo: "Em processamento",
-            valor: totaisFila["ANALISANDO"],
-          },
-          {
-            rotulo: "Aprovadas",
-            valor: totaisFila["ANALISE_CONCLUIDA"],
-          },
-          {
-            rotulo: "Com ressalvas",
-            valor: totaisFila["REVISAO_NECESSARIA"],
-          },
+          { rotulo: "Em processamento", valor: totaisFila.ANALISANDO },
+          { rotulo: "Aprovadas", valor: totaisFila.ANALISE_CONCLUIDA },
+          { rotulo: "Com ressalvas", valor: totaisFila.REVISAO_NECESSARIA },
           {
             rotulo: "Bloqueadas / falhas",
-            valor: (totaisFila["BLOQUEADA"] ?? 0) + (totaisFila["ERRO"] ?? 0),
-            detalhe: `${totaisFila["BLOQUEADA"] ?? 0} contábeis · ${totaisFila["ERRO"] ?? 0} técnicas`,
+            valor: (totaisFila.BLOQUEADA ?? 0) + (totaisFila.ERRO ?? 0),
+            detalhe: `${totaisFila.BLOQUEADA ?? 0} contábeis · ${totaisFila.ERRO ?? 0} técnicas`,
           },
-          { rotulo: "Finalizadas", valor: totaisFila["HISTORICO"] },
+          { rotulo: "Finalizadas", valor: totaisFila.HISTORICO },
         ].map((item) => (
           <Card key={item.rotulo} className="p-3">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">
@@ -789,22 +855,17 @@ function GestaoPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-sm">
             <p className="font-medium">
-              {dados?.departamento.nome ?? "—"} ·{" "}
-              {dados?.responsavel.nome ?? "—"}
+              {dados?.departamento.nome ?? "—"} · {dados?.responsavel.nome ?? "—"}
             </p>
             <p className="text-muted-foreground">
-              Exibindo {dados?.totalEmpresas ?? 0} de{" "}
-              {dados?.solicitacoesEmCache ?? 0} solicitações carregadas para{" "}
-              {competencia}. Sem responsável: {dados?.totalSemResponsavel ?? 0}.
+              Exibindo {dados?.totalEmpresas ?? 0} de {dados?.solicitacoesEmCache ?? 0} solicitações carregadas para {competencia}. Sem responsável: {dados?.totalSemResponsavel ?? 0}.
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Já respondidas: {dados?.totalJaRespondidas ?? 0} · Sem resposta verificada: {dados?.totalSemRespostaVerificada ?? 0} · Não verificadas: {dados?.totalRespostaNaoVerificada ?? 0}.
             </p>
           </div>
           <Button
             onClick={() => setConfirmarProcessamento(true)}
-            title={
-              statusPier === "FINALIZADAS"
-                ? "Solicitações finalizadas são exibidas somente para consulta."
-                : undefined
-            }
             disabled={
               statusPier === "FINALIZADAS" ||
               iniciar.isPending ||
@@ -813,9 +874,7 @@ function GestaoPage() {
               totalProcessaveis === 0
             }
           >
-            <PlayCircle
-              className={`mr-2 h-4 w-4 ${iniciar.isPending || processarLote.isPending ? "animate-pulse" : ""}`}
-            />
+            <PlayCircle className="mr-2 h-4 w-4" />
             {processarLote.isPending ? "Processando lote…" : "Validar em lote"}
           </Button>
         </div>
@@ -828,13 +887,7 @@ function GestaoPage() {
             <DialogHeader>
               <DialogTitle>Processar o escopo filtrado?</DialogTitle>
               <DialogDescription>
-                {totalProcessaveis} solicitação(ões) abertas do escopo atual
-                serão processadas em lote. Solicitações já finalizadas no PIER
-                ficam fora da execução. O sistema conferirá o estado real no
-                PIER e lerá os anexos conforme o tipo de solicitação
-                selecionado. Resultados sem apontamentos podem seguir o fluxo
-                automático; alertas ficam disponíveis para aprovação com
-                ressalva; erros contábeis permanecem bloqueados.
+                {totalProcessaveis} solicitação(ões) abertas do escopo atual serão processadas em lote. Esta etapa valida documentos; o controle de resposta evita nova postagem no PIER quando já existe resposta interna.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
@@ -861,8 +914,7 @@ function GestaoPage() {
                 key={r.id ?? r.nome}
                 className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground"
               >
-                {r.nome}:{" "}
-                <span className="tabular-nums font-medium">{r.total}</span>
+                {r.nome}: <span className="tabular-nums font-medium">{r.total}</span>
               </span>
             ))}
           </div>
@@ -875,7 +927,7 @@ function GestaoPage() {
         ) : !dados || dados.empresas.length === 0 ? (
           <EstadoVazio
             titulo="Nenhuma empresa neste escopo."
-            descricao="Use “Carregar solicitações da competência” e depois ajuste departamento e responsável."
+            descricao="Carregue as solicitações e ajuste os filtros. Para preencher o status de resposta, use “Atualizar respostas PIER”."
           />
         ) : (
           <Table>
@@ -887,6 +939,7 @@ function GestaoPage() {
                 <TableHead>Competência</TableHead>
                 <TableHead>Responsável</TableHead>
                 <TableHead>Status PIER</TableHead>
+                <TableHead>Resposta</TableHead>
                 <TableHead>Anexo</TableHead>
                 <TableHead>Situação</TableHead>
                 <TableHead className="text-right">Ação</TableHead>
@@ -896,6 +949,7 @@ function GestaoPage() {
               {dados.empresas.map((linha) => {
                 const analise =
                   FILA[linha.statusFila] ?? FILA.AGUARDANDO_DOCUMENTO;
+                const respostaEm = formatarDataHora(linha.respostaEm);
                 return (
                   <TableRow key={linha.solicitacaoId}>
                     <TableCell className="tabular-nums">
@@ -904,10 +958,7 @@ function GestaoPage() {
                     <TableCell className="font-medium">
                       {linha.clienteNome}
                       {linha.avisoCadastral ? (
-                        <span
-                          className="mt-0.5 block text-xs font-normal text-muted-foreground"
-                          title={linha.avisoCadastral}
-                        >
+                        <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
                           {linha.avisoCadastral}
                         </span>
                       ) : null}
@@ -922,6 +973,27 @@ function GestaoPage() {
                       {linha.responsavelNome ?? "Sem responsável"}
                     </TableCell>
                     <TableCell>{linha.statusSolicitacao ?? "—"}</TableCell>
+                    <TableCell>
+                      {linha.statusResposta === "RESPONDIDA" ? (
+                        <div>
+                          <span className="inline-flex rounded-full bg-success-soft px-2 py-1 text-xs font-medium text-success-strong">
+                            Já respondida
+                          </span>
+                          <span className="mt-1 block max-w-[190px] text-[11px] text-muted-foreground">
+                            {linha.respostaAutor ?? "Usuário interno"}
+                            {respostaEm ? ` · ${respostaEm}` : ""}
+                          </span>
+                        </div>
+                      ) : linha.statusResposta === "NAO_RESPONDIDA" ? (
+                        <span className="inline-flex rounded-full bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
+                          Sem resposta
+                        </span>
+                      ) : (
+                        <span className="inline-flex rounded-full bg-warning-soft px-2 py-1 text-xs font-medium text-warning-strong">
+                          Não verificada
+                        </span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       {linha.temAnexo ? (
                         <span className="text-success-strong">Sim</span>
@@ -941,7 +1013,6 @@ function GestaoPage() {
                         <Link
                           to="/gestao/solicitacoes/$externalId"
                           params={{ externalId: linha.solicitacaoId }}
-                          aria-label={`Abrir solicitação de ${linha.clienteNome}`}
                         >
                           {linha.statusFila === "AGUARDANDO_DOCUMENTO"
                             ? "Ver pendência"
