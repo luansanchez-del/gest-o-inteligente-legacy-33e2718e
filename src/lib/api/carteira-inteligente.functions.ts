@@ -29,8 +29,8 @@ export const sincronizarPerfisBpoPier = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) =>
     comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
-      const service = await import("@/server/domain/carteira-inteligente/carteira-inteligente.service");
-      return service.sincronizarPerfisPier(ctx);
+      const service = await import("@/server/domain/carteira-inteligente/bpo-pier-sync.service");
+      return service.sincronizarSomenteBpoCb(ctx);
     }),
   );
 
