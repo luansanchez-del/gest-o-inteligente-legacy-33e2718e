@@ -1,15 +1,30 @@
 export type StatusPierFiltro = "PENDENTES" | "FINALIZADAS" | "TODOS";
 
+function normalizarStatus(status: string | null | undefined) {
+  return (status ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
 /**
- * O PIER pode indicar encerramento tanto pelo campo finishedAt quanto pelo texto do status.
- * Usar as duas fontes evita que uma solicitação marcada como "Finalizada" apareça como pendente
- * quando o timestamp de finalização ainda não veio preenchido na sincronização.
+ * O status atual do PIER prevalece sobre timestamps históricos.
+ * Isso é essencial quando uma solicitação já finalizada é reaberta: alguns retornos/listagens
+ * podem conservar finishedAt antigo, mas um status explícito de trabalho (Aberta/Andamento/etc.)
+ * significa que a solicitação está ativa novamente.
  */
 export function solicitacaoFinalizadaPier(
   status: string | null | undefined,
   finishedAt: string | null | undefined,
 ) {
-  return Boolean(finishedAt) || /finaliz|conclu|encerr/i.test(status ?? "");
+  const atual = normalizarStatus(status);
+
+  if (/finaliz|conclu|encerr/.test(atual)) return true;
+  if (/abert|andament|penden|revis|aguard|retorn|reabert/.test(atual)) return false;
+
+  // Fallback apenas quando o status não é conclusivo.
+  return Boolean(finishedAt);
 }
 
 export function atendeFiltroStatusPier(
