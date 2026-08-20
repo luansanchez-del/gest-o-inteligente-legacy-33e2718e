@@ -16,10 +16,19 @@ import { Route as Char91DotmcpChar93ListToolsRouteImport } from './routes/[.mcp]
 import { Route as Char91DotwellKnownChar93OauthProtectedResourceRouteImport } from './routes/[.well-known]/oauth-protected-resource'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedCarteiraRouteImport } from './routes/_authenticated/carteira'
+import { Route as AuthenticatedCarteiraInteligenteRouteImport } from './routes/_authenticated/carteira-inteligente'
+import { Route as AuthenticatedCurriculosBpoRouteImport } from './routes/_authenticated/curriculos-bpo'
 import { Route as AuthenticatedEquipeRouteImport } from './routes/_authenticated/equipe'
+import { Route as AuthenticatedMinhasSolicitacoesRouteImport } from './routes/_authenticated/minhas-solicitacoes'
 import { Route as DotlovableOauthConsentRouteImport } from './routes/[.]lovable.oauth.consent'
 import { Route as Char91DotmcpChar93InvokeToolToolRouteImport } from './routes/[.mcp]/invoke-tool/$tool'
 import { Route as AuthenticatedGestaoIndexRouteImport } from './routes/_authenticated/gestao.index'
+import { Route as AuthenticatedGestaoFiscalRouteImport } from './routes/_authenticated/gestao.fiscal'
+import { Route as AuthenticatedGestaoModulosRouteImport } from './routes/_authenticated/gestao.modulos'
+import { Route as AuthenticatedGestaoFiscalIndexRouteImport } from './routes/_authenticated/gestao.fiscal.index'
+import { Route as AuthenticatedGestaoFiscalCarteiraRouteImport } from './routes/_authenticated/gestao.fiscal.carteira'
+import { Route as AuthenticatedGestaoFiscalCurriculosRouteImport } from './routes/_authenticated/gestao.fiscal.curriculos'
+import { Route as AuthenticatedGestaoFiscalEquipeRouteImport } from './routes/_authenticated/gestao.fiscal.equipe'
 import { Route as AuthenticatedGestaoSolicitacoesExternalIdRouteImport } from './routes/_authenticated/gestao.solicitacoes.$externalId'
 
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
@@ -58,11 +67,29 @@ const AuthenticatedCarteiraRoute = AuthenticatedCarteiraRouteImport.update({
   path: '/carteira',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedCarteiraInteligenteRoute =
+  AuthenticatedCarteiraInteligenteRouteImport.update({
+    id: '/carteira-inteligente',
+    path: '/carteira-inteligente',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedCurriculosBpoRoute =
+  AuthenticatedCurriculosBpoRouteImport.update({
+    id: '/curriculos-bpo',
+    path: '/curriculos-bpo',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedEquipeRoute = AuthenticatedEquipeRouteImport.update({
   id: '/equipe',
   path: '/equipe',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedMinhasSolicitacoesRoute =
+  AuthenticatedMinhasSolicitacoesRouteImport.update({
+    id: '/minhas-solicitacoes',
+    path: '/minhas-solicitacoes',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const DotlovableOauthConsentRoute = DotlovableOauthConsentRouteImport.update({
   id: '/.lovable/oauth/consent',
   path: '/.lovable/oauth/consent',
@@ -80,6 +107,42 @@ const AuthenticatedGestaoIndexRoute =
     path: '/gestao/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedGestaoFiscalRoute =
+  AuthenticatedGestaoFiscalRouteImport.update({
+    id: '/gestao/fiscal',
+    path: '/gestao/fiscal',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedGestaoModulosRoute =
+  AuthenticatedGestaoModulosRouteImport.update({
+    id: '/gestao/modulos',
+    path: '/gestao/modulos',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedGestaoFiscalIndexRoute =
+  AuthenticatedGestaoFiscalIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedGestaoFiscalRoute,
+  } as any)
+const AuthenticatedGestaoFiscalCarteiraRoute =
+  AuthenticatedGestaoFiscalCarteiraRouteImport.update({
+    id: '/carteira',
+    path: '/carteira',
+    getParentRoute: () => AuthenticatedGestaoFiscalRoute,
+  } as any)
+const AuthenticatedGestaoFiscalCurriculosRoute =
+  AuthenticatedGestaoFiscalCurriculosRouteImport.update({
+    id: '/curriculos',
+    path: '/curriculos',
+    getParentRoute: () => AuthenticatedGestaoFiscalRoute,
+  } as any)
+const AuthenticatedGestaoFiscalEquipeRoute =
+  AuthenticatedGestaoFiscalEquipeRouteImport.update({
+    id: '/equipe',
+    path: '/equipe',
+    getParentRoute: () => AuthenticatedGestaoFiscalRoute,
+  } as any)
 const AuthenticatedGestaoSolicitacoesExternalIdRoute =
   AuthenticatedGestaoSolicitacoesExternalIdRouteImport.update({
     id: '/gestao/solicitacoes/$externalId',
@@ -94,11 +157,20 @@ export interface FileRoutesByFullPath {
   '/.mcp/list-tools': typeof Char91DotmcpChar93ListToolsRoute
   '/.well-known/oauth-protected-resource': typeof Char91DotwellKnownChar93OauthProtectedResourceRoute
   '/carteira': typeof AuthenticatedCarteiraRoute
+  '/carteira-inteligente': typeof AuthenticatedCarteiraInteligenteRoute
+  '/curriculos-bpo': typeof AuthenticatedCurriculosBpoRoute
   '/equipe': typeof AuthenticatedEquipeRoute
+  '/minhas-solicitacoes': typeof AuthenticatedMinhasSolicitacoesRoute
   '/.lovable/oauth/consent': typeof DotlovableOauthConsentRoute
   '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
+  '/gestao/fiscal': typeof AuthenticatedGestaoFiscalRouteWithChildren
+  '/gestao/modulos': typeof AuthenticatedGestaoModulosRoute
   '/gestao/': typeof AuthenticatedGestaoIndexRoute
+  '/gestao/fiscal/carteira': typeof AuthenticatedGestaoFiscalCarteiraRoute
+  '/gestao/fiscal/curriculos': typeof AuthenticatedGestaoFiscalCurriculosRoute
+  '/gestao/fiscal/equipe': typeof AuthenticatedGestaoFiscalEquipeRoute
   '/gestao/solicitacoes/$externalId': typeof AuthenticatedGestaoSolicitacoesExternalIdRoute
+  '/gestao/fiscal/': typeof AuthenticatedGestaoFiscalIndexRoute
 }
 export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
@@ -106,12 +178,20 @@ export interface FileRoutesByTo {
   '/.mcp/list-tools': typeof Char91DotmcpChar93ListToolsRoute
   '/.well-known/oauth-protected-resource': typeof Char91DotwellKnownChar93OauthProtectedResourceRoute
   '/carteira': typeof AuthenticatedCarteiraRoute
+  '/carteira-inteligente': typeof AuthenticatedCarteiraInteligenteRoute
+  '/curriculos-bpo': typeof AuthenticatedCurriculosBpoRoute
   '/equipe': typeof AuthenticatedEquipeRoute
+  '/minhas-solicitacoes': typeof AuthenticatedMinhasSolicitacoesRoute
   '/': typeof AuthenticatedIndexRoute
   '/.lovable/oauth/consent': typeof DotlovableOauthConsentRoute
   '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
+  '/gestao/modulos': typeof AuthenticatedGestaoModulosRoute
   '/gestao': typeof AuthenticatedGestaoIndexRoute
+  '/gestao/fiscal/carteira': typeof AuthenticatedGestaoFiscalCarteiraRoute
+  '/gestao/fiscal/curriculos': typeof AuthenticatedGestaoFiscalCurriculosRoute
+  '/gestao/fiscal/equipe': typeof AuthenticatedGestaoFiscalEquipeRoute
   '/gestao/solicitacoes/$externalId': typeof AuthenticatedGestaoSolicitacoesExternalIdRoute
+  '/gestao/fiscal': typeof AuthenticatedGestaoFiscalIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -121,12 +201,21 @@ export interface FileRoutesById {
   '/.mcp/list-tools': typeof Char91DotmcpChar93ListToolsRoute
   '/.well-known/oauth-protected-resource': typeof Char91DotwellKnownChar93OauthProtectedResourceRoute
   '/_authenticated/carteira': typeof AuthenticatedCarteiraRoute
+  '/_authenticated/carteira-inteligente': typeof AuthenticatedCarteiraInteligenteRoute
+  '/_authenticated/curriculos-bpo': typeof AuthenticatedCurriculosBpoRoute
   '/_authenticated/equipe': typeof AuthenticatedEquipeRoute
+  '/_authenticated/minhas-solicitacoes': typeof AuthenticatedMinhasSolicitacoesRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/.lovable/oauth/consent': typeof DotlovableOauthConsentRoute
   '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
+  '/_authenticated/gestao/fiscal': typeof AuthenticatedGestaoFiscalRouteWithChildren
+  '/_authenticated/gestao/modulos': typeof AuthenticatedGestaoModulosRoute
   '/_authenticated/gestao/': typeof AuthenticatedGestaoIndexRoute
+  '/_authenticated/gestao/fiscal/carteira': typeof AuthenticatedGestaoFiscalCarteiraRoute
+  '/_authenticated/gestao/fiscal/curriculos': typeof AuthenticatedGestaoFiscalCurriculosRoute
+  '/_authenticated/gestao/fiscal/equipe': typeof AuthenticatedGestaoFiscalEquipeRoute
   '/_authenticated/gestao/solicitacoes/$externalId': typeof AuthenticatedGestaoSolicitacoesExternalIdRoute
+  '/_authenticated/gestao/fiscal/': typeof AuthenticatedGestaoFiscalIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -137,11 +226,20 @@ export interface FileRouteTypes {
     | '/.mcp/list-tools'
     | '/.well-known/oauth-protected-resource'
     | '/carteira'
+    | '/carteira-inteligente'
+    | '/curriculos-bpo'
     | '/equipe'
+    | '/minhas-solicitacoes'
     | '/.lovable/oauth/consent'
     | '/.mcp/invoke-tool/$tool'
+    | '/gestao/fiscal'
+    | '/gestao/modulos'
     | '/gestao/'
+    | '/gestao/fiscal/carteira'
+    | '/gestao/fiscal/curriculos'
+    | '/gestao/fiscal/equipe'
     | '/gestao/solicitacoes/$externalId'
+    | '/gestao/fiscal/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/auth'
@@ -149,12 +247,20 @@ export interface FileRouteTypes {
     | '/.mcp/list-tools'
     | '/.well-known/oauth-protected-resource'
     | '/carteira'
+    | '/carteira-inteligente'
+    | '/curriculos-bpo'
     | '/equipe'
+    | '/minhas-solicitacoes'
     | '/'
     | '/.lovable/oauth/consent'
     | '/.mcp/invoke-tool/$tool'
+    | '/gestao/modulos'
     | '/gestao'
+    | '/gestao/fiscal/carteira'
+    | '/gestao/fiscal/curriculos'
+    | '/gestao/fiscal/equipe'
     | '/gestao/solicitacoes/$externalId'
+    | '/gestao/fiscal'
   id:
     | '__root__'
     | '/_authenticated'
@@ -163,12 +269,21 @@ export interface FileRouteTypes {
     | '/.mcp/list-tools'
     | '/.well-known/oauth-protected-resource'
     | '/_authenticated/carteira'
+    | '/_authenticated/carteira-inteligente'
+    | '/_authenticated/curriculos-bpo'
     | '/_authenticated/equipe'
+    | '/_authenticated/minhas-solicitacoes'
     | '/_authenticated/'
     | '/.lovable/oauth/consent'
     | '/.mcp/invoke-tool/$tool'
+    | '/_authenticated/gestao/fiscal'
+    | '/_authenticated/gestao/modulos'
     | '/_authenticated/gestao/'
+    | '/_authenticated/gestao/fiscal/carteira'
+    | '/_authenticated/gestao/fiscal/curriculos'
+    | '/_authenticated/gestao/fiscal/equipe'
     | '/_authenticated/gestao/solicitacoes/$externalId'
+    | '/_authenticated/gestao/fiscal/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -232,11 +347,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCarteiraRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/carteira-inteligente': {
+      id: '/_authenticated/carteira-inteligente'
+      path: '/carteira-inteligente'
+      fullPath: '/carteira-inteligente'
+      preLoaderRoute: typeof AuthenticatedCarteiraInteligenteRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/curriculos-bpo': {
+      id: '/_authenticated/curriculos-bpo'
+      path: '/curriculos-bpo'
+      fullPath: '/curriculos-bpo'
+      preLoaderRoute: typeof AuthenticatedCurriculosBpoRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/equipe': {
       id: '/_authenticated/equipe'
       path: '/equipe'
       fullPath: '/equipe'
       preLoaderRoute: typeof AuthenticatedEquipeRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/minhas-solicitacoes': {
+      id: '/_authenticated/minhas-solicitacoes'
+      path: '/minhas-solicitacoes'
+      fullPath: '/minhas-solicitacoes'
+      preLoaderRoute: typeof AuthenticatedMinhasSolicitacoesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/.lovable/oauth/consent': {
@@ -260,6 +396,48 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedGestaoIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/gestao/fiscal': {
+      id: '/_authenticated/gestao/fiscal'
+      path: '/gestao/fiscal'
+      fullPath: '/gestao/fiscal'
+      preLoaderRoute: typeof AuthenticatedGestaoFiscalRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/gestao/modulos': {
+      id: '/_authenticated/gestao/modulos'
+      path: '/gestao/modulos'
+      fullPath: '/gestao/modulos'
+      preLoaderRoute: typeof AuthenticatedGestaoModulosRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/gestao/fiscal/': {
+      id: '/_authenticated/gestao/fiscal/'
+      path: '/'
+      fullPath: '/gestao/fiscal/'
+      preLoaderRoute: typeof AuthenticatedGestaoFiscalIndexRouteImport
+      parentRoute: typeof AuthenticatedGestaoFiscalRoute
+    }
+    '/_authenticated/gestao/fiscal/carteira': {
+      id: '/_authenticated/gestao/fiscal/carteira'
+      path: '/carteira'
+      fullPath: '/gestao/fiscal/carteira'
+      preLoaderRoute: typeof AuthenticatedGestaoFiscalCarteiraRouteImport
+      parentRoute: typeof AuthenticatedGestaoFiscalRoute
+    }
+    '/_authenticated/gestao/fiscal/curriculos': {
+      id: '/_authenticated/gestao/fiscal/curriculos'
+      path: '/curriculos'
+      fullPath: '/gestao/fiscal/curriculos'
+      preLoaderRoute: typeof AuthenticatedGestaoFiscalCurriculosRouteImport
+      parentRoute: typeof AuthenticatedGestaoFiscalRoute
+    }
+    '/_authenticated/gestao/fiscal/equipe': {
+      id: '/_authenticated/gestao/fiscal/equipe'
+      path: '/equipe'
+      fullPath: '/gestao/fiscal/equipe'
+      preLoaderRoute: typeof AuthenticatedGestaoFiscalEquipeRouteImport
+      parentRoute: typeof AuthenticatedGestaoFiscalRoute
+    }
     '/_authenticated/gestao/solicitacoes/$externalId': {
       id: '/_authenticated/gestao/solicitacoes/$externalId'
       path: '/gestao/solicitacoes/$externalId'
@@ -270,18 +448,50 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AuthenticatedGestaoFiscalRouteChildren {
+  AuthenticatedGestaoFiscalCarteiraRoute: typeof AuthenticatedGestaoFiscalCarteiraRoute
+  AuthenticatedGestaoFiscalCurriculosRoute: typeof AuthenticatedGestaoFiscalCurriculosRoute
+  AuthenticatedGestaoFiscalEquipeRoute: typeof AuthenticatedGestaoFiscalEquipeRoute
+  AuthenticatedGestaoFiscalIndexRoute: typeof AuthenticatedGestaoFiscalIndexRoute
+}
+
+const AuthenticatedGestaoFiscalRouteChildren: AuthenticatedGestaoFiscalRouteChildren =
+  {
+    AuthenticatedGestaoFiscalCarteiraRoute:
+      AuthenticatedGestaoFiscalCarteiraRoute,
+    AuthenticatedGestaoFiscalCurriculosRoute:
+      AuthenticatedGestaoFiscalCurriculosRoute,
+    AuthenticatedGestaoFiscalEquipeRoute: AuthenticatedGestaoFiscalEquipeRoute,
+    AuthenticatedGestaoFiscalIndexRoute: AuthenticatedGestaoFiscalIndexRoute,
+  }
+
+const AuthenticatedGestaoFiscalRouteWithChildren =
+  AuthenticatedGestaoFiscalRoute._addFileChildren(
+    AuthenticatedGestaoFiscalRouteChildren,
+  )
+
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedCarteiraRoute: typeof AuthenticatedCarteiraRoute
+  AuthenticatedCarteiraInteligenteRoute: typeof AuthenticatedCarteiraInteligenteRoute
+  AuthenticatedCurriculosBpoRoute: typeof AuthenticatedCurriculosBpoRoute
   AuthenticatedEquipeRoute: typeof AuthenticatedEquipeRoute
+  AuthenticatedMinhasSolicitacoesRoute: typeof AuthenticatedMinhasSolicitacoesRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedGestaoFiscalRoute: typeof AuthenticatedGestaoFiscalRouteWithChildren
+  AuthenticatedGestaoModulosRoute: typeof AuthenticatedGestaoModulosRoute
   AuthenticatedGestaoIndexRoute: typeof AuthenticatedGestaoIndexRoute
   AuthenticatedGestaoSolicitacoesExternalIdRoute: typeof AuthenticatedGestaoSolicitacoesExternalIdRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedCarteiraRoute: AuthenticatedCarteiraRoute,
+  AuthenticatedCarteiraInteligenteRoute: AuthenticatedCarteiraInteligenteRoute,
+  AuthenticatedCurriculosBpoRoute: AuthenticatedCurriculosBpoRoute,
   AuthenticatedEquipeRoute: AuthenticatedEquipeRoute,
+  AuthenticatedMinhasSolicitacoesRoute: AuthenticatedMinhasSolicitacoesRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedGestaoFiscalRoute: AuthenticatedGestaoFiscalRouteWithChildren,
+  AuthenticatedGestaoModulosRoute: AuthenticatedGestaoModulosRoute,
   AuthenticatedGestaoIndexRoute: AuthenticatedGestaoIndexRoute,
   AuthenticatedGestaoSolicitacoesExternalIdRoute:
     AuthenticatedGestaoSolicitacoesExternalIdRoute,
