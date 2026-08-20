@@ -286,6 +286,83 @@ export type Database = {
           },
         ]
       }
+      bpo_profile: {
+        Row: {
+          active: boolean
+          created_at: string
+          created_by: string | null
+          curriculum_summary: string | null
+          curriculum_text: string | null
+          email: string | null
+          id: string
+          max_capacity_points: number
+          name: string
+          organization_id: string
+          pier_user_external_id: string | null
+          profile_key: string
+          sectors: Json
+          seniority: string | null
+          skills: Json
+          systems: Json
+          target_monthly_value: number | null
+          tax_regimes: Json
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          curriculum_summary?: string | null
+          curriculum_text?: string | null
+          email?: string | null
+          id?: string
+          max_capacity_points?: number
+          name: string
+          organization_id: string
+          pier_user_external_id?: string | null
+          profile_key: string
+          sectors?: Json
+          seniority?: string | null
+          skills?: Json
+          systems?: Json
+          target_monthly_value?: number | null
+          tax_regimes?: Json
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          curriculum_summary?: string | null
+          curriculum_text?: string | null
+          email?: string | null
+          id?: string
+          max_capacity_points?: number
+          name?: string
+          organization_id?: string
+          pier_user_external_id?: string | null
+          profile_key?: string
+          sectors?: Json
+          seniority?: string | null
+          skills?: Json
+          systems?: Json
+          target_monthly_value?: number | null
+          tax_regimes?: Json
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bpo_profile_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organization"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       closing_period: {
         Row: {
           company_id: string
@@ -642,6 +719,45 @@ export type Database = {
           },
         ]
       }
+      management_user_scope: {
+        Row: {
+          active: boolean
+          area: string
+          created_at: string
+          created_by: string | null
+          id: string
+          organization_id: string
+          role: string
+          updated_at: string
+          updated_by: string | null
+          user_id: string
+        }
+        Insert: {
+          active?: boolean
+          area: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          organization_id: string
+          role?: string
+          updated_at?: string
+          updated_by?: string | null
+          user_id: string
+        }
+        Update: {
+          active?: boolean
+          area?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          organization_id?: string
+          role?: string
+          updated_at?: string
+          updated_by?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       membership: {
         Row: {
           created_at: string
@@ -910,6 +1026,89 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "pier_user_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organization"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      portfolio_assignment: {
+        Row: {
+          active: boolean
+          bpo_budget: number | null
+          client_document: string | null
+          client_external_id: string | null
+          client_key: string
+          client_name: string
+          complexity_points: number
+          created_at: string
+          created_by: string | null
+          fee_in_group: boolean
+          group_name: string | null
+          id: string
+          monthly_fee: number | null
+          notes: string | null
+          official_responsible_external_id: string | null
+          official_responsible_name: string | null
+          organization_id: string
+          segment: string | null
+          source: string
+          tax_regime: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          active?: boolean
+          bpo_budget?: number | null
+          client_document?: string | null
+          client_external_id?: string | null
+          client_key: string
+          client_name: string
+          complexity_points?: number
+          created_at?: string
+          created_by?: string | null
+          fee_in_group?: boolean
+          group_name?: string | null
+          id?: string
+          monthly_fee?: number | null
+          notes?: string | null
+          official_responsible_external_id?: string | null
+          official_responsible_name?: string | null
+          organization_id: string
+          segment?: string | null
+          source?: string
+          tax_regime?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          active?: boolean
+          bpo_budget?: number | null
+          client_document?: string | null
+          client_external_id?: string | null
+          client_key?: string
+          client_name?: string
+          complexity_points?: number
+          created_at?: string
+          created_by?: string | null
+          fee_in_group?: boolean
+          group_name?: string | null
+          id?: string
+          monthly_fee?: number | null
+          notes?: string | null
+          official_responsible_external_id?: string | null
+          official_responsible_name?: string | null
+          organization_id?: string
+          segment?: string | null
+          source?: string
+          tax_regime?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "portfolio_assignment_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organization"
@@ -1337,6 +1536,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      request_response_state: {
+        Row: {
+          author_name: string | null
+          checked_at: string
+          created_at: string
+          id: string
+          organization_id: string
+          post_external_id: string | null
+          posted_at: string | null
+          request_id: string
+          source: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          author_name?: string | null
+          checked_at?: string
+          created_at?: string
+          id?: string
+          organization_id: string
+          post_external_id?: string | null
+          posted_at?: string | null
+          request_id: string
+          source?: string
+          status: string
+          updated_at?: string
+        }
+        Update: {
+          author_name?: string | null
+          checked_at?: string
+          created_at?: string
+          id?: string
+          organization_id?: string
+          post_external_id?: string | null
+          posted_at?: string | null
+          request_id?: string
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       review_task: {
         Row: {
