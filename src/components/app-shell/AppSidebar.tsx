@@ -6,6 +6,7 @@ import {
   Gauge,
   Inbox,
   PlayCircle,
+  ReceiptText,
   UserRoundSearch,
   Users,
 } from "lucide-react";
@@ -28,7 +29,8 @@ const GRUPOS = [
     itens: [
       { title: "Painel", to: "/", icon: Gauge },
       { title: "Minha Caixa", to: "/minhas-solicitacoes", icon: Inbox },
-      { title: "Gestão", to: "/gestao", icon: PlayCircle },
+      { title: "Gestão Contábil", to: "/gestao", icon: PlayCircle },
+      { title: "Gestão Fiscal", to: "/gestao/fiscal", icon: ReceiptText },
       { title: "Carteira Inteligente", to: "/carteira-inteligente", icon: BrainCircuit },
       { title: "Currículos BPO", to: "/curriculos-bpo", icon: UserRoundSearch },
       { title: "Carteira PIER", to: "/carteira", icon: Building2 },
@@ -49,7 +51,7 @@ export function AppSidebar() {
           </span>
           <div className="min-w-0 group-data-[collapsible=icon]:hidden">
             <p className="truncate text-sm font-semibold leading-tight">Gestão Inteligente</p>
-            <p className="truncate text-xs text-sidebar-foreground/60">Operação contábil e solicitações</p>
+            <p className="truncate text-xs text-sidebar-foreground/60">Operação contábil, fiscal e solicitações</p>
           </div>
         </div>
       </SidebarHeader>
@@ -64,7 +66,9 @@ export function AppSidebar() {
                   const ativo =
                     item.to === "/"
                       ? pathname === "/"
-                      : pathname.startsWith(item.to);
+                      : item.to === "/gestao"
+                        ? pathname === "/gestao" || pathname === "/gestao/"
+                        : pathname.startsWith(item.to);
                   return (
                     <SidebarMenuItem key={item.to}>
                       <SidebarMenuButton
