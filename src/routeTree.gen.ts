@@ -25,6 +25,7 @@ import { Route as Char91DotmcpChar93InvokeToolToolRouteImport } from './routes/[
 import { Route as AuthenticatedGestaoIndexRouteImport } from './routes/_authenticated/gestao.index'
 import { Route as AuthenticatedGestaoFiscalRouteImport } from './routes/_authenticated/gestao.fiscal'
 import { Route as AuthenticatedGestaoModulosRouteImport } from './routes/_authenticated/gestao.modulos'
+import { Route as AuthenticatedGestaoFiscalIndexRouteImport } from './routes/_authenticated/gestao.fiscal.index'
 import { Route as AuthenticatedGestaoFiscalCarteiraRouteImport } from './routes/_authenticated/gestao.fiscal.carteira'
 import { Route as AuthenticatedGestaoFiscalCurriculosRouteImport } from './routes/_authenticated/gestao.fiscal.curriculos'
 import { Route as AuthenticatedGestaoFiscalEquipeRouteImport } from './routes/_authenticated/gestao.fiscal.equipe'
@@ -118,6 +119,12 @@ const AuthenticatedGestaoModulosRoute =
     path: '/gestao/modulos',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedGestaoFiscalIndexRoute =
+  AuthenticatedGestaoFiscalIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedGestaoFiscalRoute,
+  } as any)
 const AuthenticatedGestaoFiscalCarteiraRoute =
   AuthenticatedGestaoFiscalCarteiraRouteImport.update({
     id: '/carteira',
@@ -163,6 +170,7 @@ export interface FileRoutesByFullPath {
   '/gestao/fiscal/curriculos': typeof AuthenticatedGestaoFiscalCurriculosRoute
   '/gestao/fiscal/equipe': typeof AuthenticatedGestaoFiscalEquipeRoute
   '/gestao/solicitacoes/$externalId': typeof AuthenticatedGestaoSolicitacoesExternalIdRoute
+  '/gestao/fiscal/': typeof AuthenticatedGestaoFiscalIndexRoute
 }
 export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
@@ -177,13 +185,13 @@ export interface FileRoutesByTo {
   '/': typeof AuthenticatedIndexRoute
   '/.lovable/oauth/consent': typeof DotlovableOauthConsentRoute
   '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
-  '/gestao/fiscal': typeof AuthenticatedGestaoFiscalRouteWithChildren
   '/gestao/modulos': typeof AuthenticatedGestaoModulosRoute
   '/gestao': typeof AuthenticatedGestaoIndexRoute
   '/gestao/fiscal/carteira': typeof AuthenticatedGestaoFiscalCarteiraRoute
   '/gestao/fiscal/curriculos': typeof AuthenticatedGestaoFiscalCurriculosRoute
   '/gestao/fiscal/equipe': typeof AuthenticatedGestaoFiscalEquipeRoute
   '/gestao/solicitacoes/$externalId': typeof AuthenticatedGestaoSolicitacoesExternalIdRoute
+  '/gestao/fiscal': typeof AuthenticatedGestaoFiscalIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -207,6 +215,7 @@ export interface FileRoutesById {
   '/_authenticated/gestao/fiscal/curriculos': typeof AuthenticatedGestaoFiscalCurriculosRoute
   '/_authenticated/gestao/fiscal/equipe': typeof AuthenticatedGestaoFiscalEquipeRoute
   '/_authenticated/gestao/solicitacoes/$externalId': typeof AuthenticatedGestaoSolicitacoesExternalIdRoute
+  '/_authenticated/gestao/fiscal/': typeof AuthenticatedGestaoFiscalIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -230,6 +239,7 @@ export interface FileRouteTypes {
     | '/gestao/fiscal/curriculos'
     | '/gestao/fiscal/equipe'
     | '/gestao/solicitacoes/$externalId'
+    | '/gestao/fiscal/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/auth'
@@ -244,13 +254,13 @@ export interface FileRouteTypes {
     | '/'
     | '/.lovable/oauth/consent'
     | '/.mcp/invoke-tool/$tool'
-    | '/gestao/fiscal'
     | '/gestao/modulos'
     | '/gestao'
     | '/gestao/fiscal/carteira'
     | '/gestao/fiscal/curriculos'
     | '/gestao/fiscal/equipe'
     | '/gestao/solicitacoes/$externalId'
+    | '/gestao/fiscal'
   id:
     | '__root__'
     | '/_authenticated'
@@ -273,6 +283,7 @@ export interface FileRouteTypes {
     | '/_authenticated/gestao/fiscal/curriculos'
     | '/_authenticated/gestao/fiscal/equipe'
     | '/_authenticated/gestao/solicitacoes/$externalId'
+    | '/_authenticated/gestao/fiscal/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -399,6 +410,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedGestaoModulosRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/gestao/fiscal/': {
+      id: '/_authenticated/gestao/fiscal/'
+      path: '/'
+      fullPath: '/gestao/fiscal/'
+      preLoaderRoute: typeof AuthenticatedGestaoFiscalIndexRouteImport
+      parentRoute: typeof AuthenticatedGestaoFiscalRoute
+    }
     '/_authenticated/gestao/fiscal/carteira': {
       id: '/_authenticated/gestao/fiscal/carteira'
       path: '/carteira'
@@ -434,6 +452,7 @@ interface AuthenticatedGestaoFiscalRouteChildren {
   AuthenticatedGestaoFiscalCarteiraRoute: typeof AuthenticatedGestaoFiscalCarteiraRoute
   AuthenticatedGestaoFiscalCurriculosRoute: typeof AuthenticatedGestaoFiscalCurriculosRoute
   AuthenticatedGestaoFiscalEquipeRoute: typeof AuthenticatedGestaoFiscalEquipeRoute
+  AuthenticatedGestaoFiscalIndexRoute: typeof AuthenticatedGestaoFiscalIndexRoute
 }
 
 const AuthenticatedGestaoFiscalRouteChildren: AuthenticatedGestaoFiscalRouteChildren =
@@ -443,6 +462,7 @@ const AuthenticatedGestaoFiscalRouteChildren: AuthenticatedGestaoFiscalRouteChil
     AuthenticatedGestaoFiscalCurriculosRoute:
       AuthenticatedGestaoFiscalCurriculosRoute,
     AuthenticatedGestaoFiscalEquipeRoute: AuthenticatedGestaoFiscalEquipeRoute,
+    AuthenticatedGestaoFiscalIndexRoute: AuthenticatedGestaoFiscalIndexRoute,
   }
 
 const AuthenticatedGestaoFiscalRouteWithChildren =
