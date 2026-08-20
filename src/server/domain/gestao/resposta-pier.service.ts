@@ -129,6 +129,28 @@ async function reconciliarEstadoAtualPier(
         updateError.message,
       );
 
+    // O ciclo anterior não pode ser reaproveitado: nova resposta e nova decisão são obrigatórias.
+    await ctx.db
+      .from("request_processing")
+      .update({
+        outcome: "PENDENTE",
+        reason: "Solicitação reaberta no PIER; novo ciclo de análise/resposta necessário.",
+        execution_id: null,
+        attachment_id: null,
+        content_hash: null,
+        pier_post_external_id: null,
+        posted_at: null,
+        finalized_at: null,
+        updated_at: agora,
+      })
+      .eq("organization_id", ctx.organizationId)
+      .eq("request_id", local.id);
+
+    await salvarEstado(ctx, {
+      requestId: local.id,
+      status: "NAO_RESPONDIDA",
+    });
+
     await audit(ctx, {
       action: "REQUEST_REOPENED_PIER",
       entity: "request",
@@ -139,6 +161,7 @@ async function reconciliarEstadoAtualPier(
         status: detalhe.status ?? local.status,
         finishedAt: null,
         reabertaEm,
+        cicloAnteriorResetado: true,
       },
     });
   } else {
