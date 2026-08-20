@@ -26,6 +26,7 @@ import { supabase } from "@/integrations/supabase/client";
 const ROTULOS: Record<string, string> = {
   carteira: "Carteira PIER",
   gestao: "Gestão",
+  fiscal: "Fiscal",
   nova: "Nova gestão",
   acompanhamento: "Acompanhamento",
   execucoes: "Execução",
