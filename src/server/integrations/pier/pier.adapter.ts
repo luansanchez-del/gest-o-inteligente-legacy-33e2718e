@@ -124,7 +124,8 @@ export const pierAdapter: PierAdapter = {
         ),
       );
 
-      for (const lote of lotes) resultados.push(...lote.map(mapRequest));
+      for (const lote of lotes)
+        resultados.push(...lote.map((raw) => mapRequest(raw)));
       if (lotes.some((lote) => lote.length < POR_PAGINA_SOLICITACOES)) break;
     }
 
