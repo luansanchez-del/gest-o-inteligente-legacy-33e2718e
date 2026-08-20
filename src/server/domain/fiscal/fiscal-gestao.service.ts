@@ -130,9 +130,16 @@ export async function sincronizarSolicitacoesFiscais(
   const deptoPorUsuario = await mapaDepartamentoUsuarios(ctx);
   const agora = new Date().toISOString();
 
+  const [ano, mes] = input.competencia.split("-");
+  const termoBusca = `${mes}/${ano}`;
+
   let todas;
   try {
-    todas = await pierAdapter.listRequests({ status: "Todas", maxPages: 200 });
+    todas = await pierAdapter.listRequests({
+      status: "Todas",
+      maxPages: 200,
+      busca: termoBusca,
+    });
   } catch (error) {
     throw new AppError(
       "INTEGRACAO_FALHA",
@@ -141,15 +148,39 @@ export async function sincronizarSolicitacoesFiscais(
     );
   }
 
-  const fiscais = todas.filter((s) => {
-    const departamento = s.responsibleExternalId
-      ? deptoPorUsuario.get(s.responsibleExternalId) ?? null
-      : null;
-    if (!departamento || !departamentos.has(departamento)) return false;
-    if (s.referenceMonth !== input.competencia) return false;
-    if (!input.incluirFinalizadas && finalizada(s.status, s.finishedAt)) return false;
-    return true;
-  });
+  const recebidasDaBusca = todas.length;
+  let doDepartamentoFiscal = 0;
+  let competenciaInterpretada = 0;
+  let competenciaAssumida = 0;
+
+  const fiscais = todas
+    .filter((s) => {
+      const departamento = s.responsibleExternalId
+        ? deptoPorUsuario.get(s.responsibleExternalId) ?? null
+        : null;
+      if (!departamento || !departamentos.has(departamento)) return false;
+      doDepartamentoFiscal += 1;
+      // Competência explícita divergente é descartada; ausência é assumida da busca MM/AAAA.
+      if (s.referenceMonth && s.referenceMonth !== input.competencia) return false;
+      if (!input.incluirFinalizadas && finalizada(s.status, s.finishedAt)) return false;
+      return true;
+    })
+    .map((s) => {
+      if (s.referenceMonth === input.competencia) {
+        competenciaInterpretada += 1;
+        return s;
+      }
+      competenciaAssumida += 1;
+      return {
+        ...s,
+        referenceMonth: input.competencia,
+        raw: {
+          ...s.raw,
+          competenciaAssumidaDaBusca: true,
+          termoBuscaCompetencia: termoBusca,
+        },
+      };
+    });
 
   for (let inicio = 0; inicio < fiscais.length; inicio += 250) {
     const lote = fiscais.slice(inicio, inicio + 250);
