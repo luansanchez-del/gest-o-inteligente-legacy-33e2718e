@@ -226,6 +226,15 @@ export async function sincronizarSolicitacoesFiscais(
     porTipo.set(tipo, (porTipo.get(tipo) ?? 0) + 1);
   }
 
+  const diagnostico = {
+    termoBusca,
+    recebidasDaBusca,
+    doDepartamentoFiscal,
+    competenciaInterpretada,
+    competenciaAssumida,
+    totalGravado: fiscais.length,
+  };
+
   await audit(ctx, {
     action: "SINCRONIZAR_SOLICITACOES_FISCAIS",
     entity: "request",
@@ -233,6 +242,7 @@ export async function sincronizarSolicitacoesFiscais(
       competencia: input.competencia,
       departamentos: [...departamentos],
       total: fiscais.length,
+      ...diagnostico,
       tipos: [...porTipo.entries()].map(([tipo, total]) => ({ tipo, total })),
     },
   });
@@ -240,6 +250,7 @@ export async function sincronizarSolicitacoesFiscais(
   return {
     total: fiscais.length,
     departamentos: [...departamentos],
+    ...diagnostico,
     tipos: [...porTipo.entries()]
       .map(([tipo, total]) => ({ tipo, total }))
       .sort((a, b) => b.total - a.total),
