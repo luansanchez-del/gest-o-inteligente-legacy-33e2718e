@@ -119,11 +119,13 @@ export const pierAdapter: PierAdapter = {
             pagina,
             quantidadePorPagina: POR_PAGINA_SOLICITACOES,
             status: options?.status ?? "Todas",
+            ...(options?.busca?.trim() ? { busca: options.busca.trim() } : {}),
           }).then(asArray),
         ),
       );
 
-      for (const lote of lotes) resultados.push(...lote.map(mapRequest));
+      for (const lote of lotes)
+        resultados.push(...lote.map((raw) => mapRequest(raw)));
       if (lotes.some((lote) => lote.length < POR_PAGINA_SOLICITACOES)) break;
     }
 
