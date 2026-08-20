@@ -1,13 +1,14 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
+  BookUser,
   BrainCircuit,
   Building2,
   ClipboardList,
   Gauge,
   Inbox,
+  LayoutGrid,
   PlayCircle,
   ReceiptText,
-  UserRoundSearch,
   Users,
 } from "lucide-react";
 
@@ -25,14 +26,33 @@ import {
 
 const GRUPOS = [
   {
-    label: "Gestão",
+    label: "Minha Gestão",
     itens: [
       { title: "Painel", to: "/", icon: Gauge },
+      { title: "Módulos de gestão", to: "/gestao/modulos", icon: LayoutGrid },
       { title: "Minha Caixa", to: "/minhas-solicitacoes", icon: Inbox },
-      { title: "Gestão Contábil", to: "/gestao", icon: PlayCircle },
-      { title: "Gestão Fiscal", to: "/gestao/fiscal", icon: ReceiptText },
-      { title: "Carteira Inteligente", to: "/carteira-inteligente", icon: BrainCircuit },
-      { title: "Currículos BPO", to: "/curriculos-bpo", icon: UserRoundSearch },
+    ],
+  },
+  {
+    label: "Gestão Contábil",
+    itens: [
+      { title: "Operação Contábil", to: "/gestao", icon: PlayCircle, exact: true },
+      { title: "Carteira Contábil", to: "/carteira-inteligente", icon: BrainCircuit },
+      { title: "Currículos BPO Contábil", to: "/curriculos-bpo", icon: BookUser },
+    ],
+  },
+  {
+    label: "Gestão Fiscal",
+    itens: [
+      { title: "Operação Fiscal", to: "/gestao/fiscal", icon: ReceiptText, exact: true },
+      { title: "Carteira Fiscal", to: "/gestao/fiscal/carteira", icon: BrainCircuit },
+      { title: "Currículos BPO Fiscal", to: "/gestao/fiscal/curriculos", icon: BookUser },
+      { title: "Equipe Fiscal", to: "/gestao/fiscal/equipe", icon: Users },
+    ],
+  },
+  {
+    label: "Estrutura / PIER",
+    itens: [
       { title: "Carteira PIER", to: "/carteira", icon: Building2 },
       { title: "Equipe e departamentos", to: "/equipe", icon: Users },
     ],
@@ -51,7 +71,7 @@ export function AppSidebar() {
           </span>
           <div className="min-w-0 group-data-[collapsible=icon]:hidden">
             <p className="truncate text-sm font-semibold leading-tight">Gestão Inteligente</p>
-            <p className="truncate text-xs text-sidebar-foreground/60">Operação contábil, fiscal e solicitações</p>
+            <p className="truncate text-xs text-sidebar-foreground/60">Gestão por módulo e área</p>
           </div>
         </div>
       </SidebarHeader>
@@ -66,8 +86,8 @@ export function AppSidebar() {
                   const ativo =
                     item.to === "/"
                       ? pathname === "/"
-                      : item.to === "/gestao"
-                        ? pathname === "/gestao" || pathname === "/gestao/"
+                      : "exact" in item && item.exact
+                        ? pathname === item.to || pathname === `${item.to}/`
                         : pathname.startsWith(item.to);
                   return (
                     <SidebarMenuItem key={item.to}>
