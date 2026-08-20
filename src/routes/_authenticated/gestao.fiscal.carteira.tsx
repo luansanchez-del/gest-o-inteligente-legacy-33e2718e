@@ -23,7 +23,7 @@ function CarteiraFiscalPage() {
   });
 
   const bpos = (equipe.data?.usuarios ?? []).filter(
-    (u) => u.departmentId === DEPARTAMENTO_FISCAL && /^BPO FISCAL/i.test(u.nome),
+    (u) => u.departamentoId === DEPARTAMENTO_FISCAL && /^BPO FISCAL/i.test(u.nome),
   );
 
   return (
