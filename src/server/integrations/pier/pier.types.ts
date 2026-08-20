@@ -88,6 +88,8 @@ export interface PierAdapter {
   listRequests(options?: {
     status?: string;
     maxPages?: number;
+    /** Termo enviado no parâmetro `busca` da API (ex.: "05/2026"). */
+    busca?: string;
   }): Promise<PierRequest[]>;
   /** Solicitações de um tipo (ex.: Fechamento Contábil) filtradas pela competência. */
   listRequestsByType(input: {

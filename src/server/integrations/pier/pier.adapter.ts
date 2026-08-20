@@ -119,6 +119,7 @@ export const pierAdapter: PierAdapter = {
             pagina,
             quantidadePorPagina: POR_PAGINA_SOLICITACOES,
             status: options?.status ?? "Todas",
+            ...(options?.busca?.trim() ? { busca: options.busca.trim() } : {}),
           }).then(asArray),
         ),
       );
