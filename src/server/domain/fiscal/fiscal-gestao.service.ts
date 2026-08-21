@@ -3,6 +3,7 @@ import { assertCanWrite, type AppContext } from "../../lib/context";
 import { AppError } from "../../lib/errors";
 import { erroSeguro, mascararTexto } from "../../lib/mascara";
 import { pierAdapter } from "../../integrations/pier/pier.adapter";
+import type { PierRequest } from "../../integrations/pier/pier.types";
 import { carregarUsuariosPier } from "../gestao/pier-user.repo";
 import { verificarRespostaPierPorExternalId } from "../gestao/resposta-pier.service";
 import { solicitacaoFinalizadaPier } from "../gestao/status-pier";
@@ -133,7 +134,7 @@ export async function sincronizarSolicitacoesFiscais(
   const [ano, mes] = input.competencia.split("-");
   const termoBusca = `${mes}/${ano}`;
 
-  let todas;
+  let todas: PierRequest[];
   try {
     todas = await pierAdapter.listRequests({
       status: "Todas",
@@ -149,22 +150,55 @@ export async function sincronizarSolicitacoesFiscais(
   }
 
   const recebidasDaBusca = todas.length;
-  let doDepartamentoFiscal = 0;
-  let competenciaInterpretada = 0;
-  let competenciaAssumida = 0;
 
-  const fiscais = todas
+  const filtrarSolicitacoesFiscais = (
+    solicitacoes: PierRequest[],
+    permitirSemCompetencia: boolean,
+  ) => solicitacoes
     .filter((s) => {
       const departamento = s.responsibleExternalId
         ? deptoPorUsuario.get(s.responsibleExternalId) ?? null
         : null;
       if (!departamento || !departamentos.has(departamento)) return false;
-      doDepartamentoFiscal += 1;
       // Competência explícita divergente é descartada; ausência é assumida da busca MM/AAAA.
-      if (s.referenceMonth && s.referenceMonth !== input.competencia) return false;
+      if (s.referenceMonth !== input.competencia && !(permitirSemCompetencia && !s.referenceMonth))
+        return false;
       if (!input.incluirFinalizadas && finalizada(s.status, s.finishedAt)) return false;
       return true;
-    })
+    });
+
+  let encontradas = filtrarSolicitacoesFiscais(todas, true);
+  let usouBuscaCompleta = false;
+
+  // A busca textual do PIER não é consistente entre tipos de solicitação.
+  // Quando ela não devolve itens do Fiscal, retomamos a paginação completa
+  // para não apresentar um falso carregamento com zero solicitações.
+  if (!encontradas.length) {
+    try {
+      todas = await pierAdapter.listRequests({ status: "Todas", maxPages: 200 });
+      // Sem o filtro textual, itens sem competência não podem ser atribuídos
+      // com segurança ao mês solicitado.
+      encontradas = filtrarSolicitacoesFiscais(todas, false);
+      usouBuscaCompleta = true;
+    } catch (error) {
+      throw new AppError(
+        "INTEGRACAO_FALHA",
+        "Não foi possível completar o carregamento das solicitações fiscais no PIER.",
+        erroSeguro(error),
+      );
+    }
+  }
+
+  const doDepartamentoFiscal = todas.filter((s) => {
+    const departamento = s.responsibleExternalId
+      ? deptoPorUsuario.get(s.responsibleExternalId) ?? null
+      : null;
+    return Boolean(departamento && departamentos.has(departamento));
+  }).length;
+  let competenciaInterpretada = 0;
+  let competenciaAssumida = 0;
+
+  const fiscais = encontradas
     .map((s) => {
       if (s.referenceMonth === input.competencia) {
         competenciaInterpretada += 1;
@@ -232,6 +266,7 @@ export async function sincronizarSolicitacoesFiscais(
     doDepartamentoFiscal,
     competenciaInterpretada,
     competenciaAssumida,
+    usouBuscaCompleta,
     totalGravado: fiscais.length,
   };
 
