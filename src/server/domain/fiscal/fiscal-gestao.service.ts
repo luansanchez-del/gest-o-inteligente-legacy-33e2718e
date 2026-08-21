@@ -342,7 +342,8 @@ export type StatusPierFiscal = "PENDENTES" | "FINALIZADAS" | "TODOS";
 export async function listarGestaoFiscal(
   ctx: AppContext,
   input: {
-    competencia: string;
+    competenciaInicio: string;
+    competenciaFim: string;
     responsavelId?: string | null;
     busca?: string | null;
     anexo?: "COM_ANEXO" | "SEM_ANEXO" | null;
@@ -350,6 +351,8 @@ export async function listarGestaoFiscal(
     statusResposta?: StatusRespostaFiscal | null;
   },
 ) {
+  const inicio = input.competenciaInicio;
+  const fim = input.competenciaFim < inicio ? inicio : input.competenciaFim;
   const departamentos = await departamentosFiscais(ctx);
   let consulta = ctx.db
     .from("request")
@@ -357,8 +360,10 @@ export async function listarGestaoFiscal(
       "id,external_id,number,description,type_name,status,reference_month,responsible_external_id,responsible_name,department_external_id,client_name,client_document,has_attachment,deadline_at,finished_at",
     )
     .eq("organization_id", ctx.organizationId)
-    .eq("reference_month", input.competencia)
+    .gte("reference_month", inicio)
+    .lte("reference_month", fim)
     .in("department_external_id", departamentos);
+
 
   if (input.responsavelId) consulta = consulta.eq("responsible_external_id", input.responsavelId);
   if (input.anexo === "COM_ANEXO") consulta = consulta.eq("has_attachment", true);
