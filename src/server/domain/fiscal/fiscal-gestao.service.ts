@@ -118,29 +118,135 @@ async function mapaDepartamentoUsuarios(ctx: AppContext) {
   return new Map(usuarios.map((u) => [u.external_id, u.department_external_id]));
 }
 
+const COMPETENCIA = /^\d{4}-\d{2}$/;
+
+/** Lista todas as competências AAAA-MM entre início e fim (inclusive). */
+export function competenciasDoIntervalo(inicio: string, fim: string): string[] {
+  const meses: string[] = [];
+  let [ano, mes] = inicio.split("-").map(Number) as [number, number];
+  const [anoFim, mesFim] = fim.split("-").map(Number) as [number, number];
+  while (ano < anoFim || (ano === anoFim && mes <= mesFim)) {
+    meses.push(`${ano}-${String(mes).padStart(2, "0")}`);
+    mes += 1;
+    if (mes > 12) {
+      mes = 1;
+      ano += 1;
+    }
+  }
+  return meses;
+}
+
 export async function sincronizarSolicitacoesFiscais(
   ctx: AppContext,
-  input: { competencia: string; incluirFinalizadas?: boolean },
+  input: { competenciaInicio: string; competenciaFim: string; incluirFinalizadas?: boolean },
 ) {
   assertCanWrite(ctx);
-  if (!/^\d{4}-\d{2}$/.test(input.competencia))
-    throw new AppError("VALIDACAO", "Informe a competência no formato AAAA-MM.");
+  if (!COMPETENCIA.test(input.competenciaInicio) || !COMPETENCIA.test(input.competenciaFim))
+    throw new AppError("VALIDACAO", "Informe as competências no formato AAAA-MM.");
+  if (input.competenciaInicio > input.competenciaFim)
+    throw new AppError("VALIDACAO", "A competência inicial deve ser anterior ou igual à final.");
+
+  const meses = competenciasDoIntervalo(input.competenciaInicio, input.competenciaFim);
+  if (meses.length > 24)
+    throw new AppError("VALIDACAO", "Selecione um intervalo de no máximo 24 meses.");
 
   const departamentos = new Set(await departamentosFiscais(ctx));
   const deptoPorUsuario = await mapaDepartamentoUsuarios(ctx);
   const agora = new Date().toISOString();
 
-  const [ano, mes] = input.competencia.split("-");
-  const termoBusca = `${mes}/${ano}`;
+  await audit(ctx, {
+    action: "INICIAR_SINCRONIZACAO_FISCAL",
+    entity: "request",
+    after: {
+      competenciaInicio: input.competenciaInicio,
+      competenciaFim: input.competenciaFim,
+      meses,
+      departamentos: [...departamentos],
+      incluirFinalizadas: Boolean(input.incluirFinalizadas),
+    },
+  });
 
-  let todas;
+  let recebidasDaBusca = 0;
+  let doDepartamentoFiscal = 0;
+  let competenciaInterpretada = 0;
+  let competenciaAssumida = 0;
+  let foraDoIntervalo = 0;
+  const selecionadas = new Map<string, (typeof candidatos)[number]>();
+  type Candidato = Awaited<ReturnType<typeof pierAdapter.listRequests>>[number];
+  const candidatos: Candidato[] = [];
+
+  const doDepartamento = (s: Candidato) => {
+    const departamento = s.responsibleExternalId
+      ? deptoPorUsuario.get(s.responsibleExternalId) ?? null
+      : null;
+    return Boolean(departamento && departamentos.has(departamento));
+  };
+
   try {
-    todas = await pierAdapter.listRequests({
-      status: "Todas",
-      maxPages: 200,
-      busca: termoBusca,
-    });
+    for (const competencia of meses) {
+      const [ano, mes] = competencia.split("-");
+      const termoBusca = `${mes}/${ano}`;
+      const lote = await pierAdapter.listRequests({
+        status: "Todas",
+        maxPages: 200,
+        busca: termoBusca,
+      });
+      recebidasDaBusca += lote.length;
+
+      for (const s of lote) {
+        if (!doDepartamento(s)) continue;
+        doDepartamentoFiscal += 1;
+        if (s.referenceMonth && s.referenceMonth !== competencia) continue;
+        if (!input.incluirFinalizadas && finalizada(s.status, s.finishedAt)) continue;
+        if (selecionadas.has(s.externalId)) continue;
+
+        if (s.referenceMonth === competencia) {
+          competenciaInterpretada += 1;
+          selecionadas.set(s.externalId, s);
+        } else {
+          competenciaAssumida += 1;
+          selecionadas.set(s.externalId, {
+            ...s,
+            referenceMonth: competencia,
+            raw: {
+              ...s.raw,
+              competenciaAssumidaDaBusca: true,
+              termoBuscaCompetencia: termoBusca,
+            },
+          });
+        }
+      }
+    }
+
+    // Complemento: busca genérica. Só entra quem já tem competência dentro do intervalo.
+    const genericas = await pierAdapter.listRequests({ status: "Todas", maxPages: 200 });
+    recebidasDaBusca += genericas.length;
+    for (const s of genericas) {
+      if (selecionadas.has(s.externalId)) continue;
+      if (!doDepartamento(s)) continue;
+      doDepartamentoFiscal += 1;
+      if (
+        !s.referenceMonth ||
+        s.referenceMonth < input.competenciaInicio ||
+        s.referenceMonth > input.competenciaFim
+      ) {
+        foraDoIntervalo += 1;
+        continue;
+      }
+      if (!input.incluirFinalizadas && finalizada(s.status, s.finishedAt)) continue;
+      competenciaInterpretada += 1;
+      selecionadas.set(s.externalId, s);
+    }
   } catch (error) {
+    await audit(ctx, {
+      action: "FALHA_SINCRONIZACAO_FISCAL",
+      entity: "request",
+      after: {
+        competenciaInicio: input.competenciaInicio,
+        competenciaFim: input.competenciaFim,
+        erro: mascararTexto(erroSeguro(error)),
+      },
+    });
     throw new AppError(
       "INTEGRACAO_FALHA",
       "Não foi possível carregar as solicitações do departamento fiscal no PIER.",
@@ -148,39 +254,7 @@ export async function sincronizarSolicitacoesFiscais(
     );
   }
 
-  const recebidasDaBusca = todas.length;
-  let doDepartamentoFiscal = 0;
-  let competenciaInterpretada = 0;
-  let competenciaAssumida = 0;
-
-  const fiscais = todas
-    .filter((s) => {
-      const departamento = s.responsibleExternalId
-        ? deptoPorUsuario.get(s.responsibleExternalId) ?? null
-        : null;
-      if (!departamento || !departamentos.has(departamento)) return false;
-      doDepartamentoFiscal += 1;
-      // Competência explícita divergente é descartada; ausência é assumida da busca MM/AAAA.
-      if (s.referenceMonth && s.referenceMonth !== input.competencia) return false;
-      if (!input.incluirFinalizadas && finalizada(s.status, s.finishedAt)) return false;
-      return true;
-    })
-    .map((s) => {
-      if (s.referenceMonth === input.competencia) {
-        competenciaInterpretada += 1;
-        return s;
-      }
-      competenciaAssumida += 1;
-      return {
-        ...s,
-        referenceMonth: input.competencia,
-        raw: {
-          ...s.raw,
-          competenciaAssumidaDaBusca: true,
-          termoBuscaCompetencia: termoBusca,
-        },
-      };
-    });
+  const fiscais = [...selecionadas.values()];
 
   for (let inicio = 0; inicio < fiscais.length; inicio += 250) {
     const lote = fiscais.slice(inicio, inicio + 250);
@@ -227,11 +301,12 @@ export async function sincronizarSolicitacoesFiscais(
   }
 
   const diagnostico = {
-    termoBusca,
+    meses,
     recebidasDaBusca,
     doDepartamentoFiscal,
     competenciaInterpretada,
     competenciaAssumida,
+    foraDoIntervalo,
     totalGravado: fiscais.length,
   };
 
@@ -239,7 +314,8 @@ export async function sincronizarSolicitacoesFiscais(
     action: "SINCRONIZAR_SOLICITACOES_FISCAIS",
     entity: "request",
     after: {
-      competencia: input.competencia,
+      competenciaInicio: input.competenciaInicio,
+      competenciaFim: input.competenciaFim,
       departamentos: [...departamentos],
       total: fiscais.length,
       ...diagnostico,
@@ -249,6 +325,8 @@ export async function sincronizarSolicitacoesFiscais(
 
   return {
     total: fiscais.length,
+    competenciaInicio: input.competenciaInicio,
+    competenciaFim: input.competenciaFim,
     departamentos: [...departamentos],
     ...diagnostico,
     tipos: [...porTipo.entries()]
@@ -256,6 +334,7 @@ export async function sincronizarSolicitacoesFiscais(
       .sort((a, b) => b.total - a.total),
   };
 }
+
 
 export type StatusRespostaFiscal = "TODAS" | "SEM_RESPOSTA" | "RESPONDIDAS" | "NAO_VERIFICADAS";
 export type StatusPierFiscal = "PENDENTES" | "FINALIZADAS" | "TODOS";
