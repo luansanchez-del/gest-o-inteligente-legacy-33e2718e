@@ -3,11 +3,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import {
   CheckCircle2,
+  Download,
   FileCheck2,
+  FilterX,
   Loader2,
   RefreshCw,
-  Search,
-  ShieldAlert,
+  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -28,7 +29,10 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -45,53 +49,62 @@ import {
   executarDecisaoFiscal,
   listarEquipeFiscal,
   listarGestaoFiscal,
+  sincronizarEquipeFiscal,
   sincronizarSolicitacoesFiscais,
   validarLoteFiscal,
   validarSolicitacaoFiscal,
 } from "@/lib/api/fiscal.functions";
 import { sincronizarRespostasPier } from "@/lib/api/gestao.functions";
-import { formatarCnpj } from "@/lib/formato";
 import { mensagemDeErro } from "@/lib/erros";
+import { formatarCnpj } from "@/lib/formato";
 
 export const Route = createFileRoute("/_authenticated/gestao/fiscal/")({
-  head: () => ({
-    meta: [
-      { title: "Gestão Fiscal | Gestão Inteligente" },
-      {
-        name: "description",
-        content:
-          "Gestão das solicitações do departamento fiscal no PIER com checklist documental por obrigação e regime.",
-      },
-    ],
-  }),
+  head: () => ({ meta: [{ title: "Gestão Fiscal | Gestão Inteligente" }] }),
   component: GestaoFiscalPage,
 });
 
 const TODOS = "__TODOS__";
+const TODAS_SITUACOES = "__TODAS_SITUACOES__";
+
+type StatusPier = "PENDENTES" | "FINALIZADAS" | "TODOS";
+type StatusResposta = "TODAS" | "SEM_RESPOSTA" | "RESPONDIDAS" | "NAO_VERIFICADAS";
+type Situacao = "A_VALIDAR" | "ANALISADA" | "REVISAO_NECESSARIA" | "ERRO" | "FINALIZADA";
+
+const SITUACOES: Record<Situacao, { rotulo: string; classe: string }> = {
+  A_VALIDAR: { rotulo: "A validar", classe: "text-primary" },
+  ANALISADA: { rotulo: "Aprovada", classe: "text-success-strong" },
+  REVISAO_NECESSARIA: { rotulo: "Com ressalva", classe: "text-warning-strong" },
+  ERRO: { rotulo: "Falha", classe: "text-destructive" },
+  FINALIZADA: { rotulo: "Finalizada no PIER", classe: "text-muted-foreground" },
+};
 
 function competenciaAtual() {
   const hoje = new Date();
   return `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function situacaoFiscal(situacao: string) {
-  const mapa: Record<string, { rotulo: string; classe: string }> = {
-    A_VALIDAR: { rotulo: "A validar", classe: "text-muted-foreground" },
-    ANALISADA: { rotulo: "Analisada", classe: "text-success-strong" },
-    REVISAO_NECESSARIA: { rotulo: "Revisão necessária", classe: "text-warning-strong" },
-    ERRO: { rotulo: "Falha", classe: "text-destructive" },
-    FINALIZADA: { rotulo: "Finalizada", classe: "text-muted-foreground" },
-  };
-  return mapa[situacao] ?? mapa.A_VALIDAR;
+function normalizar(value: string | null | undefined) {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function responsavelHumano(nome: string) {
+  const n = normalizar(nome);
+  return !n.includes("automacao") && !n.includes("fechamento contabil");
 }
 
 function formatarData(value: string | null | undefined) {
-  if (!value) return "—";
+  if (!value) return null;
   const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "—";
+  if (Number.isNaN(d.getTime())) return null;
   return d.toLocaleString("pt-BR", {
     day: "2-digit",
     month: "2-digit",
+    year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
   });
@@ -101,10 +114,13 @@ type AnaliseFiscal = Awaited<ReturnType<typeof validarSolicitacaoFiscal>>;
 
 function GestaoFiscalPage() {
   const queryClient = useQueryClient();
-  const [competencia, setCompetencia] = useState(competenciaAtual());
+  const [competenciaInicio, setCompetenciaInicio] = useState(competenciaAtual());
+  const [competenciaFim, setCompetenciaFim] = useState(competenciaAtual());
+  const [departamento, setDepartamento] = useState(TODOS);
   const [responsavel, setResponsavel] = useState(TODOS);
-  const [statusPier, setStatusPier] = useState<"PENDENTES" | "FINALIZADAS" | "TODOS">("PENDENTES");
-  const [statusResposta, setStatusResposta] = useState<"TODAS" | "SEM_RESPOSTA" | "RESPONDIDAS" | "NAO_VERIFICADAS">("TODAS");
+  const [statusPier, setStatusPier] = useState<StatusPier>("PENDENTES");
+  const [statusResposta, setStatusResposta] = useState<StatusResposta>("TODAS");
+  const [situacao, setSituacao] = useState(TODAS_SITUACOES);
   const [anexo, setAnexo] = useState<"TODOS" | "COM_ANEXO" | "SEM_ANEXO">("TODOS");
   const [busca, setBusca] = useState("");
   const [analise, setAnalise] = useState<AnaliseFiscal | null>(null);
@@ -112,13 +128,43 @@ function GestaoFiscalPage() {
   const [mensagem, setMensagem] = useState("");
   const [justificativa, setJustificativa] = useState("");
 
+  const intervaloValido =
+    /^\d{4}-\d{2}$/.test(competenciaInicio) &&
+    /^\d{4}-\d{2}$/.test(competenciaFim) &&
+    competenciaInicio <= competenciaFim;
+
   const equipe = useQuery({
     queryKey: ["equipe-fiscal"],
     queryFn: () => listarEquipeFiscal(),
   });
 
+  const departamentos = equipe.data?.departamentos ?? [];
+  const usuariosHumanos = useMemo(
+    () => (equipe.data?.usuarios ?? []).filter((u) => responsavelHumano(u.nome)),
+    [equipe.data?.usuarios],
+  );
+
+  const usuariosPorDepartamento = useMemo(() => {
+    const mapa = new Map<string, typeof usuariosHumanos>();
+    for (const d of departamentos) mapa.set(d.id, []);
+    for (const u of usuariosHumanos) {
+      if (!u.departamentoId) continue;
+      const atual = mapa.get(u.departamentoId) ?? [];
+      atual.push(u);
+      mapa.set(u.departamentoId, atual);
+    }
+    for (const [, lista] of mapa) lista.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+    return mapa;
+  }, [departamentos, usuariosHumanos]);
+
+  const usuariosDoDepartamento = useMemo(() => {
+    if (departamento === TODOS) return usuariosHumanos;
+    return usuariosHumanos.filter((u) => u.departamentoId === departamento);
+  }, [departamento, usuariosHumanos]);
+
   const filtro = {
-    competencia,
+    competenciaInicio,
+    competenciaFim,
     responsavelId: responsavel === TODOS ? null : responsavel,
     busca: busca.trim() || null,
     anexo: anexo === "TODOS" ? null : anexo,
@@ -129,7 +175,8 @@ function GestaoFiscalPage() {
   const gestao = useQuery({
     queryKey: [
       "gestao-fiscal",
-      competencia,
+      competenciaInicio,
+      competenciaFim,
       responsavel,
       statusPier,
       statusResposta,
@@ -137,35 +184,57 @@ function GestaoFiscalPage() {
       busca,
     ],
     queryFn: () => listarGestaoFiscal({ data: filtro }),
-    enabled: /^\d{4}-\d{2}$/.test(competencia),
+    enabled: intervaloValido,
     placeholderData: (anterior) => anterior,
   });
 
+  const sincEquipe = useMutation({
+    mutationFn: () => sincronizarEquipeFiscal(),
+    onSuccess: (r) => {
+      toast.success(`${r.processados} usuários fiscais atualizados em ${r.departamentos} departamentos.`);
+      void queryClient.invalidateQueries({ queryKey: ["equipe-fiscal"] });
+    },
+    onError: (e) => toast.error(mensagemDeErro(e)),
+  });
+
   const carregar = useMutation({
-    mutationFn: () =>
-      sincronizarSolicitacoesFiscais({
+    mutationFn: () => {
+      if (!intervaloValido) throw new Error("A competência inicial deve ser anterior ou igual à final.");
+      return sincronizarSolicitacoesFiscais({
         data: {
-          competencia,
+          competenciaInicio,
+          competenciaFim,
           incluirFinalizadas: statusPier !== "PENDENTES",
         },
-      }),
+      });
+    },
     onSuccess: (r) => {
-      toast.success(
-        `${r.total} solicitação(ões) do departamento fiscal carregadas para ${competencia}.`,
-      );
+      toast.success(`${r.totalGravado} solicitações fiscais atualizadas do PIER.`, {
+        description: `Recebidas: ${r.recebidasDaBusca} · Fiscal: ${r.doDepartamentoFiscal} · Competência identificada: ${r.competenciaInterpretada} · Assumida: ${r.competenciaAssumida}`,
+      });
       void queryClient.invalidateQueries({ queryKey: ["gestao-fiscal"] });
     },
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
 
+  const linhasBase = gestao.data?.linhas ?? [];
+
+  const linhasFiltradas = useMemo(() => {
+    let linhas = linhasBase;
+    if (departamento !== TODOS) {
+      const ids = new Set((usuariosPorDepartamento.get(departamento) ?? []).map((u) => u.id));
+      linhas = linhas.filter((l) => Boolean(l.responsavelId && ids.has(l.responsavelId)));
+    }
+    if (situacao !== TODAS_SITUACOES) linhas = linhas.filter((l) => l.situacao === situacao);
+    return linhas;
+  }, [departamento, linhasBase, situacao, usuariosPorDepartamento]);
+
   const atualizarRespostas = useMutation({
     mutationFn: async () => {
-      const ids = gestao.data?.linhas.map((l) => l.solicitacaoId) ?? [];
+      const ids = linhasFiltradas.map((l) => l.solicitacaoId);
       const total = { total: 0, respondidas: 0, semResposta: 0, erros: 0 };
       for (let inicio = 0; inicio < ids.length; inicio += 100) {
-        const r = await sincronizarRespostasPier({
-          data: { solicitacoes: ids.slice(inicio, inicio + 100) },
-        });
+        const r = await sincronizarRespostasPier({ data: { solicitacoes: ids.slice(inicio, inicio + 100) } });
         total.total += r.resumo.total;
         total.respondidas += r.resumo.respondidas;
         total.semResposta += r.resumo.semResposta;
@@ -174,17 +243,14 @@ function GestaoFiscalPage() {
       return total;
     },
     onSuccess: (r) => {
-      toast.success(
-        `${r.total} verificadas: ${r.respondidas} já respondidas e ${r.semResposta} sem resposta${r.erros ? `; ${r.erros} falharam` : ""}.`,
-      );
+      toast.success(`${r.total} verificadas no PIER: ${r.respondidas} respondidas e ${r.semResposta} sem resposta${r.erros ? `; ${r.erros} falharam` : ""}.`);
       void queryClient.invalidateQueries({ queryKey: ["gestao-fiscal"] });
     },
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
 
   const validarUma = useMutation({
-    mutationFn: (solicitacaoExternalId: string) =>
-      validarSolicitacaoFiscal({ data: { solicitacaoExternalId } }),
+    mutationFn: (solicitacaoExternalId: string) => validarSolicitacaoFiscal({ data: { solicitacaoExternalId } }),
     onSuccess: (r) => {
       setAnalise(r);
       setMensagem(r.respostaSugerida);
@@ -197,7 +263,7 @@ function GestaoFiscalPage() {
 
   const validarLote = useMutation({
     mutationFn: () => {
-      const ids = (gestao.data?.linhas ?? [])
+      const ids = linhasFiltradas
         .filter((l) => l.situacao !== "FINALIZADA")
         .map((l) => l.solicitacaoId)
         .slice(0, 100);
@@ -205,9 +271,7 @@ function GestaoFiscalPage() {
       return validarLoteFiscal({ data: { solicitacoes: ids } });
     },
     onSuccess: (r) => {
-      toast.success(
-        `${r.total} validadas: ${r.aprovadas} aprovadas, ${r.ressalvas} com ressalvas, ${r.bloqueadas} bloqueadas, ${r.naoMapeadas} não mapeadas e ${r.erros} falhas.`,
-      );
+      toast.success(`${r.total} validadas: ${r.aprovadas} aprovadas, ${r.ressalvas} com ressalvas, ${r.bloqueadas} bloqueadas, ${r.naoMapeadas} não mapeadas e ${r.erros} falhas.`);
       void queryClient.invalidateQueries({ queryKey: ["gestao-fiscal"] });
     },
     onError: (e) => toast.error(mensagemDeErro(e)),
@@ -233,81 +297,163 @@ function GestaoFiscalPage() {
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
 
-  const dados = gestao.data;
-  const processaveis = useMemo(
-    () => (dados?.linhas ?? []).filter((l) => l.situacao !== "FINALIZADA").length,
-    [dados],
-  );
-  const podeFinalizar =
-    Boolean(analise) &&
-    !["BLOQUEADA", "NAO_MAPEADA", "FINALIZADA"].includes(analise?.situacao ?? "");
+  const totais = useMemo(() => {
+    const total = linhasFiltradas.length;
+    const aguardando = linhasFiltradas.filter((l) => l.situacao === "A_VALIDAR" && !l.temAnexo).length;
+    const prontas = linhasFiltradas.filter((l) => l.situacao === "A_VALIDAR" && l.temAnexo).length;
+    const aprovadas = linhasFiltradas.filter((l) => l.situacao === "ANALISADA").length;
+    const ressalvas = linhasFiltradas.filter((l) => l.situacao === "REVISAO_NECESSARIA").length;
+    const falhas = linhasFiltradas.filter((l) => l.situacao === "ERRO").length;
+    const finalizadas = linhasFiltradas.filter((l) => l.situacao === "FINALIZADA").length;
+    const analisadas = aprovadas + ressalvas + falhas + finalizadas;
+    return {
+      total,
+      aguardando,
+      prontas,
+      aprovadas,
+      ressalvas,
+      falhas,
+      finalizadas,
+      percentual: total ? Math.round((analisadas / total) * 100) : 0,
+    };
+  }, [linhasFiltradas]);
+
+  const responsaveisResumo = useMemo(() => {
+    const mapa = new Map<string, number>();
+    for (const l of linhasFiltradas) {
+      const nome = l.responsavelNome ?? "Sem responsável";
+      mapa.set(nome, (mapa.get(nome) ?? 0) + 1);
+    }
+    return [...mapa.entries()]
+      .map(([nome, total]) => ({ nome, total }))
+      .sort((a, b) => b.total - a.total || a.nome.localeCompare(b.nome, "pt-BR"));
+  }, [linhasFiltradas]);
+
+  const departamentoNome =
+    departamento === TODOS
+      ? "Todos os departamentos"
+      : departamentos.find((d) => d.id === departamento)?.nome ?? "Departamento fiscal";
+  const responsavelNome =
+    responsavel === TODOS
+      ? departamento === TODOS ? "Todos os responsáveis" : "Todos do departamento"
+      : usuariosHumanos.find((u) => u.id === responsavel)?.nome ?? "Responsável fiscal";
+
+  const filtrosAtivos =
+    competenciaInicio !== competenciaAtual() ||
+    competenciaFim !== competenciaAtual() ||
+    departamento !== TODOS ||
+    responsavel !== TODOS ||
+    statusPier !== "PENDENTES" ||
+    statusResposta !== "TODAS" ||
+    situacao !== TODAS_SITUACOES ||
+    anexo !== "TODOS" ||
+    busca !== "";
+
+  function limparFiltros() {
+    setCompetenciaInicio(competenciaAtual());
+    setCompetenciaFim(competenciaAtual());
+    setDepartamento(TODOS);
+    setResponsavel(TODOS);
+    setStatusPier("PENDENTES");
+    setStatusResposta("TODAS");
+    setSituacao(TODAS_SITUACOES);
+    setAnexo("TODOS");
+    setBusca("");
+  }
+
+  const processaveis = linhasFiltradas.filter((l) => l.situacao !== "FINALIZADA").length;
+  const podeFinalizar = Boolean(analise) && !["BLOQUEADA", "NAO_MAPEADA", "FINALIZADA"].includes(analise?.situacao ?? "");
   const exigeJustificativa = analise?.situacao === "COM_RESSALVAS";
 
   return (
     <div className="space-y-6">
       <PageHeader
-        titulo="Gestão Fiscal"
-        descricao="Solicitações do departamento fiscal do PIER, com checklist por obrigação e regime conforme o procedimento de fechamento fiscal."
+        titulo="Gestão de solicitações fiscais"
+        descricao="Escolha a competência, o departamento e o responsável do PIER antes de iniciar a validação fiscal."
         acoes={
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              onClick={() => carregar.mutate()}
-              disabled={carregar.isPending}
-            >
-              {carregar.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="mr-2 h-4 w-4" />
-              )}
-              Carregar Fiscal do PIER
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" onClick={() => sincEquipe.mutate()} disabled={sincEquipe.isPending}>
+              <Users className="mr-2 h-4 w-4" />
+              Sincronizar equipe
             </Button>
-            <Button
-              variant="outline"
-              onClick={() => atualizarRespostas.mutate()}
-              disabled={atualizarRespostas.isPending || !dados?.linhas.length}
-            >
-              <RefreshCw
-                className={`mr-2 h-4 w-4 ${atualizarRespostas.isPending ? "animate-spin" : ""}`}
-              />
-              Atualizar respostas PIER
+            <Button variant="outline" onClick={() => carregar.mutate()} disabled={carregar.isPending || !intervaloValido}>
+              <Download className="mr-2 h-4 w-4" />
+              Carregar solicitações da competência
             </Button>
-            <Button
-              onClick={() => validarLote.mutate()}
-              disabled={validarLote.isPending || processaveis === 0}
-            >
-              {validarLote.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <FileCheck2 className="mr-2 h-4 w-4" />
-              )}
-              Validar Fiscal em lote
+            <Button variant="outline" onClick={() => atualizarRespostas.mutate()} disabled={atualizarRespostas.isPending || !linhasFiltradas.length}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${atualizarRespostas.isPending ? "animate-spin" : ""}`} />
+              {atualizarRespostas.isPending ? "Verificando respostas…" : "Atualizar respostas PIER"}
             </Button>
           </div>
         }
       />
 
+      {equipe.data && !equipe.data.integracao.available ? (
+        <Card className="border-warning/40 bg-warning-soft p-4 text-sm text-warning-strong">
+          Integração com o PIER indisponível: {equipe.data.integracao.reason ?? "não configurada"}.
+        </Card>
+      ) : null}
+
       <Card className="p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
-          <div className="space-y-1.5 lg:w-[160px]">
-            <Label>Competência</Label>
-            <Input type="month" value={competencia} onChange={(e) => setCompetencia(e.target.value)} />
+          <div className="space-y-1.5 lg:w-[150px]">
+            <Label>Competência inicial</Label>
+            <Input type="month" value={competenciaInicio} onChange={(e) => setCompetenciaInicio(e.target.value)} />
           </div>
-          <div className="min-w-[250px] flex-1 space-y-1.5">
-            <Label>Responsável fiscal</Label>
-            <Select value={responsavel} onValueChange={setResponsavel}>
+          <div className="space-y-1.5 lg:w-[150px]">
+            <Label>Competência final</Label>
+            <Input type="month" value={competenciaFim} onChange={(e) => setCompetenciaFim(e.target.value)} />
+          </div>
+
+          <div className="space-y-1.5 lg:min-w-[280px] lg:flex-1">
+            <Label>Departamento responsável</Label>
+            <Select
+              value={departamento}
+              onValueChange={(v) => {
+                setDepartamento(v);
+                setResponsavel(TODOS);
+              }}
+            >
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent className="max-h-80">
-                <SelectItem value={TODOS}>Todos do Fiscal</SelectItem>
-                {(equipe.data?.usuarios ?? []).map((u) => (
-                  <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>
+                <SelectItem value={TODOS}>Todos os departamentos</SelectItem>
+                {departamentos.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>{d.nome} · {d.totalUsuarios}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
-          <div className="min-w-[170px] space-y-1.5">
-            <Label>Status PIER</Label>
-            <Select value={statusPier} onValueChange={(v) => setStatusPier(v as typeof statusPier)}>
+
+          <div className="space-y-1.5 lg:min-w-[280px] lg:flex-1">
+            <Label>Responsável</Label>
+            <Select value={responsavel} onValueChange={setResponsavel}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent className="max-h-80">
+                <SelectItem value={TODOS}>
+                  {departamento === TODOS ? "Todos os responsáveis" : "Todos do departamento"}
+                </SelectItem>
+                <SelectSeparator />
+                {departamento === TODOS ? (
+                  departamentos.map((d) => {
+                    const lista = usuariosPorDepartamento.get(d.id) ?? [];
+                    if (!lista.length) return null;
+                    return (
+                      <SelectGroup key={d.id}>
+                        <SelectLabel>{d.nome}</SelectLabel>
+                        {lista.map((u) => <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>)}
+                      </SelectGroup>
+                    );
+                  })
+                ) : (
+                  usuariosDoDepartamento.map((u) => <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>)
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="min-w-[170px] space-y-1">
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Status PIER</Label>
+            <Select value={statusPier} onValueChange={(v) => setStatusPier(v as StatusPier)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="PENDENTES">Em aberto</SelectItem>
@@ -316,9 +462,10 @@ function GestaoFiscalPage() {
               </SelectContent>
             </Select>
           </div>
-          <div className="min-w-[190px] space-y-1.5">
-            <Label>Resposta</Label>
-            <Select value={statusResposta} onValueChange={(v) => setStatusResposta(v as typeof statusResposta)}>
+
+          <div className="min-w-[190px] space-y-1">
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Resposta</Label>
+            <Select value={statusResposta} onValueChange={(v) => setStatusResposta(v as StatusResposta)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="TODAS">Todas</SelectItem>
@@ -328,8 +475,22 @@ function GestaoFiscalPage() {
               </SelectContent>
             </Select>
           </div>
-          <div className="min-w-[170px] space-y-1.5">
-            <Label>Anexos</Label>
+
+          <div className="min-w-[190px] space-y-1">
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Situação</Label>
+            <Select value={situacao} onValueChange={setSituacao}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={TODAS_SITUACOES}>Todas as situações</SelectItem>
+                {Object.entries(SITUACOES).map(([valor, info]) => (
+                  <SelectItem key={valor} value={valor}>{info.rotulo}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="min-w-[190px] space-y-1">
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Anexos</Label>
             <Select value={anexo} onValueChange={(v) => setAnexo(v as typeof anexo)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -339,49 +500,75 @@ function GestaoFiscalPage() {
               </SelectContent>
             </Select>
           </div>
-          <div className="min-w-[260px] flex-1 space-y-1.5">
+
+          <div className="space-y-1.5 lg:w-[240px]">
             <Label>Cliente / CNPJ / assunto</Label>
-            <div className="relative">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input className="pl-9" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar" />
-            </div>
+            <Input value={busca} placeholder="Buscar" onChange={(e) => setBusca(e.target.value)} />
           </div>
+
+          <Button variant="outline" onClick={limparFiltros} disabled={!filtrosAtivos} className="lg:self-end">
+            <FilterX className="mr-2 h-4 w-4" />
+            Limpar filtros
+          </Button>
         </div>
       </Card>
 
-      {equipe.data && !equipe.data.integracao.available ? (
-        <Card className="border-warning/40 bg-warning-soft p-4 text-sm text-warning-strong">
-          Integração PIER indisponível: {equipe.data.integracao.reason ?? "não configurada"}.
-        </Card>
-      ) : null}
+      {gestao.isError ? <ErroConsulta error={gestao.error} onRetry={() => void gestao.refetch()} /> : null}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
         {[
-          ["No escopo", dados?.total ?? 0],
-          ["Abertas", dados?.abertas ?? 0],
-          ["Com anexo", dados?.comAnexo ?? 0],
-          ["Sem anexo", dados?.semAnexo ?? 0],
-          ["Analisadas", dados?.analisadas ?? 0],
-          ["Em revisão", dados?.revisao ?? 0],
-          ["Respondidas", dados?.respondidas ?? 0],
-          ["Resposta não verificada", dados?.naoVerificadas ?? 0],
-        ].map(([rotulo, valor]) => (
-          <Card key={String(rotulo)} className="p-3">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">{rotulo}</p>
-            <p className="text-2xl font-semibold tabular-nums">{valor}</p>
+          { rotulo: "No escopo", valor: totais.total, detalhe: `${totais.percentual}% analisadas` },
+          { rotulo: "Aguardando documento", valor: totais.aguardando },
+          { rotulo: "Prontas para validar", valor: totais.prontas },
+          { rotulo: "Em processamento", valor: 0 },
+          { rotulo: "Aprovadas", valor: totais.aprovadas },
+          { rotulo: "Com ressalvas", valor: totais.ressalvas },
+          { rotulo: "Bloqueadas / falhas", valor: totais.falhas, detalhe: `${totais.falhas} fiscais/técnicas` },
+          { rotulo: "Finalizadas", valor: totais.finalizadas },
+        ].map((item) => (
+          <Card key={item.rotulo} className="p-3">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">{item.rotulo}</p>
+            <p className="text-2xl font-semibold tabular-nums">{item.valor}</p>
+            {item.detalhe ? <p className="text-xs text-muted-foreground">{item.detalhe}</p> : null}
           </Card>
         ))}
       </div>
 
-      {gestao.isError ? <ErroConsulta error={gestao.error} onRetry={() => void gestao.refetch()} /> : null}
+      <Card className="space-y-3 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm">
+            <p className="font-medium">{departamentoNome} · {responsavelNome}</p>
+            <p className="text-muted-foreground">
+              Exibindo {linhasFiltradas.length} solicitações fiscais de {competenciaInicio} a {competenciaFim}. Sem responsável: {linhasFiltradas.filter((l) => !l.responsavelId).length}.
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Já respondidas: {linhasFiltradas.filter((l) => l.statusResposta === "RESPONDIDA").length} · Sem resposta verificada: {linhasFiltradas.filter((l) => l.statusResposta === "NAO_RESPONDIDA").length} · Não verificadas: {linhasFiltradas.filter((l) => l.statusResposta === "NAO_VERIFICADA").length}.
+            </p>
+          </div>
+          <Button onClick={() => validarLote.mutate()} disabled={validarLote.isPending || processaveis === 0 || statusPier === "FINALIZADAS"}>
+            <FileCheck2 className="mr-2 h-4 w-4" />
+            {validarLote.isPending ? "Validando lote…" : "Validar em lote"}
+          </Button>
+        </div>
+
+        {responsaveisResumo.length ? (
+          <div className="flex flex-wrap gap-2">
+            {responsaveisResumo.map((r) => (
+              <span key={r.nome} className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
+                {r.nome}: <span className="tabular-nums font-medium">{r.total}</span>
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </Card>
 
       <Card className="overflow-hidden">
         {gestao.isLoading ? (
           <CarregandoTabela />
-        ) : !dados?.linhas.length ? (
+        ) : !linhasFiltradas.length ? (
           <EstadoVazio
-            titulo="Nenhuma solicitação fiscal carregada neste filtro."
-            descricao="Clique em “Carregar Fiscal do PIER” para sincronizar as solicitações da competência atribuídas ao departamento fiscal."
+            titulo="Nenhuma solicitação fiscal neste escopo."
+            descricao="Carregue as solicitações da competência e ajuste os filtros. Para preencher o status de resposta, use “Atualizar respostas PIER”."
           />
         ) : (
           <Table>
@@ -389,64 +576,49 @@ function GestaoFiscalPage() {
               <TableRow>
                 <TableHead>Número</TableHead>
                 <TableHead>Empresa</TableHead>
+                <TableHead>CNPJ/CPF</TableHead>
+                <TableHead>Competência</TableHead>
                 <TableHead>Assunto fiscal</TableHead>
                 <TableHead>Responsável</TableHead>
                 <TableHead>Status PIER</TableHead>
-                <TableHead>Anexo</TableHead>
                 <TableHead>Resposta</TableHead>
+                <TableHead>Anexo</TableHead>
                 <TableHead>Situação</TableHead>
                 <TableHead className="text-right">Ação</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {dados.linhas.map((linha) => {
-                const s = situacaoFiscal(linha.situacao);
+              {linhasFiltradas.map((linha) => {
+                const info = SITUACOES[linha.situacao as Situacao] ?? SITUACOES.A_VALIDAR;
+                const respostaEm = formatarData(linha.respostaEm);
                 return (
                   <TableRow key={linha.solicitacaoId}>
                     <TableCell className="tabular-nums">{linha.numero ?? "—"}</TableCell>
-                    <TableCell className="font-medium">
-                      {linha.clienteNome}
-                      <span className="block text-xs font-normal text-muted-foreground">
-                        {formatarCnpj(linha.documento)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="max-w-[280px]">
-                      <span className="line-clamp-2">{linha.assunto}</span>
-                    </TableCell>
+                    <TableCell className="font-medium">{linha.clienteNome}</TableCell>
+                    <TableCell className="tabular-nums">{formatarCnpj(linha.documento)}</TableCell>
+                    <TableCell className="tabular-nums">{linha.competencia ?? "—"}</TableCell>
+                    <TableCell className="max-w-[260px]"><span className="line-clamp-2">{linha.assunto}</span></TableCell>
                     <TableCell>{linha.responsavelNome ?? "Sem responsável"}</TableCell>
                     <TableCell>{linha.statusPier ?? "—"}</TableCell>
                     <TableCell>
-                      <span className={linha.temAnexo ? "text-success-strong" : "text-destructive"}>
-                        {linha.temAnexo ? "Sim" : "Não"}
-                      </span>
-                    </TableCell>
-                    <TableCell>
                       {linha.statusResposta === "RESPONDIDA" ? (
                         <div>
-                          <span className="font-medium text-success-strong">Já respondida</span>
-                          <span className="block text-[11px] text-muted-foreground">
-                            {linha.respostaAutor ?? "PIER"} · {formatarData(linha.respostaEm)}
-                          </span>
+                          <span className="inline-flex rounded-full bg-success-soft px-2 py-1 text-xs font-medium text-success-strong">Já respondida</span>
+                          <span className="mt-0.5 block text-[11px] text-muted-foreground">{linha.respostaAutor ?? "PIER"}{respostaEm ? ` · ${respostaEm}` : ""}</span>
                         </div>
                       ) : linha.statusResposta === "NAO_RESPONDIDA" ? (
-                        <span>Sem resposta</span>
+                        <span className="inline-flex rounded-full bg-muted px-2 py-1 text-xs font-medium">Sem resposta</span>
                       ) : (
-                        <span className="text-muted-foreground">Não verificada</span>
+                        <span className="inline-flex rounded-full bg-warning-soft px-2 py-1 text-xs font-medium text-warning-strong">Não verificada</span>
                       )}
                     </TableCell>
+                    <TableCell>{linha.temAnexo ? "Sim" : "Não"}</TableCell>
                     <TableCell>
-                      <span className={`inline-flex rounded-full bg-muted px-2.5 py-1 text-xs font-medium ${s.classe}`}>
-                        {s.rotulo}
-                      </span>
+                      <span className={`inline-flex rounded-full bg-muted px-2 py-1 text-xs font-medium ${info.classe}`}>{info.rotulo}</span>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        disabled={validarUma.isPending || linha.situacao === "FINALIZADA"}
-                        onClick={() => validarUma.mutate(linha.solicitacaoId)}
-                      >
-                        {validarUma.isPending ? "Validando…" : linha.situacao === "REVISAO_NECESSARIA" ? "Revisar" : "Validar"}
+                      <Button size="sm" variant="ghost" disabled={validarUma.isPending || linha.situacao === "FINALIZADA"} onClick={() => validarUma.mutate(linha.solicitacaoId)}>
+                        {linha.situacao === "REVISAO_NECESSARIA" ? "Revisar" : "Validar"}
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -460,43 +632,23 @@ function GestaoFiscalPage() {
       <Dialog open={dialogAberto} onOpenChange={setDialogAberto}>
         <DialogContent className="max-h-[92vh] max-w-4xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>
-              {analise?.grupoRotulo ?? "Análise fiscal"} · {analise?.clienteNome ?? "—"}
-            </DialogTitle>
-            <DialogDescription>
-              Checklist documental baseado no procedimento de fechamento fiscal. A decisão final permanece humana.
-            </DialogDescription>
+            <DialogTitle>{analise?.grupoRotulo ?? "Análise fiscal"} · {analise?.clienteNome ?? "—"}</DialogTitle>
+            <DialogDescription>Checklist fiscal com evidências do PIER. A decisão final permanece humana.</DialogDescription>
           </DialogHeader>
 
           {analise ? (
             <div className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-4">
-                <Card className="p-3">
-                  <p className="text-xs text-muted-foreground">Situação</p>
-                  <p className="font-semibold">{analise.situacao}</p>
-                </Card>
-                <Card className="p-3">
-                  <p className="text-xs text-muted-foreground">Regime</p>
-                  <p className="font-semibold">{analise.regime ?? "Não identificado"}</p>
-                </Card>
-                <Card className="p-3">
-                  <p className="text-xs text-muted-foreground">Impedimentos</p>
-                  <p className="font-semibold text-destructive">{analise.totalImpedimentos}</p>
-                </Card>
-                <Card className="p-3">
-                  <p className="text-xs text-muted-foreground">Alertas</p>
-                  <p className="font-semibold text-warning-strong">{analise.totalAlertas}</p>
-                </Card>
+                <Card className="p-3"><p className="text-xs text-muted-foreground">Situação</p><p className="font-semibold">{analise.situacao}</p></Card>
+                <Card className="p-3"><p className="text-xs text-muted-foreground">Regime</p><p className="font-semibold">{analise.regime ?? "Não identificado"}</p></Card>
+                <Card className="p-3"><p className="text-xs text-muted-foreground">Impedimentos</p><p className="font-semibold text-destructive">{analise.totalImpedimentos}</p></Card>
+                <Card className="p-3"><p className="text-xs text-muted-foreground">Alertas</p><p className="font-semibold text-warning-strong">{analise.totalAlertas}</p></Card>
               </div>
 
               <div className="rounded-lg border p-4">
                 <p className="mb-2 font-medium">Evidências localizadas no PIER</p>
                 {analise.evidenciasEncontradas.length ? (
-                  <div className="space-y-1 text-sm">
-                    {analise.evidenciasEncontradas.map((nome) => (
-                      <p key={nome}>• {nome}</p>
-                    ))}
-                  </div>
+                  <div className="space-y-1 text-sm">{analise.evidenciasEncontradas.map((nome) => <p key={nome}>• {nome}</p>)}</div>
                 ) : (
                   <p className="text-sm text-muted-foreground">Nenhuma evidência localizada.</p>
                 )}
@@ -506,26 +658,15 @@ function GestaoFiscalPage() {
                 <div className="space-y-2">
                   <p className="font-medium">Pontos identificados</p>
                   {analise.achados.map((a) => (
-                    <div
-                      key={`${a.codigo}-${a.titulo}`}
-                      className={`rounded-lg border p-3 text-sm ${a.severidade === "IMPEDIMENTO" ? "border-destructive/30 bg-destructive/5" : "border-warning/30 bg-warning-soft/30"}`}
-                    >
-                      <div className="flex items-center gap-2">
-                        {a.severidade === "IMPEDIMENTO" ? (
-                          <ShieldAlert className="h-4 w-4 text-destructive" />
-                        ) : (
-                          <ShieldAlert className="h-4 w-4 text-warning-strong" />
-                        )}
-                        <span className="font-medium">{a.titulo}</span>
-                      </div>
+                    <div key={`${a.codigo}-${a.titulo}`} className={`rounded-lg border p-3 text-sm ${a.severidade === "IMPEDIMENTO" ? "border-destructive/30 bg-destructive/5" : "border-warning/30 bg-warning-soft/30"}`}>
+                      <p className="font-medium">{a.titulo}</p>
                       <p className="mt-1 text-muted-foreground">{a.detalhe}</p>
                     </div>
                   ))}
                 </div>
               ) : (
                 <div className="rounded-lg border border-success/30 bg-success-soft p-3 text-sm text-success-strong">
-                  <CheckCircle2 className="mr-2 inline h-4 w-4" />
-                  Checklist documental atendido.
+                  <CheckCircle2 className="mr-2 inline h-4 w-4" /> Checklist documental atendido.
                 </div>
               )}
 
@@ -537,12 +678,7 @@ function GestaoFiscalPage() {
               {exigeJustificativa ? (
                 <div className="space-y-1.5">
                   <Label>Justificativa para aprovação com ressalvas</Label>
-                  <Textarea
-                    rows={3}
-                    value={justificativa}
-                    onChange={(e) => setJustificativa(e.target.value)}
-                    placeholder="Obrigatória para finalizar com ressalvas."
-                  />
+                  <Textarea rows={3} value={justificativa} onChange={(e) => setJustificativa(e.target.value)} placeholder="Obrigatória para finalizar com ressalvas." />
                 </div>
               ) : null}
             </div>
@@ -550,21 +686,8 @@ function GestaoFiscalPage() {
 
           <DialogFooter className="sticky bottom-0 border-t bg-background pt-4">
             <Button variant="ghost" onClick={() => setDialogAberto(false)}>Fechar</Button>
-            <Button
-              variant="outline"
-              disabled={decidir.isPending || !analise || analise.situacao === "FINALIZADA"}
-              onClick={() => decidir.mutate(false)}
-            >
-              Responder e manter aberta
-            </Button>
-            <Button
-              disabled={
-                decidir.isPending ||
-                !podeFinalizar ||
-                (exigeJustificativa && justificativa.trim().length < 10)
-              }
-              onClick={() => decidir.mutate(true)}
-            >
+            <Button variant="outline" disabled={decidir.isPending || !analise || analise.situacao === "FINALIZADA"} onClick={() => decidir.mutate(false)}>Responder e manter aberta</Button>
+            <Button disabled={decidir.isPending || !podeFinalizar || (exigeJustificativa && justificativa.trim().length < 10)} onClick={() => decidir.mutate(true)}>
               {decidir.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
               {exigeJustificativa ? "Aprovar com ressalva e finalizar" : "Responder e finalizar"}
             </Button>

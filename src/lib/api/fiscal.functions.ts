@@ -4,9 +4,11 @@ import { comContexto, emailDoToken } from "./contexto";
 
 const COMPETENCIA = /^\d{4}-\d{2}$/;
 
-function validarCompetencia(input: { competencia: string }) {
-  if (!COMPETENCIA.test(input?.competencia ?? ""))
-    throw new Error("VALIDACAO::Informe a competência no formato AAAA-MM.");
+function validarIntervalo(input: { competenciaInicio: string; competenciaFim: string }) {
+  if (!COMPETENCIA.test(input?.competenciaInicio ?? "") || !COMPETENCIA.test(input?.competenciaFim ?? ""))
+    throw new Error("VALIDACAO::Informe as competências no formato AAAA-MM.");
+  if (input.competenciaInicio > input.competenciaFim)
+    throw new Error("VALIDACAO::A competência inicial deve ser anterior ou igual à final.");
   return input;
 }
 
@@ -20,12 +22,23 @@ export const listarEquipeFiscal = createServerFn({ method: "GET" })
     }),
   );
 
+export const sincronizarEquipeFiscal = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) =>
+    comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
+      const service = await import("@/server/domain/fiscal/fiscal-equipe-sync.service");
+      return service.sincronizarEquipeFiscal(ctx);
+    }),
+  );
+
 export const sincronizarSolicitacoesFiscais = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { competencia: string; incluirFinalizadas?: boolean }) => {
-    validarCompetencia(input);
-    return input;
-  })
+  .inputValidator(
+    (input: { competenciaInicio: string; competenciaFim: string; incluirFinalizadas?: boolean }) => {
+      validarIntervalo(input);
+      return input;
+    },
+  )
   .handler(async ({ data, context }) =>
     comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
       const service = await import("@/server/domain/fiscal/fiscal-gestao.service");
@@ -37,14 +50,15 @@ export const listarGestaoFiscal = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator(
     (input: {
-      competencia: string;
+      competenciaInicio: string;
+      competenciaFim: string;
       responsavelId?: string | null;
       busca?: string | null;
       anexo?: "COM_ANEXO" | "SEM_ANEXO" | null;
       statusPier?: "PENDENTES" | "FINALIZADAS" | "TODOS" | null;
       statusResposta?: "TODAS" | "SEM_RESPOSTA" | "RESPONDIDAS" | "NAO_VERIFICADAS" | null;
     }) => {
-      validarCompetencia(input);
+      validarIntervalo(input);
       return input;
     },
   )
