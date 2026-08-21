@@ -22,6 +22,15 @@ export const listarEquipeFiscal = createServerFn({ method: "GET" })
     }),
   );
 
+export const sincronizarEquipeFiscal = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) =>
+    comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
+      const service = await import("@/server/domain/fiscal/fiscal-equipe-sync.service");
+      return service.sincronizarEquipeFiscal(ctx);
+    }),
+  );
+
 export const sincronizarSolicitacoesFiscais = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(
@@ -59,7 +68,6 @@ export const listarGestaoFiscal = createServerFn({ method: "GET" })
       return service.listarGestaoFiscal(ctx, data);
     }),
   );
-
 
 export const validarSolicitacaoFiscal = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
