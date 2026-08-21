@@ -439,9 +439,15 @@ export async function listarGestaoFiscal(
   if (busca)
     linhas = linhas.filter((l) => normalizar(`${l.clienteNome} ${l.documento ?? ""} ${l.assunto}`).includes(busca));
 
-  linhas.sort((a, b) => a.clienteNome.localeCompare(b.clienteNome, "pt-BR"));
+  linhas.sort(
+    (a, b) =>
+      (b.competencia ?? "").localeCompare(a.competencia ?? "") ||
+      a.clienteNome.localeCompare(b.clienteNome, "pt-BR"),
+  );
   return {
-    competencia: input.competencia,
+    competenciaInicio: inicio,
+    competenciaFim: fim,
+
     total: linhas.length,
     abertas: linhas.filter((l) => l.situacao !== "FINALIZADA").length,
     comAnexo: linhas.filter((l) => l.temAnexo).length,
