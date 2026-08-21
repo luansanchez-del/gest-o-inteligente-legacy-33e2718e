@@ -171,9 +171,9 @@ export async function sincronizarSolicitacoesFiscais(
   let competenciaInterpretada = 0;
   let competenciaAssumida = 0;
   let foraDoIntervalo = 0;
-  const selecionadas = new Map<string, (typeof candidatos)[number]>();
   type Candidato = Awaited<ReturnType<typeof pierAdapter.listRequests>>[number];
-  const candidatos: Candidato[] = [];
+  const selecionadas = new Map<string, Candidato>();
+
 
   const doDepartamento = (s: Candidato) => {
     const departamento = s.responsibleExternalId
