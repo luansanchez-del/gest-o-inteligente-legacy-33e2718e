@@ -213,7 +213,7 @@ export function RespostaEmLotePier() {
         const d = item.decisao;
         return {
           solicitacaoExternalId: d.solicitacaoExternalId,
-          clienteNome: d.clienteNome,
+          clienteNome: d.clienteNome ?? d.solicitacaoExternalId,
           numero: d.numero,
           execucaoId: d.execucaoId,
           tipo: d.recomendacao.tipo,

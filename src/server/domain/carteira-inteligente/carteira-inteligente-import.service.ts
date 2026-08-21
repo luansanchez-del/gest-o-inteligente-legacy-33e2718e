@@ -99,7 +99,7 @@ export async function importarCarteiraSeguro(ctx: AppContext, rows: LinhaImporta
       .range(de, ate)),
   ]);
 
-  const pierPorDoc = new Map(clientesPier.map((c: any) => [documento(c.document), c]).filter(([d]) => d));
+  const pierPorDoc = new Map(clientesPier.map((c: any) => [documento(c.document), c] as [any, any]).filter(([d]) => d));
   const pierPorNome = new Map(clientesPier.map((c: any) => [normalizar(c.name), c]));
   const aPorExt = new Map(assignments.filter((a: any) => a.client_external_id).map((a: any) => [a.client_external_id, a]));
   const aPorDoc = new Map(assignments.filter((a: any) => documento(a.client_document)).map((a: any) => [documento(a.client_document), a]));

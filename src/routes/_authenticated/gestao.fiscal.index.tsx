@@ -101,7 +101,8 @@ type AnaliseFiscal = Awaited<ReturnType<typeof validarSolicitacaoFiscal>>;
 
 function GestaoFiscalPage() {
   const queryClient = useQueryClient();
-  const [competencia, setCompetencia] = useState(competenciaAtual());
+  const [competenciaInicio, setCompetenciaInicio] = useState(competenciaAtual());
+  const [competenciaFim, setCompetenciaFim] = useState(competenciaAtual());
   const [responsavel, setResponsavel] = useState(TODOS);
   const [statusPier, setStatusPier] = useState<"PENDENTES" | "FINALIZADAS" | "TODOS">("PENDENTES");
   const [statusResposta, setStatusResposta] = useState<"TODAS" | "SEM_RESPOSTA" | "RESPONDIDAS" | "NAO_VERIFICADAS">("TODAS");
@@ -112,13 +113,19 @@ function GestaoFiscalPage() {
   const [mensagem, setMensagem] = useState("");
   const [justificativa, setJustificativa] = useState("");
 
+  const intervaloValido =
+    /^\d{4}-\d{2}$/.test(competenciaInicio) &&
+    /^\d{4}-\d{2}$/.test(competenciaFim) &&
+    competenciaInicio <= competenciaFim;
+
   const equipe = useQuery({
     queryKey: ["equipe-fiscal"],
     queryFn: () => listarEquipeFiscal(),
   });
 
   const filtro = {
-    competencia,
+    competenciaInicio,
+    competenciaFim,
     responsavelId: responsavel === TODOS ? null : responsavel,
     busca: busca.trim() || null,
     anexo: anexo === "TODOS" ? null : anexo,
@@ -129,7 +136,8 @@ function GestaoFiscalPage() {
   const gestao = useQuery({
     queryKey: [
       "gestao-fiscal",
-      competencia,
+      competenciaInicio,
+      competenciaFim,
       responsavel,
       statusPier,
       statusResposta,
@@ -137,26 +145,34 @@ function GestaoFiscalPage() {
       busca,
     ],
     queryFn: () => listarGestaoFiscal({ data: filtro }),
-    enabled: /^\d{4}-\d{2}$/.test(competencia),
+    enabled: intervaloValido,
     placeholderData: (anterior) => anterior,
   });
 
   const carregar = useMutation({
-    mutationFn: () =>
-      sincronizarSolicitacoesFiscais({
+    mutationFn: () => {
+      if (!intervaloValido)
+        throw new Error("A competência inicial deve ser anterior ou igual à final.");
+      return sincronizarSolicitacoesFiscais({
         data: {
-          competencia,
+          competenciaInicio,
+          competenciaFim,
           incluirFinalizadas: statusPier !== "PENDENTES",
         },
-      }),
+      });
+    },
     onSuccess: (r) => {
       toast.success(
-        `${r.total} solicitação(ões) do departamento fiscal carregadas para ${competencia}.`,
+        `${r.totalGravado} solicitação(ões) gravadas (${competenciaInicio} a ${competenciaFim}).`,
+        {
+          description: `Recebidas do PIER: ${r.recebidasDaBusca} · Do departamento fiscal: ${r.doDepartamentoFiscal} · Competência interpretada: ${r.competenciaInterpretada} · Assumida da busca: ${r.competenciaAssumida} · Fora do intervalo: ${r.foraDoIntervalo}`,
+        },
       );
       void queryClient.invalidateQueries({ queryKey: ["gestao-fiscal"] });
     },
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
+
 
   const atualizarRespostas = useMutation({
     mutationFn: async () => {
@@ -290,9 +306,27 @@ function GestaoFiscalPage() {
       <Card className="p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
           <div className="space-y-1.5 lg:w-[160px]">
-            <Label>Competência</Label>
-            <Input type="month" value={competencia} onChange={(e) => setCompetencia(e.target.value)} />
+            <Label>Competência inicial</Label>
+            <Input
+              type="month"
+              value={competenciaInicio}
+              onChange={(e) => setCompetenciaInicio(e.target.value)}
+            />
           </div>
+          <div className="space-y-1.5 lg:w-[160px]">
+            <Label>Competência final</Label>
+            <Input
+              type="month"
+              value={competenciaFim}
+              onChange={(e) => setCompetenciaFim(e.target.value)}
+            />
+            {!intervaloValido ? (
+              <p className="text-xs text-destructive">
+                A competência inicial deve ser anterior ou igual à final.
+              </p>
+            ) : null}
+          </div>
+
           <div className="min-w-[250px] flex-1 space-y-1.5">
             <Label>Responsável fiscal</Label>
             <Select value={responsavel} onValueChange={setResponsavel}>
