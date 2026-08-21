@@ -306,9 +306,27 @@ function GestaoFiscalPage() {
       <Card className="p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
           <div className="space-y-1.5 lg:w-[160px]">
-            <Label>Competência</Label>
-            <Input type="month" value={competencia} onChange={(e) => setCompetencia(e.target.value)} />
+            <Label>Competência inicial</Label>
+            <Input
+              type="month"
+              value={competenciaInicio}
+              onChange={(e) => setCompetenciaInicio(e.target.value)}
+            />
           </div>
+          <div className="space-y-1.5 lg:w-[160px]">
+            <Label>Competência final</Label>
+            <Input
+              type="month"
+              value={competenciaFim}
+              onChange={(e) => setCompetenciaFim(e.target.value)}
+            />
+            {!intervaloValido ? (
+              <p className="text-xs text-destructive">
+                A competência inicial deve ser anterior ou igual à final.
+              </p>
+            ) : null}
+          </div>
+
           <div className="min-w-[250px] flex-1 space-y-1.5">
             <Label>Responsável fiscal</Label>
             <Select value={responsavel} onValueChange={setResponsavel}>
