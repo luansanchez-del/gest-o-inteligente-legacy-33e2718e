@@ -94,7 +94,7 @@ export async function importarCarteira(ctx: AppContext, rows: LinhaImportacaoCar
     ),
   ]);
 
-  const pierPorDoc = new Map(clientesPier.map((c: any) => [documento(c.document), c]).filter(([d]) => d));
+  const pierPorDoc = new Map(clientesPier.map((c: any) => [documento(c.document), c] as [any, any]).filter(([d]) => d));
   const pierPorNome = new Map(clientesPier.map((c: any) => [normalizar(c.name), c]));
   const userPorNome = new Map(usuariosPier.map((u: any) => [normalizar(u.name), u]));
 
