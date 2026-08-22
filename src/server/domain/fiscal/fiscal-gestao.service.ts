@@ -364,6 +364,7 @@ export async function listarGestaoFiscal(
     statusPier?: StatusPierFiscal | null;
     statusResposta?: StatusRespostaFiscal | null;
     regime?: string | null;
+    tipoSolicitacao?: string | null;
   },
 ) {
   const inicio = input.competenciaInicio;
@@ -466,7 +467,12 @@ export async function listarGestaoFiscal(
   const regimesDisponiveis = [...new Set(
     linhas.map((l) => l.regime?.trim()).filter((regime): regime is string => Boolean(regime)),
   )].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const tiposDisponiveis = [...new Set(
+    linhas.map((l) => l.assunto?.trim()).filter((tipo): tipo is string => Boolean(tipo)),
+  )].sort((a, b) => a.localeCompare(b, "pt-BR"));
   if (input.regime) linhas = linhas.filter((l) => l.regime?.trim() === input.regime);
+  if (input.tipoSolicitacao)
+    linhas = linhas.filter((l) => l.assunto?.trim() === input.tipoSolicitacao);
   if (busca)
     linhas = linhas.filter((l) => normalizar(`${l.clienteNome} ${l.documento ?? ""} ${l.assunto}`).includes(busca));
 
@@ -488,6 +494,7 @@ export async function listarGestaoFiscal(
     revisao: linhas.filter((l) => l.situacao === "REVISAO_NECESSARIA").length,
     analisadas: linhas.filter((l) => l.situacao === "ANALISADA").length,
     regimesDisponiveis,
+    tiposDisponiveis,
     linhas,
   };
 }

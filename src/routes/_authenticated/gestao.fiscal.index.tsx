@@ -65,6 +65,7 @@ export const Route = createFileRoute("/_authenticated/gestao/fiscal/")({
 
 const TODOS = "__TODOS__";
 const TODOS_REGIMES = "__TODOS_REGIMES__";
+const TODOS_TIPOS = "__TODOS_TIPOS__";
 const TODAS_SITUACOES = "__TODAS_SITUACOES__";
 
 type StatusPier = "PENDENTES" | "FINALIZADAS" | "TODOS";
@@ -124,6 +125,7 @@ function GestaoFiscalPage() {
   const [situacao, setSituacao] = useState(TODAS_SITUACOES);
   const [anexo, setAnexo] = useState<"TODOS" | "COM_ANEXO" | "SEM_ANEXO">("TODOS");
   const [regime, setRegime] = useState(TODOS_REGIMES);
+  const [tipoSolicitacao, setTipoSolicitacao] = useState(TODOS_TIPOS);
   const [busca, setBusca] = useState("");
   const [analise, setAnalise] = useState<AnaliseFiscal | null>(null);
   const [dialogAberto, setDialogAberto] = useState(false);
@@ -173,6 +175,7 @@ function GestaoFiscalPage() {
     statusPier,
     statusResposta,
     regime: regime === TODOS_REGIMES ? null : regime,
+    tipoSolicitacao: tipoSolicitacao === TODOS_TIPOS ? null : tipoSolicitacao,
   } as const;
 
   const gestao = useQuery({
@@ -185,6 +188,7 @@ function GestaoFiscalPage() {
       statusResposta,
       anexo,
       regime,
+      tipoSolicitacao,
       busca,
     ],
     queryFn: () => listarGestaoFiscal({ data: filtro }),
@@ -352,6 +356,7 @@ function GestaoFiscalPage() {
     situacao !== TODAS_SITUACOES ||
     anexo !== "TODOS" ||
     regime !== TODOS_REGIMES ||
+    tipoSolicitacao !== TODOS_TIPOS ||
     busca !== "";
 
   function limparFiltros() {
@@ -364,6 +369,7 @@ function GestaoFiscalPage() {
     setSituacao(TODAS_SITUACOES);
     setAnexo("TODOS");
     setRegime(TODOS_REGIMES);
+    setTipoSolicitacao(TODOS_TIPOS);
     setBusca("");
   }
 
@@ -413,10 +419,13 @@ function GestaoFiscalPage() {
 
           <div className="space-y-1.5 lg:w-[238px]">
             <Label>Tipo de solicitação</Label>
-            <Select value="FISCAL" disabled>
+            <Select value={tipoSolicitacao} onValueChange={setTipoSolicitacao}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="FISCAL">Fechamento Fiscal</SelectItem>
+                <SelectItem value={TODOS_TIPOS}>Todos os tipos fiscais</SelectItem>
+                {(gestao.data?.tiposDisponiveis ?? []).map((tipo) => (
+                  <SelectItem key={tipo} value={tipo}>{tipo}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
