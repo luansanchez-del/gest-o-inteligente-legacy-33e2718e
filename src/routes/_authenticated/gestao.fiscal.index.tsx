@@ -411,6 +411,18 @@ function GestaoFiscalPage() {
             <Input type="month" value={competenciaFim} onChange={(e) => setCompetenciaFim(e.target.value)} />
           </div>
 
+          <div className="space-y-1.5 lg:w-[238px]">
+            <Label>Tipo de solicitação</Label>
+            <Select value="FISCAL" disabled>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="FISCAL">Fechamento Fiscal</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="hidden basis-full lg:block" aria-hidden="true" />
+
           <div className="space-y-1.5 lg:min-w-[280px] lg:flex-1">
             <Label>Departamento responsável</Label>
             <Select
@@ -456,6 +468,8 @@ function GestaoFiscalPage() {
               </SelectContent>
             </Select>
           </div>
+
+          <div className="hidden basis-full lg:block" aria-hidden="true" />
 
           <div className="min-w-[170px] space-y-1">
             <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Status PIER</Label>
@@ -519,6 +533,8 @@ function GestaoFiscalPage() {
               </SelectContent>
             </Select>
           </div>
+
+          <div className="hidden basis-full lg:block" aria-hidden="true" />
 
           <div className="space-y-1.5 lg:w-[240px]">
             <Label>Cliente / CNPJ / assunto</Label>
