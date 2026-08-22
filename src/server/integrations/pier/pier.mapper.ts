@@ -102,7 +102,9 @@ export function mapUser(raw: Raw): PierUser {
 export function mapRequest(raw: Raw, typeName?: string | null): PierRequest {
   const descricao = str(raw, "descricao", "description", "assunto");
   const cliente = separarNomeEDocumento(str(raw, "nomeCliente"));
-  const nomeTipo = typeName ?? str(raw, "nomeTipo", "typeName", "tipo");
+  // `tipo` na listagem V2 não é o nome confiável do tipo de solicitação.
+  // O nome oficial vem de /tipos-solicitacao e deve ser fornecido pelo chamador.
+  const nomeTipo = typeName ?? str(raw, "nomeTipo", "typeName");
 
   return {
     externalId: str(raw, "id", "externalId") ?? "",
