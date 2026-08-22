@@ -1,5 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { BookUser, BriefcaseBusiness, Calculator, ReceiptText, Users } from "lucide-react";
+import {
+  BookUser,
+  BriefcaseBusiness,
+  Calculator,
+  ContactRound,
+  Landmark,
+  ReceiptText,
+  Users,
+} from "lucide-react";
 
 import { PageHeader } from "@/components/common/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -19,7 +27,9 @@ function ModulosGestaoPage() {
       />
 
       <Card className="border-primary/25 bg-primary/5 p-4 text-sm">
-        <strong>Estrutura preparada para login por gestor:</strong> o sistema passa a tratar Contábil e Fiscal como módulos independentes. A tabela de escopo de acesso já existe, mas o bloqueio por usuário ainda não será ativado até definirmos quem pode acessar cada área.
+        <strong>Estrutura preparada para login por gestor:</strong> o sistema passa a tratar
+        Contábil e Fiscal como módulos independentes. A tabela de escopo de acesso já existe, mas o
+        bloqueio por usuário ainda não será ativado até definirmos quem pode acessar cada área.
       </Card>
 
       <div className="grid gap-5 xl:grid-cols-2">
@@ -44,6 +54,26 @@ function ModulosGestaoPage() {
             { rotulo: "Equipe Fiscal", to: "/gestao/fiscal/equipe", icon: Users },
           ]}
         />
+
+        <Modulo
+          titulo="Gestão BPO Financeiro"
+          descricao="Conciliação, movimentações financeiras, pendências e acompanhamento da operação financeira."
+          status="EM_DESENVOLVIMENTO"
+          itens={[{ rotulo: "Visão geral", to: "/gestao/financeiro", icon: Landmark }]}
+        />
+
+        <Modulo
+          titulo="Departamento Pessoal"
+          descricao="Folha, admissões, desligamentos, férias e solicitações da rotina trabalhista."
+          status="EM_DESENVOLVIMENTO"
+          itens={[
+            {
+              rotulo: "Visão geral",
+              to: "/gestao/departamento-pessoal",
+              icon: ContactRound,
+            },
+          ]}
+        />
       </div>
     </div>
   );
@@ -53,14 +83,23 @@ function Modulo({
   titulo,
   descricao,
   itens,
+  status,
 }: {
   titulo: string;
   descricao: string;
   itens: Array<{ rotulo: string; to: string; icon: typeof Calculator }>;
+  status?: "EM_DESENVOLVIMENTO";
 }) {
   return (
     <Card className="p-5">
-      <h2 className="text-lg font-semibold">{titulo}</h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold">{titulo}</h2>
+        {status === "EM_DESENVOLVIMENTO" ? (
+          <span className="rounded-full bg-warning-soft px-2.5 py-1 text-xs font-medium text-warning-strong">
+            Em desenvolvimento
+          </span>
+        ) : null}
+      </div>
       <p className="mt-1 text-sm text-muted-foreground">{descricao}</p>
       <div className="mt-5 grid gap-2 sm:grid-cols-2">
         {itens.map((item) => (

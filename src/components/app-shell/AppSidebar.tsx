@@ -4,8 +4,10 @@ import {
   BrainCircuit,
   Building2,
   ClipboardList,
+  ContactRound,
   Gauge,
   Inbox,
+  Landmark,
   LayoutGrid,
   PlayCircle,
   ReceiptText,
@@ -51,6 +53,17 @@ const GRUPOS = [
     ],
   },
   {
+    label: "Novos módulos",
+    itens: [
+      { title: "BPO Financeiro · Em desenvolvimento", to: "/gestao/financeiro", icon: Landmark },
+      {
+        title: "Departamento Pessoal · Em desenvolvimento",
+        to: "/gestao/departamento-pessoal",
+        icon: ContactRound,
+      },
+    ],
+  },
+  {
     label: "Estrutura / PIER",
     itens: [
       { title: "Carteira PIER", to: "/carteira", icon: Building2 },
@@ -91,11 +104,7 @@ export function AppSidebar() {
                         : pathname.startsWith(item.to);
                   return (
                     <SidebarMenuItem key={item.to}>
-                      <SidebarMenuButton
-                        asChild
-                        isActive={ativo}
-                        tooltip={item.title}
-                      >
+                      <SidebarMenuButton asChild isActive={ativo} tooltip={item.title}>
                         <Link to={item.to}>
                           <item.icon />
                           <span>{item.title}</span>
