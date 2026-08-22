@@ -171,6 +171,7 @@ export async function sincronizarSolicitacoesFiscais(
   let competenciaInterpretada = 0;
   let competenciaAssumida = 0;
   let foraDoIntervalo = 0;
+  let assuntosContabeisDescartados = 0;
   type Candidato = Awaited<ReturnType<typeof pierAdapter.listRequests>>[number];
   const selecionadas = new Map<string, Candidato>();
 
@@ -196,6 +197,10 @@ export async function sincronizarSolicitacoesFiscais(
       for (const s of lote) {
         if (!doDepartamento(s)) continue;
         doDepartamentoFiscal += 1;
+        if (s.purpose === "ACCOUNTING_CLOSING") {
+          assuntosContabeisDescartados += 1;
+          continue;
+        }
         if (s.referenceMonth && s.referenceMonth !== competencia) continue;
         if (!input.incluirFinalizadas && finalizada(s.status, s.finishedAt)) continue;
         if (selecionadas.has(s.externalId)) continue;
@@ -225,6 +230,10 @@ export async function sincronizarSolicitacoesFiscais(
       if (selecionadas.has(s.externalId)) continue;
       if (!doDepartamento(s)) continue;
       doDepartamentoFiscal += 1;
+      if (s.purpose === "ACCOUNTING_CLOSING") {
+        assuntosContabeisDescartados += 1;
+        continue;
+      }
       if (
         !s.referenceMonth ||
         s.referenceMonth < input.competenciaInicio ||
@@ -307,6 +316,7 @@ export async function sincronizarSolicitacoesFiscais(
     competenciaInterpretada,
     competenciaAssumida,
     foraDoIntervalo,
+    assuntosContabeisDescartados,
     totalGravado: fiscais.length,
   };
 
@@ -357,7 +367,7 @@ export async function listarGestaoFiscal(
   let consulta = ctx.db
     .from("request")
     .select(
-      "id,external_id,number,description,type_name,status,reference_month,responsible_external_id,responsible_name,department_external_id,client_name,client_document,has_attachment,deadline_at,finished_at",
+      "id,external_id,number,description,type_name,purpose,status,reference_month,responsible_external_id,responsible_name,department_external_id,client_name,client_document,has_attachment,deadline_at,finished_at",
     )
     .eq("organization_id", ctx.organizationId)
     .gte("reference_month", inicio)
@@ -373,7 +383,11 @@ export async function listarGestaoFiscal(
   if (error)
     throw new AppError("INESPERADO", "Não foi possível montar a Gestão Fiscal.", error.message);
 
-  const ids = (requests ?? []).map((r) => r.id);
+  // O departamento identifica a equipe responsável, mas não transforma uma
+  // solicitação de fechamento contábil em fiscal. O filtro local também
+  // impede que registros antigos, sincronizados antes desta regra, reapareçam.
+  const requestsFiscais = (requests ?? []).filter((r) => r.purpose !== "ACCOUNTING_CLOSING");
+  const ids = requestsFiscais.map((r) => r.id);
   const [processamentos, respostas] = await Promise.all([
     ids.length
       ? ctx.db
@@ -395,7 +409,7 @@ export async function listarGestaoFiscal(
   const respostaPorId = new Map((respostas.data ?? []).map((r: any) => [r.request_id, r]));
   const busca = normalizar(input.busca);
 
-  let linhas = (requests ?? []).map((r) => {
+  let linhas = requestsFiscais.map((r) => {
     const proc = procPorId.get(r.id) as any;
     const resposta = respostaPorId.get(r.id) as any;
     const encerrada = finalizada(r.status, r.finished_at);
