@@ -57,6 +57,7 @@ export const listarGestaoFiscal = createServerFn({ method: "GET" })
       anexo?: "COM_ANEXO" | "SEM_ANEXO" | null;
       statusPier?: "PENDENTES" | "FINALIZADAS" | "TODOS" | null;
       statusResposta?: "TODAS" | "SEM_RESPOSTA" | "RESPONDIDAS" | "NAO_VERIFICADAS" | null;
+      regime?: string | null;
     }) => {
       validarIntervalo(input);
       return input;

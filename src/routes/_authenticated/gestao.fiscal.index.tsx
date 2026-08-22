@@ -64,6 +64,7 @@ export const Route = createFileRoute("/_authenticated/gestao/fiscal/")({
 });
 
 const TODOS = "__TODOS__";
+const TODOS_REGIMES = "__TODOS_REGIMES__";
 const TODAS_SITUACOES = "__TODAS_SITUACOES__";
 
 type StatusPier = "PENDENTES" | "FINALIZADAS" | "TODOS";
@@ -122,6 +123,7 @@ function GestaoFiscalPage() {
   const [statusResposta, setStatusResposta] = useState<StatusResposta>("TODAS");
   const [situacao, setSituacao] = useState(TODAS_SITUACOES);
   const [anexo, setAnexo] = useState<"TODOS" | "COM_ANEXO" | "SEM_ANEXO">("TODOS");
+  const [regime, setRegime] = useState(TODOS_REGIMES);
   const [busca, setBusca] = useState("");
   const [analise, setAnalise] = useState<AnaliseFiscal | null>(null);
   const [dialogAberto, setDialogAberto] = useState(false);
@@ -170,6 +172,7 @@ function GestaoFiscalPage() {
     anexo: anexo === "TODOS" ? null : anexo,
     statusPier,
     statusResposta,
+    regime: regime === TODOS_REGIMES ? null : regime,
   } as const;
 
   const gestao = useQuery({
@@ -181,6 +184,7 @@ function GestaoFiscalPage() {
       statusPier,
       statusResposta,
       anexo,
+      regime,
       busca,
     ],
     queryFn: () => listarGestaoFiscal({ data: filtro }),
@@ -347,6 +351,7 @@ function GestaoFiscalPage() {
     statusResposta !== "TODAS" ||
     situacao !== TODAS_SITUACOES ||
     anexo !== "TODOS" ||
+    regime !== TODOS_REGIMES ||
     busca !== "";
 
   function limparFiltros() {
@@ -358,6 +363,7 @@ function GestaoFiscalPage() {
     setStatusResposta("TODAS");
     setSituacao(TODAS_SITUACOES);
     setAnexo("TODOS");
+    setRegime(TODOS_REGIMES);
     setBusca("");
   }
 
@@ -490,6 +496,19 @@ function GestaoFiscalPage() {
           </div>
 
           <div className="min-w-[190px] space-y-1">
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Regime tributário</Label>
+            <Select value={regime} onValueChange={setRegime}>
+              <SelectTrigger aria-label="Filtrar por regime tributário"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={TODOS_REGIMES}>Todos os regimes</SelectItem>
+                {(gestao.data?.regimesDisponiveis ?? []).map((item) => (
+                  <SelectItem key={item} value={item}>{item}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="min-w-[190px] space-y-1">
             <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Anexos</Label>
             <Select value={anexo} onValueChange={(v) => setAnexo(v as typeof anexo)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
@@ -577,6 +596,7 @@ function GestaoFiscalPage() {
                 <TableHead>Número</TableHead>
                 <TableHead>Empresa</TableHead>
                 <TableHead>CNPJ/CPF</TableHead>
+                <TableHead>Regime</TableHead>
                 <TableHead>Competência</TableHead>
                 <TableHead>Assunto fiscal</TableHead>
                 <TableHead>Responsável</TableHead>
@@ -596,6 +616,7 @@ function GestaoFiscalPage() {
                     <TableCell className="tabular-nums">{linha.numero ?? "—"}</TableCell>
                     <TableCell className="font-medium">{linha.clienteNome}</TableCell>
                     <TableCell className="tabular-nums">{formatarCnpj(linha.documento)}</TableCell>
+                    <TableCell>{linha.regime ?? "Não informado"}</TableCell>
                     <TableCell className="tabular-nums">{linha.competencia ?? "—"}</TableCell>
                     <TableCell className="max-w-[260px]"><span className="line-clamp-2">{linha.assunto}</span></TableCell>
                     <TableCell>{linha.responsavelNome ?? "Sem responsável"}</TableCell>

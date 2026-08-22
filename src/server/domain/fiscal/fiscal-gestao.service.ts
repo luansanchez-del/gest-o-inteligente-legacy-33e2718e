@@ -3,7 +3,7 @@ import { assertCanWrite, type AppContext } from "../../lib/context";
 import { AppError } from "../../lib/errors";
 import { erroSeguro, mascararTexto } from "../../lib/mascara";
 import { pierAdapter } from "../../integrations/pier/pier.adapter";
-import { carregarUsuariosPier } from "../gestao/pier-user.repo";
+import { carregarTodasAsLinhas, carregarUsuariosPier } from "../gestao/pier-user.repo";
 import { verificarRespostaPierPorExternalId } from "../gestao/resposta-pier.service";
 import { solicitacaoFinalizadaPier } from "../gestao/status-pier";
 import { validarManualFiscal } from "./fiscal-manual.service";
@@ -18,6 +18,10 @@ function normalizar(value: string | null | undefined) {
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function normalizarDocumento(value: string | null | undefined) {
+  return (value ?? "").replace(/\D/g, "");
 }
 
 function finalizada(status: string | null, finishedAt?: string | null) {
@@ -359,6 +363,7 @@ export async function listarGestaoFiscal(
     anexo?: "COM_ANEXO" | "SEM_ANEXO" | null;
     statusPier?: StatusPierFiscal | null;
     statusResposta?: StatusRespostaFiscal | null;
+    regime?: string | null;
   },
 ) {
   const inicio = input.competenciaInicio;
@@ -387,6 +392,13 @@ export async function listarGestaoFiscal(
   // solicitação de fechamento contábil em fiscal. O filtro local também
   // impede que registros antigos, sincronizados antes desta regra, reapareçam.
   const requestsFiscais = (requests ?? []).filter((r) => r.purpose !== "ACCOUNTING_CLOSING");
+  const clientes = await carregarTodasAsLinhas<{
+    document: string | null;
+    tax_regime: string | null;
+  }>(ctx, "pier_client", "document,tax_regime");
+  const regimePorDocumento = new Map(
+    clientes.map((cliente) => [normalizarDocumento(cliente.document), cliente.tax_regime]),
+  );
   const ids = requestsFiscais.map((r) => r.id);
   const [processamentos, respostas] = await Promise.all([
     ids.length
@@ -427,6 +439,7 @@ export async function listarGestaoFiscal(
       numero: r.number,
       clienteNome: r.client_name ?? "—",
       documento: r.client_document,
+      regime: regimePorDocumento.get(normalizarDocumento(r.client_document)) ?? null,
       assunto: r.type_name ?? r.description ?? "Solicitação fiscal",
       descricao: r.description,
       competencia: r.reference_month,
@@ -450,6 +463,10 @@ export async function listarGestaoFiscal(
   if (input.statusResposta === "SEM_RESPOSTA") linhas = linhas.filter((l) => l.statusResposta === "NAO_RESPONDIDA");
   if (input.statusResposta === "RESPONDIDAS") linhas = linhas.filter((l) => l.statusResposta === "RESPONDIDA");
   if (input.statusResposta === "NAO_VERIFICADAS") linhas = linhas.filter((l) => l.statusResposta === "NAO_VERIFICADA");
+  const regimesDisponiveis = [...new Set(
+    linhas.map((l) => l.regime?.trim()).filter((regime): regime is string => Boolean(regime)),
+  )].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  if (input.regime) linhas = linhas.filter((l) => l.regime?.trim() === input.regime);
   if (busca)
     linhas = linhas.filter((l) => normalizar(`${l.clienteNome} ${l.documento ?? ""} ${l.assunto}`).includes(busca));
 
@@ -470,6 +487,7 @@ export async function listarGestaoFiscal(
     naoVerificadas: linhas.filter((l) => l.statusResposta === "NAO_VERIFICADA").length,
     revisao: linhas.filter((l) => l.situacao === "REVISAO_NECESSARIA").length,
     analisadas: linhas.filter((l) => l.situacao === "ANALISADA").length,
+    regimesDisponiveis,
     linhas,
   };
 }

@@ -77,6 +77,7 @@ const TODOS_DEPARTAMENTOS = "__TODOS__";
 const TODOS_USUARIOS = "__TODOS_USUARIOS__";
 const TODAS_FILAS = "__TODAS_FILAS__";
 const TODOS_ANEXOS = "__TODOS_ANEXOS__";
+const TODOS_REGIMES = "__TODOS_REGIMES__";
 const CHAVE_FILTROS_GESTAO = "gestao-inteligente:filtros-gestao";
 
 type StatusPierFiltro = "PENDENTES" | "FINALIZADAS" | "TODOS";
@@ -98,6 +99,7 @@ interface FiltrosGestaoSalvos {
   statusPier: StatusPierFiltro;
   statusResposta: StatusRespostaFiltro;
   anexo: string;
+  regime: string;
   incluirInativos: boolean;
 }
 
@@ -161,6 +163,7 @@ function filtrosPadrao(): FiltrosGestaoSalvos {
     statusPier: "PENDENTES",
     statusResposta: "TODAS",
     anexo: TODOS_ANEXOS,
+    regime: TODOS_REGIMES,
     incluirInativos: false,
   };
 }
@@ -228,6 +231,7 @@ function GestaoPage() {
     filtrosIniciais.statusResposta,
   );
   const [anexo, setAnexo] = useState(filtrosIniciais.anexo);
+  const [regime, setRegime] = useState(filtrosIniciais.regime);
   const [incluirInativos, setIncluirInativos] = useState(
     filtrosIniciais.incluirInativos,
   );
@@ -250,11 +254,13 @@ function GestaoPage() {
         statusPier,
         statusResposta,
         anexo,
+        regime,
         incluirInativos,
       } satisfies FiltrosGestaoSalvos),
     );
   }, [
     anexo,
+    regime,
     busca,
     competencia,
     competenciaFim,
@@ -289,6 +295,7 @@ function GestaoPage() {
       anexo === TODOS_ANEXOS
         ? null
         : (anexo as "COM_ANEXO" | "SEM_ANEXO"),
+    regime: regime === TODOS_REGIMES ? null : regime,
   };
 
   const preview = useQuery({
@@ -305,6 +312,7 @@ function GestaoPage() {
       statusPier,
       statusResposta,
       anexo,
+      regime,
     ],
     queryFn: () => montarPreview({ data: filtro }),
     enabled: /^\d{4}-\d{2}$/.test(competencia),
@@ -459,6 +467,7 @@ function GestaoPage() {
     statusPier !== "PENDENTES" ||
     statusResposta !== "TODAS" ||
     anexo !== TODOS_ANEXOS ||
+    regime !== TODOS_REGIMES ||
     competenciaFim !== "" ||
     busca !== "" ||
     revisaoCompetencia ||
@@ -474,6 +483,7 @@ function GestaoPage() {
     setStatusPier("PENDENTES");
     setStatusResposta("TODAS");
     setAnexo(TODOS_ANEXOS);
+    setRegime(TODOS_REGIMES);
     setCompetenciaFim("");
     setBusca("");
     setRevisaoCompetencia(false);
@@ -732,6 +742,23 @@ function GestaoPage() {
 
           <div className="min-w-[190px] space-y-1">
             <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              Regime tributário
+            </Label>
+            <Select value={regime} onValueChange={setRegime}>
+              <SelectTrigger aria-label="Filtrar por regime tributário">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={TODOS_REGIMES}>Todos os regimes</SelectItem>
+                {(preview.data?.regimesDisponiveis ?? []).map((item) => (
+                  <SelectItem key={item} value={item}>{item}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="min-w-[190px] space-y-1">
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
               Anexos
             </Label>
             <Select value={anexo} onValueChange={setAnexo}>
@@ -936,6 +963,7 @@ function GestaoPage() {
                 <TableHead>Número</TableHead>
                 <TableHead>Empresa</TableHead>
                 <TableHead>CNPJ/CPF</TableHead>
+                <TableHead>Regime</TableHead>
                 <TableHead>Competência</TableHead>
                 <TableHead>Responsável</TableHead>
                 <TableHead>Status PIER</TableHead>
@@ -966,6 +994,7 @@ function GestaoPage() {
                     <TableCell className="tabular-nums">
                       {formatarCnpj(linha.documento)}
                     </TableCell>
+                    <TableCell>{linha.regime ?? "Não informado"}</TableCell>
                     <TableCell className="tabular-nums">
                       {linha.competencia ?? "—"}
                     </TableCell>

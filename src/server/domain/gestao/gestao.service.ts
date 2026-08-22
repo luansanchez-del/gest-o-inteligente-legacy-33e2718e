@@ -42,6 +42,8 @@ export interface EscopoFiltro {
   busca?: string | null;
   /** Filtra pela existência de anexo informada pelo PIER. */
   anexo?: "COM_ANEXO" | "SEM_ANEXO" | null;
+  /** Regime tributário cadastrado na ficha do cliente no PIER. */
+  regime?: string | null;
 }
 
 export interface EscopoLinha {
@@ -81,6 +83,7 @@ export interface EscopoPreview {
   totalAvisosCadastrais: number;
   solicitacoesEmCache: number;
   responsaveis: { id: string | null; nome: string; total: number }[];
+  regimesDisponiveis: string[];
   empresas: EscopoLinha[];
 }
 
@@ -282,6 +285,13 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
   if (filtro.statusFila)
     linhas = linhas.filter((l) => l.statusFila === filtro.statusFila);
 
+  const regimesDisponiveis = [...new Set(
+    linhas.map((l) => l.regime?.trim()).filter((regime): regime is string => Boolean(regime)),
+  )].sort((a, b) => a.localeCompare(b, "pt-BR"));
+
+  if (filtro.regime)
+    linhas = linhas.filter((l) => l.regime?.trim() === filtro.regime);
+
   const busca = (filtro.busca ?? "").trim().toLowerCase();
   if (busca) {
     const digitos = busca.replace(/\D/g, "");
@@ -308,6 +318,7 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
     departamentoNome,
     responsavelNome,
     totalSolicitacoes: (solicitacoes ?? []).length,
+    regimesDisponiveis,
   };
 }
 
@@ -315,7 +326,7 @@ export async function montarPreview(
   ctx: AppContext,
   filtro: EscopoFiltro,
 ): Promise<EscopoPreview> {
-  const { linhas, departamentoNome, responsavelNome, totalSolicitacoes } =
+  const { linhas, departamentoNome, responsavelNome, totalSolicitacoes, regimesDisponiveis } =
     await carregarEscopo(ctx, filtro);
 
   const porResponsavel = new Map<
@@ -345,6 +356,7 @@ export async function montarPreview(
     totalAvisosCadastrais: linhas.filter((l) => Boolean(l.avisoCadastral))
       .length,
     solicitacoesEmCache: totalSolicitacoes,
+    regimesDisponiveis,
     responsaveis: [...porResponsavel.values()].sort(
       (a, b) => b.total - a.total,
     ),

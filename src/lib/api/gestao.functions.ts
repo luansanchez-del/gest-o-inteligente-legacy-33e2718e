@@ -29,6 +29,7 @@ type EscopoInput = {
   revisaoCompetencia?: boolean;
   busca?: string | null;
   anexo?: "COM_ANEXO" | "SEM_ANEXO" | null;
+  regime?: string | null;
   incluirFinalizadas?: boolean;
 };
 
