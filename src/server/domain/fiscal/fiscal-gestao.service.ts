@@ -9,7 +9,7 @@ import { solicitacaoFinalizadaPier } from "../gestao/status-pier";
 import { validarManualFiscal } from "./fiscal-manual.service";
 
 const TIPOS_INTERNOS = new Set(["colaborador", "gestor", "encarregado"]);
-const DEPARTAMENTO_FISCAL_PADRAO = "16103";
+const DEPARTAMENTOS_FISCAIS_PADRAO = ["16103", "9624"] as const;
 
 function normalizar(value: string | null | undefined) {
   return (value ?? "")
@@ -58,9 +58,10 @@ export async function departamentosFiscais(ctx: AppContext): Promise<string[]> {
     .map((u) => u.department_external_id!)
     .filter(Boolean);
 
-  return encontrados.length
-    ? [...new Set(encontrados)]
-    : [DEPARTAMENTO_FISCAL_PADRAO];
+  // Sem configuração explícita, o escopo fiscal conhecido no PIER é formado
+  // por TRIBUTARIO BPO (16103) e TRIBUTARIO LEGACY (9624). Os nomes dos
+  // responsáveis não são uma fonte segura para excluir um desses departamentos.
+  return [...new Set([...DEPARTAMENTOS_FISCAIS_PADRAO, ...encontrados])];
 }
 
 export async function listarEquipeFiscal(
@@ -155,7 +156,7 @@ export async function sincronizarSolicitacoesFiscais(
     throw new AppError("VALIDACAO", "Selecione um intervalo de no máximo 24 meses.");
 
   const departamentos = new Set(await departamentosFiscais(ctx));
-  const deptoPorUsuario = await mapaDepartamentoUsuarios(ctx);
+  let deptoPorUsuario = await mapaDepartamentoUsuarios(ctx);
   const agora = new Date().toISOString();
 
   await audit(ctx, {
@@ -175,7 +176,6 @@ export async function sincronizarSolicitacoesFiscais(
   let competenciaInterpretada = 0;
   let competenciaAssumida = 0;
   let foraDoIntervalo = 0;
-  let assuntosContabeisDescartados = 0;
   type Candidato = Awaited<ReturnType<typeof pierAdapter.listRequests>>[number];
   const selecionadas = new Map<string, Candidato>();
 
@@ -188,6 +188,14 @@ export async function sincronizarSolicitacoesFiscais(
   };
 
   try {
+    // Resolve o departamento diretamente da fonte antes de classificar as
+    // solicitações. Isso evita depender de uma sincronização prévia da equipe.
+    const usuariosPier = await pierAdapter.listUsers({ status: "Todos" });
+    deptoPorUsuario = new Map([
+      ...deptoPorUsuario,
+      ...usuariosPier.map((u) => [u.externalId, u.departmentExternalId] as const),
+    ]);
+
     for (const competencia of meses) {
       const [ano, mes] = competencia.split("-");
       const termoBusca = `${mes}/${ano}`;
@@ -201,10 +209,6 @@ export async function sincronizarSolicitacoesFiscais(
       for (const s of lote) {
         if (!doDepartamento(s)) continue;
         doDepartamentoFiscal += 1;
-        if (s.purpose === "ACCOUNTING_CLOSING") {
-          assuntosContabeisDescartados += 1;
-          continue;
-        }
         if (s.referenceMonth && s.referenceMonth !== competencia) continue;
         if (!input.incluirFinalizadas && finalizada(s.status, s.finishedAt)) continue;
         if (selecionadas.has(s.externalId)) continue;
@@ -234,10 +238,6 @@ export async function sincronizarSolicitacoesFiscais(
       if (selecionadas.has(s.externalId)) continue;
       if (!doDepartamento(s)) continue;
       doDepartamentoFiscal += 1;
-      if (s.purpose === "ACCOUNTING_CLOSING") {
-        assuntosContabeisDescartados += 1;
-        continue;
-      }
       if (
         !s.referenceMonth ||
         s.referenceMonth < input.competenciaInicio ||
@@ -320,7 +320,6 @@ export async function sincronizarSolicitacoesFiscais(
     competenciaInterpretada,
     competenciaAssumida,
     foraDoIntervalo,
-    assuntosContabeisDescartados,
     totalGravado: fiscais.length,
   };
 
@@ -389,10 +388,9 @@ export async function listarGestaoFiscal(
   if (error)
     throw new AppError("INESPERADO", "Não foi possível montar a Gestão Fiscal.", error.message);
 
-  // O departamento identifica a equipe responsável, mas não transforma uma
-  // solicitação de fechamento contábil em fiscal. O filtro local também
-  // impede que registros antigos, sincronizados antes desta regra, reapareçam.
-  const requestsFiscais = (requests ?? []).filter((r) => r.purpose !== "ACCOUNTING_CLOSING");
+  // No PIER, o nome do tipo pode ser genérico. O escopo fiscal é determinado
+  // pelo departamento do responsável, aplicado na consulta acima.
+  const requestsFiscais = requests ?? [];
   const clientes = await carregarTodasAsLinhas<{
     document: string | null;
     tax_regime: string | null;
