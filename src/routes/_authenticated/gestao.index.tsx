@@ -52,7 +52,6 @@ import {
   configurarDepartamentosContabeis,
   iniciarGestao,
   listarEquipe,
-  listarTiposSolicitacaoPier,
   montarPreview,
   obterDepartamentosContabeis,
   renomearDepartamento,
@@ -94,7 +93,6 @@ type StatusRespostaFiltro =
 
 interface FiltrosGestaoSalvos {
   competencia: string;
-  tipo: string;
   competenciaFim: string;
   busca: string;
   revisaoCompetencia: boolean;
@@ -158,7 +156,6 @@ function formatarDataHora(value: string | null | undefined) {
 function filtrosPadrao(): FiltrosGestaoSalvos {
   return {
     competencia: competenciaAtual(),
-    tipo: "CONTABIL",
     competenciaFim: "",
     busca: "",
     revisaoCompetencia: false,
@@ -187,7 +184,6 @@ function carregarFiltrosGestao(): FiltrosGestaoSalvos {
       competencia: /^\d{4}-\d{2}$/.test(salvo.competencia ?? "")
         ? salvo.competencia!
         : padrao.competencia,
-      tipo: salvo.tipo?.trim() || "CONTABIL",
       statusPier: ["PENDENTES", "FINALIZADAS", "TODOS"].includes(
         salvo.statusPier ?? "",
       )
@@ -211,7 +207,10 @@ function GestaoPage() {
   const queryClient = useQueryClient();
   const [filtrosIniciais] = useState(carregarFiltrosGestao);
   const [competencia, setCompetencia] = useState(filtrosIniciais.competencia);
-  const [tipo, setTipo] = useState<string>(filtrosIniciais.tipo);
+  // Fixo por enquanto: o filtro de Tipo de solicitação foi retirado da tela
+  // (voltará quando o escopo por departamento estiver validado). A Carga
+  // (CargaCompetencias) só traz mesmo Fechamento Contábil hoje.
+  const tipo = "CONTABIL";
   const [competenciaFim, setCompetenciaFim] = useState(
     filtrosIniciais.competenciaFim,
   );
@@ -248,7 +247,6 @@ function GestaoPage() {
       CHAVE_FILTROS_GESTAO,
       JSON.stringify({
         competencia,
-        tipo,
         competenciaFim,
         busca,
         revisaoCompetencia,
@@ -275,7 +273,6 @@ function GestaoPage() {
     revisaoCompetencia,
     statusPier,
     statusResposta,
-    tipo,
   ]);
 
   const equipe = useQuery({
@@ -283,21 +280,6 @@ function GestaoPage() {
     queryFn: () =>
       listarEquipe({ data: { incluirInativos, somenteContabeis: true } }),
   });
-
-  const [tiposPierAbertoUmaVez, setTiposPierAbertoUmaVez] = useState(false);
-  const tiposPier = useQuery({
-    queryKey: ["tipos-solicitacao-pier"],
-    queryFn: () => listarTiposSolicitacaoPier(),
-    // Só busca quando o filtro é realmente aberto: evita competir com outras
-    // chamadas ao PIER (ex.: a Carga histórica) pela cota de 50/min.
-    enabled: tiposPierAbertoUmaVez,
-    staleTime: 5 * 60_000,
-  });
-
-  useEffect(() => {
-    if (tiposPier.isError)
-      toast.error(`Não foi possível carregar os tipos de solicitação do PIER: ${mensagemDeErro(tiposPier.error)}`);
-  }, [tiposPier.isError, tiposPier.error]);
 
   const filtro = {
     competencia,
@@ -506,7 +488,6 @@ function GestaoPage() {
   }, [usuarios, departamento]);
 
   const filtrosAtivos =
-    tipo !== "CONTABIL" ||
     departamento !== TODOS_DEPARTAMENTOS ||
     responsavel !== TODOS_USUARIOS ||
     fila !== TODAS_FILAS ||
@@ -522,7 +503,6 @@ function GestaoPage() {
 
   function limparFiltros() {
     setCompetencia(competenciaAtual());
-    setTipo("CONTABIL");
     setDepartamento(TODOS_DEPARTAMENTOS);
     setResponsavel(TODOS_USUARIOS);
     setFila(TODAS_FILAS);
@@ -565,7 +545,7 @@ function GestaoPage() {
     <div className="space-y-6">
       <PageHeader
         titulo="Gestão de solicitações contábeis"
-        descricao="Escolha o tipo, a competência e o responsável do PIER antes de iniciar a gestão."
+        descricao="Escolha a competência, o departamento e o responsável do PIER antes de iniciar a gestão."
         acoes={
           <div className="flex flex-wrap items-center gap-2">
             <Button
@@ -679,47 +659,6 @@ function GestaoPage() {
                 </Button>
               ) : null}
             </div>
-          </div>
-          <div className="space-y-1.5 lg:w-[220px]">
-            <Label>
-              Tipo de solicitação{" "}
-              <span className="font-normal text-muted-foreground">
-                {tiposPier.isLoading
-                  ? "(carregando tipos do PIER…)"
-                  : tiposPier.data
-                    ? `(${tiposPier.data.length} tipos no PIER)`
-                    : ""}
-              </span>
-            </Label>
-            <Select
-              value={tipo}
-              onValueChange={setTipo}
-              onOpenChange={(aberto) => {
-                if (aberto) setTiposPierAbertoUmaVez(true);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="max-h-80">
-                <SelectItem value="CONTABIL">Fechamento Contábil</SelectItem>
-                <SelectItem value="MOVIMENTO_FINANCEIRO">
-                  Movimento Financeiro Mensal
-                </SelectItem>
-                {(tiposPier.data ?? [])
-                  .filter((t) => {
-                    const nome = t.nome.trim().toUpperCase();
-                    return (
-                      nome !== "FECHAMENTO CONTÁBIL" && !nome.includes("MOVIMENTO FINANCEIRO")
-                    );
-                  })
-                  .map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.nome}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
           </div>
           <div className="space-y-1.5 lg:min-w-[280px] lg:flex-1">
             <div className="flex items-center justify-between gap-2">
