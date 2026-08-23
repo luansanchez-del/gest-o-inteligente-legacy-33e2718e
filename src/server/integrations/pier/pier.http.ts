@@ -1,4 +1,4 @@
-import { integracaoFalhou, integracaoIndisponivel } from "../../lib/errors";
+import { AppError, integracaoFalhou, integracaoIndisponivel } from "../../lib/errors";
 
 export interface PierConfig {
   baseUrl: string;
@@ -138,7 +138,7 @@ async function autenticar(config: PierConfig, forcar = false): Promise<string> {
     };
     return cache.token;
   } catch (error) {
-    if (error && typeof error === "object" && "code" in error) throw error;
+    if (error instanceof AppError) throw error;
     throw integracaoFalhou(
       "Não foi possível falar com o PIER agora.",
       error instanceof Error ? error.message : String(error),
@@ -247,7 +247,7 @@ export async function pierGet<T>(
 
       return (await response.json()) as T;
     } catch (error) {
-      if (error && typeof error === "object" && "code" in error) throw error;
+      if (error instanceof AppError) throw error;
       lastDetail = error instanceof Error ? error.message : String(error);
       if (attempt >= MAX_ATTEMPTS) break;
       await sleep(attempt * 400 + Math.random() * 200);
@@ -314,7 +314,7 @@ export async function pierPost<T>(path: string, body?: unknown): Promise<T> {
         return texto as unknown as T;
       }
     } catch (error) {
-      if (error && typeof error === "object" && "code" in error) throw error;
+      if (error instanceof AppError) throw error;
       throw integracaoFalhou(
         `Não foi possível concluir a ação no PIER (${path}).`,
         error instanceof Error ? error.message : String(error),
@@ -340,7 +340,7 @@ export async function pierDownload(url: string): Promise<Uint8Array> {
       );
     return new Uint8Array(await response.arrayBuffer());
   } catch (error) {
-    if (error && typeof error === "object" && "code" in error) throw error;
+    if (error instanceof AppError) throw error;
     throw integracaoFalhou(
       "Não foi possível baixar o arquivo da solicitação.",
       error instanceof Error ? error.message : String(error),
