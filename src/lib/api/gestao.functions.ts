@@ -227,3 +227,26 @@ export const renomearDepartamento = createServerFn({ method: "POST" })
       return service.renomearDepartamento(ctx, data);
     }),
   );
+
+export const obterDepartamentosContabeis = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) =>
+    comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
+      const service = await import("@/server/domain/gestao/escopo.service");
+      return service.obterDepartamentosContabeis(ctx);
+    }),
+  );
+
+export const configurarDepartamentosContabeis = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { departamentoIds: string[] }) => {
+    if (!Array.isArray(input?.departamentoIds) || !input.departamentoIds.length)
+      throw new Error("VALIDACAO::Selecione ao menos um departamento.");
+    return input;
+  })
+  .handler(async ({ data, context }) =>
+    comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
+      const service = await import("@/server/domain/gestao/escopo.service");
+      return service.configurarDepartamentosContabeis(ctx, data);
+    }),
+  );

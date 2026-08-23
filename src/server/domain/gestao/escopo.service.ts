@@ -1,5 +1,5 @@
 import { audit } from "../../lib/audit";
-import { assertCanWrite, type AppContext } from "../../lib/context";
+import { assertAdmin, assertCanWrite, type AppContext } from "../../lib/context";
 import { AppError } from "../../lib/errors";
 import { pierAdapter } from "../../integrations/pier/pier.adapter";
 import { carregarUsuariosPier } from "./pier-user.repo";
@@ -234,10 +234,31 @@ export const DEPARTAMENTOS_CONTABEIS_NOMES = [
 ];
 const DEPARTAMENTOS_CONTABEIS_PADRAO = ["9625", "16104"];
 
-/** Resolve os códigos PIER dos departamentos contábeis pelo nome cadastrado. */
+const CHAVE_DEPARTAMENTOS_CONTABEIS = "pier.departamentos_contabeis";
+
+/**
+ * Resolve os códigos PIER dos departamentos da Gestão Contábil. Se o
+ * escritório já configurou a seleção manualmente (tela de departamentos da
+ * gestão), usa exatamente isso. Sem configuração, cai no comportamento
+ * anterior: casar pelo nome cadastrado, com um padrão fixo como último
+ * recurso.
+ */
 export async function departamentosContabeis(
   ctx: AppContext,
 ): Promise<string[]> {
+  const { data: setting } = await ctx.db
+    .from("app_setting")
+    .select("value")
+    .eq("organization_id", ctx.organizationId)
+    .eq("key", CHAVE_DEPARTAMENTOS_CONTABEIS)
+    .maybeSingle();
+
+  const valorConfigurado = setting?.value as unknown;
+  if (Array.isArray(valorConfigurado)) {
+    const ids = valorConfigurado.map(String).map((v) => v.trim()).filter(Boolean);
+    if (ids.length) return [...new Set(ids)];
+  }
+
   const { data } = await ctx.db
     .from("pier_department")
     .select("external_id, name")
@@ -250,6 +271,67 @@ export async function departamentosContabeis(
     .map((d) => d.external_id);
 
   return encontrados.length ? encontrados : DEPARTAMENTOS_CONTABEIS_PADRAO;
+}
+
+/** Lista todos os departamentos do PIER e quais estão vinculados à Gestão Contábil hoje. */
+export async function obterDepartamentosContabeis(ctx: AppContext) {
+  const [{ data: departamentos, error }, selecionados] = await Promise.all([
+    ctx.db
+      .from("pier_department")
+      .select("external_id, name, user_count")
+      .eq("organization_id", ctx.organizationId)
+      .order("name"),
+    departamentosContabeis(ctx),
+  ]);
+
+  if (error)
+    throw new AppError(
+      "INESPERADO",
+      "Não foi possível carregar os departamentos.",
+      error.message,
+    );
+
+  return {
+    departamentos: (departamentos ?? []).map((d) => ({
+      id: d.external_id,
+      nome: d.name,
+      totalUsuarios: d.user_count ?? 0,
+    })),
+    selecionados,
+  };
+}
+
+/** Define manualmente quais departamentos do PIER pertencem à Gestão Contábil. */
+export async function configurarDepartamentosContabeis(
+  ctx: AppContext,
+  input: { departamentoIds: string[] },
+) {
+  assertAdmin(ctx);
+  const ids = [...new Set(input.departamentoIds.map((id) => id.trim()).filter(Boolean))];
+  if (!ids.length)
+    throw new AppError("VALIDACAO", "Selecione ao menos um departamento.");
+
+  const { error } = await ctx.db.from("app_setting").upsert(
+    {
+      organization_id: ctx.organizationId,
+      key: CHAVE_DEPARTAMENTOS_CONTABEIS,
+      value: ids as never,
+    },
+    { onConflict: "organization_id,key" },
+  );
+  if (error)
+    throw new AppError(
+      "INESPERADO",
+      "Não foi possível salvar os departamentos da Gestão Contábil.",
+      error.message,
+    );
+
+  await audit(ctx, {
+    action: "CONFIGURAR_DEPARTAMENTOS_CONTABEIS",
+    entity: "app_setting",
+    after: { departamentoIds: ids },
+  });
+  return { ok: true, departamentoIds: ids };
 }
 
 /** Departamentos e usuários em cache, para alimentar os selects da tela de Gestão. */

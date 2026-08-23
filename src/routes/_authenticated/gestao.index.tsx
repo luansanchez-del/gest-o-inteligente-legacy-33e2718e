@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
+  Building2,
   Download,
   FilterX,
   Pencil,
@@ -21,6 +22,7 @@ import {
 } from "@/components/common/EstadoConsulta";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -47,9 +49,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  configurarDepartamentosContabeis,
   iniciarGestao,
   listarEquipe,
   montarPreview,
+  obterDepartamentosContabeis,
   renomearDepartamento,
   sincronizarEquipe,
   sincronizarRespostasPier,
@@ -238,6 +242,10 @@ function GestaoPage() {
   const [renomeando, setRenomeando] = useState(false);
   const [confirmarProcessamento, setConfirmarProcessamento] = useState(false);
   const [novoNomeDepartamento, setNovoNomeDepartamento] = useState("");
+  const [departamentosGestaoAberto, setDepartamentosGestaoAberto] = useState(false);
+  const [selecaoDepartamentosGestao, setSelecaoDepartamentosGestao] = useState<Set<string>>(
+    new Set(),
+  );
 
   useEffect(() => {
     window.sessionStorage.setItem(
@@ -449,6 +457,33 @@ function GestaoPage() {
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
 
+  const departamentosGestao = useQuery({
+    queryKey: ["departamentos-contabeis-config"],
+    queryFn: () => obterDepartamentosContabeis(),
+    enabled: departamentosGestaoAberto,
+  });
+
+  useEffect(() => {
+    if (departamentosGestao.data)
+      setSelecaoDepartamentosGestao(new Set(departamentosGestao.data.selecionados));
+  }, [departamentosGestao.data]);
+
+  const salvarDepartamentosGestao = useMutation({
+    mutationFn: () =>
+      configurarDepartamentosContabeis({
+        data: { departamentoIds: [...selecaoDepartamentosGestao] },
+      }),
+    onSuccess: () => {
+      toast.success("Departamentos da Gestão Contábil atualizados.");
+      setDepartamentosGestaoAberto(false);
+      void queryClient.invalidateQueries({ queryKey: ["departamentos-contabeis-config"] });
+      void queryClient.invalidateQueries({ queryKey: ["equipe-pier"] });
+      void queryClient.invalidateQueries({ queryKey: ["equipe-completa"] });
+      void queryClient.invalidateQueries({ queryKey: ["preview-gestao"] });
+    },
+    onError: (e) => toast.error(mensagemDeErro(e)),
+  });
+
   const departamentos = equipe.data?.departamentos ?? [];
   const usuarios = equipe.data?.usuarios ?? [];
   const departamentoSelecionado = departamentos.find(
@@ -529,6 +564,13 @@ function GestaoPage() {
             >
               <Users className="mr-2 h-4 w-4" />
               Sincronizar equipe
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setDepartamentosGestaoAberto(true)}
+            >
+              <Building2 className="mr-2 h-4 w-4" />
+              Departamentos da gestão
             </Button>
             <Button
               variant="outline"
@@ -827,6 +869,57 @@ function GestaoPage() {
               disabled={renomear.isPending || !novoNomeDepartamento.trim()}
             >
               Salvar nome
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={departamentosGestaoAberto} onOpenChange={setDepartamentosGestaoAberto}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Departamentos da Gestão Contábil</DialogTitle>
+            <DialogDescription>
+              Escolha quais departamentos do PIER pertencem à Gestão Contábil. A carga e os
+              filtros passam a considerar somente os departamentos marcados aqui.
+            </DialogDescription>
+          </DialogHeader>
+          {departamentosGestao.isLoading ? (
+            <p className="text-sm text-muted-foreground">Carregando departamentos…</p>
+          ) : (
+            <div className="max-h-72 space-y-2 overflow-y-auto">
+              {(departamentosGestao.data?.departamentos ?? []).map((d) => (
+                <label
+                  key={d.id}
+                  className="flex items-center justify-between gap-2 rounded-md border p-2 text-sm"
+                >
+                  <span className="flex items-center gap-2">
+                    <Checkbox
+                      checked={selecaoDepartamentosGestao.has(d.id)}
+                      onCheckedChange={(marcado) =>
+                        setSelecaoDepartamentosGestao((atual) => {
+                          const novo = new Set(atual);
+                          if (marcado) novo.add(d.id);
+                          else novo.delete(d.id);
+                          return novo;
+                        })
+                      }
+                    />
+                    {d.nome}
+                  </span>
+                  <span className="text-xs text-muted-foreground">{d.totalUsuarios} usuário(s)</span>
+                </label>
+              ))}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDepartamentosGestaoAberto(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => salvarDepartamentosGestao.mutate()}
+              disabled={salvarDepartamentosGestao.isPending || !selecaoDepartamentosGestao.size}
+            >
+              Salvar departamentos
             </Button>
           </DialogFooter>
         </DialogContent>
