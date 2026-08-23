@@ -24,6 +24,16 @@ function normalizarDocumento(value: string | null | undefined) {
   return (value ?? "").replace(/\D/g, "");
 }
 
+/**
+ * O PIER usa contas automáticas (ex.: "FECHAMENTO CONTABIL 2026") para abrir
+ * solicitações em massa. Elas às vezes ficam cadastradas sob o departamento
+ * Tributário, mas não representam um responsável fiscal real.
+ */
+function responsavelHumano(nome: string | null | undefined) {
+  const n = normalizar(nome);
+  return !n.includes("automacao") && !n.includes("fechamento contabil");
+}
+
 function finalizada(status: string | null, finishedAt?: string | null) {
   return solicitacaoFinalizadaPier(status, finishedAt ?? null);
 }
@@ -184,7 +194,10 @@ export async function sincronizarSolicitacoesFiscais(
     const departamento = s.responsibleExternalId
       ? deptoPorUsuario.get(s.responsibleExternalId) ?? null
       : null;
-    return Boolean(departamento && departamentos.has(departamento));
+    return (
+      Boolean(departamento && departamentos.has(departamento)) &&
+      responsavelHumano(s.responsibleName)
+    );
   };
 
   try {
@@ -389,8 +402,11 @@ export async function listarGestaoFiscal(
     throw new AppError("INESPERADO", "Não foi possível montar a Gestão Fiscal.", error.message);
 
   // No PIER, o nome do tipo pode ser genérico. O escopo fiscal é determinado
-  // pelo departamento do responsável, aplicado na consulta acima.
-  const requestsFiscais = requests ?? [];
+  // pelo departamento do responsável, aplicado na consulta acima. O filtro
+  // abaixo remove contas automáticas (ex.: "FECHAMENTO CONTABIL 2026") que
+  // ficaram cadastradas sob o departamento Tributário mas não são um
+  // responsável fiscal real — inclusive registros antigos já gravados.
+  const requestsFiscais = (requests ?? []).filter((r) => responsavelHumano(r.responsible_name));
   const clientes = await carregarTodasAsLinhas<{
     document: string | null;
     tax_regime: string | null;
