@@ -290,6 +290,11 @@ function GestaoPage() {
     staleTime: 5 * 60_000,
   });
 
+  useEffect(() => {
+    if (tiposPier.isError)
+      toast.error(`Não foi possível carregar os tipos de solicitação do PIER: ${mensagemDeErro(tiposPier.error)}`);
+  }, [tiposPier.isError, tiposPier.error]);
+
   const filtro = {
     competencia,
     competenciaFim: competenciaFim || null,
@@ -672,7 +677,16 @@ function GestaoPage() {
             </div>
           </div>
           <div className="space-y-1.5 lg:w-[220px]">
-            <Label>Tipo de solicitação</Label>
+            <Label>
+              Tipo de solicitação{" "}
+              <span className="font-normal text-muted-foreground">
+                {tiposPier.isLoading
+                  ? "(carregando tipos do PIER…)"
+                  : tiposPier.data
+                    ? `(${tiposPier.data.length} tipos no PIER)`
+                    : ""}
+              </span>
+            </Label>
             <Select value={tipo} onValueChange={setTipo}>
               <SelectTrigger>
                 <SelectValue />
