@@ -6,7 +6,8 @@ import { comContexto, emailDoToken } from "./contexto";
 type EscopoInput = {
   competencia: string;
   competenciaFim?: string | null;
-  tipo: "CONTABIL" | "MOVIMENTO_FINANCEIRO" | "FISCAL" | "OUTRO";
+  /** Chave conhecida (CONTABIL, MOVIMENTO_FINANCEIRO, ...) ou o ID de um tipo real do PIER. */
+  tipo: string;
   departamentoId?: string | null;
   responsavelId?: string | null;
   statusFila?:
@@ -134,6 +135,15 @@ export const sincronizarEquipe = createServerFn({ method: "POST" })
     comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
       const service = await import("@/server/domain/gestao/escopo.service");
       return service.sincronizarEquipe(ctx);
+    }),
+  );
+
+export const listarTiposSolicitacaoPier = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) =>
+    comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
+      const service = await import("@/server/domain/gestao/escopo.service");
+      return service.listarTiposSolicitacao(ctx);
     }),
   );
 

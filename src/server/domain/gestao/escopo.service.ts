@@ -17,8 +17,12 @@ const TIPOS_PADRAO: Record<string, string> = {
 /** Tipos considerados internos do escritório (o PIER também lista usuários "Cliente"). */
 const TIPOS_INTERNOS = new Set(["colaborador", "gestor", "encarregado"]);
 
-export type TipoFechamento =
-  "CONTABIL" | "MOVIMENTO_FINANCEIRO" | "FISCAL" | "OUTRO";
+/**
+ * Além das chaves conhecidas (CONTABIL, MOVIMENTO_FINANCEIRO, ...), aceita
+ * qualquer ID de tipo de solicitação real do PIER (ver `listarTiposSolicitacao`),
+ * para permitir escolher tipos que não têm uma chave fixa no código.
+ */
+export type TipoFechamento = string;
 
 function normalizarNome(value: string) {
   return value
@@ -76,12 +80,23 @@ export async function resolverTipoSolicitacao(
     if (encontrado) return encontrado.externalId;
   }
 
-  if (!resolvido)
-    throw new AppError(
-      "REGRA_NEGOCIO",
-      "Este tipo de fechamento ainda não tem um tipo de solicitação do PIER configurado.",
-    );
-  return resolvido;
+  // Não é uma chave conhecida: se já é o próprio ID do tipo no PIER (ex.: veio
+  // do seletor dinâmico de tipos), usa direto em vez de recusar.
+  if (/^\d+$/.test(tipo)) return tipo;
+
+  throw new AppError(
+    "REGRA_NEGOCIO",
+    "Este tipo de fechamento ainda não tem um tipo de solicitação do PIER configurado.",
+  );
+}
+
+/** Lista os tipos de solicitação ativos no PIER, para escolher dinamicamente na tela. */
+export async function listarTiposSolicitacao(_ctx: AppContext) {
+  const tipos = await pierAdapter.listRequestTypes();
+  return tipos
+    .filter((t) => t.externalId)
+    .map((t) => ({ id: t.externalId, nome: t.name }))
+    .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
 }
 
 function nomePadraoDepartamento(externalId: string) {

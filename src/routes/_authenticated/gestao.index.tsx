@@ -52,6 +52,7 @@ import {
   configurarDepartamentosContabeis,
   iniciarGestao,
   listarEquipe,
+  listarTiposSolicitacaoPier,
   montarPreview,
   obterDepartamentosContabeis,
   renomearDepartamento,
@@ -93,7 +94,7 @@ type StatusRespostaFiltro =
 
 interface FiltrosGestaoSalvos {
   competencia: string;
-  tipo: "CONTABIL" | "MOVIMENTO_FINANCEIRO";
+  tipo: string;
   competenciaFim: string;
   busca: string;
   revisaoCompetencia: boolean;
@@ -186,10 +187,7 @@ function carregarFiltrosGestao(): FiltrosGestaoSalvos {
       competencia: /^\d{4}-\d{2}$/.test(salvo.competencia ?? "")
         ? salvo.competencia!
         : padrao.competencia,
-      tipo:
-        salvo.tipo === "MOVIMENTO_FINANCEIRO"
-          ? "MOVIMENTO_FINANCEIRO"
-          : "CONTABIL",
+      tipo: salvo.tipo?.trim() || "CONTABIL",
       statusPier: ["PENDENTES", "FINALIZADAS", "TODOS"].includes(
         salvo.statusPier ?? "",
       )
@@ -213,9 +211,7 @@ function GestaoPage() {
   const queryClient = useQueryClient();
   const [filtrosIniciais] = useState(carregarFiltrosGestao);
   const [competencia, setCompetencia] = useState(filtrosIniciais.competencia);
-  const [tipo, setTipo] = useState<"CONTABIL" | "MOVIMENTO_FINANCEIRO">(
-    filtrosIniciais.tipo,
-  );
+  const [tipo, setTipo] = useState<string>(filtrosIniciais.tipo);
   const [competenciaFim, setCompetenciaFim] = useState(
     filtrosIniciais.competenciaFim,
   );
@@ -286,6 +282,12 @@ function GestaoPage() {
     queryKey: ["equipe-pier", incluirInativos, "contabeis"],
     queryFn: () =>
       listarEquipe({ data: { incluirInativos, somenteContabeis: true } }),
+  });
+
+  const tiposPier = useQuery({
+    queryKey: ["tipos-solicitacao-pier"],
+    queryFn: () => listarTiposSolicitacaoPier(),
+    staleTime: 5 * 60_000,
   });
 
   const filtro = {
@@ -628,22 +630,29 @@ function GestaoPage() {
               onChange={(e) => setCompetenciaFim(e.target.value)}
             />
           </div>
-          <div className="space-y-1.5 lg:w-[190px]">
+          <div className="space-y-1.5 lg:w-[220px]">
             <Label>Tipo de solicitação</Label>
-            <Select
-              value={tipo}
-              onValueChange={(value) =>
-                setTipo(value as "CONTABIL" | "MOVIMENTO_FINANCEIRO")
-              }
-            >
+            <Select value={tipo} onValueChange={setTipo}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="max-h-80">
                 <SelectItem value="CONTABIL">Fechamento Contábil</SelectItem>
                 <SelectItem value="MOVIMENTO_FINANCEIRO">
                   Movimento Financeiro Mensal
                 </SelectItem>
+                {(tiposPier.data ?? [])
+                  .filter((t) => {
+                    const nome = t.nome.trim().toUpperCase();
+                    return (
+                      nome !== "FECHAMENTO CONTÁBIL" && !nome.includes("MOVIMENTO FINANCEIRO")
+                    );
+                  })
+                  .map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.nome}
+                    </SelectItem>
+                  ))}
               </SelectContent>
             </Select>
           </div>
