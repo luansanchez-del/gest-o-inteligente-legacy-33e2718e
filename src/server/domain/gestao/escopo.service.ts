@@ -32,6 +32,24 @@ function normalizarNome(value: string) {
     .trim();
 }
 
+/**
+ * Contas autom\u00e1ticas do PIER (bots de gera\u00e7\u00e3o em massa, caixas gen\u00e9ricas
+ * como "EMAIL" ou "MOVIMENTO FINANCEIRO MENSAL") n\u00e3o s\u00e3o respons\u00e1veis reais
+ * e n\u00e3o devem contar como time humano nem entrar no escopo da gest\u00e3o.
+ */
+export function responsavelHumano(nome: string | null | undefined): boolean {
+  const n = normalizarNome(nome ?? "");
+  if (!n) return true;
+  const padroesConhecidos = [
+    "automacao",
+    "fechamento contabil",
+    "movimento financeiro mensal",
+    "contratos antigos",
+  ];
+  if (padroesConhecidos.some((p) => n.includes(p))) return false;
+  return n !== "email";
+}
+
 export interface DepartamentoOpcao {
   /** Código interno do PIER — usado como value, nunca exibido como rótulo. */
   id: string;

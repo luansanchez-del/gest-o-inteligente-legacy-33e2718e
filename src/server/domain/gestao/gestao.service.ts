@@ -4,6 +4,7 @@ import { AppError } from "../../lib/errors";
 import {
   departamentosContabeis,
   resolverTipoSolicitacao,
+  responsavelHumano,
   type TipoFechamento,
 } from "./escopo.service";
 import { carregarTodasAsLinhas, carregarUsuariosPier } from "./pier-user.repo";
@@ -121,7 +122,7 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
   if (filtro.anexo === "SEM_ANEXO")
     consulta = consulta.eq("has_attachment", false);
 
-  const { data: solicitacoes, error } = await consulta;
+  const { data: solicitacoesBrutas, error } = await consulta;
 
   if (error)
     throw new AppError(
@@ -129,6 +130,12 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
       "Não foi possível montar o escopo.",
       error.message,
     );
+
+  // Contas automáticas (ex.: "MOVIMENTO FINANCEIRO MENSAL") não são
+  // responsáveis reais — inclusive filtra registros antigos já gravados.
+  const solicitacoes = (solicitacoesBrutas ?? []).filter((s) =>
+    responsavelHumano(s.responsible_name),
+  );
 
   const [usuarios, { data: departamentos }, clientes] = await Promise.all([
     carregarUsuariosPier<{

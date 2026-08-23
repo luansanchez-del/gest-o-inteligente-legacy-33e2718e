@@ -2,7 +2,7 @@ import { audit } from "../../lib/audit";
 import { assertCanWrite, type AppContext } from "../../lib/context";
 import { AppError } from "../../lib/errors";
 import { pierAdapter } from "../../integrations/pier/pier.adapter";
-import { departamentosContabeis, resolverTipoSolicitacao } from "./escopo.service";
+import { departamentosContabeis, resolverTipoSolicitacao, responsavelHumano } from "./escopo.service";
 import { carregarUsuariosPier } from "./pier-user.repo";
 import { selecionarParaCarga } from "./status-pier";
 
@@ -104,7 +104,7 @@ async function buscarDoMes(competencia: string, amb: Ambiente) {
     const depto = s.responsibleExternalId
       ? (amb.deptoPorUsuario.get(s.responsibleExternalId) ?? null)
       : null;
-    if (depto && amb.contabeis.has(depto)) contabeis.push(s);
+    if (depto && amb.contabeis.has(depto) && responsavelHumano(s.responsibleName)) contabeis.push(s);
     else ignoradasNaoContabeis += 1;
   }
   return { contabeis, ignoradasNaoContabeis };
