@@ -48,6 +48,30 @@ interface TokenCache {
 
 let cache: TokenCache | null = null;
 
+/**
+ * O PIER limita a 50 chamadas por minuto (confirmado por HTTP 429 real:
+ * "API calls quota exceeded! maximum admitted 50 per 1m"). Em vez de deixar
+ * a cota estourar, cada chamada espera sua vez numa janela deslizante,
+ * com uma margem de segurança abaixo do limite real.
+ */
+const LIMITE_CHAMADAS_POR_JANELA = 45;
+const JANELA_COTA_MS = 60_000;
+const chamadasRecentes: number[] = [];
+
+async function respeitarCota(): Promise<void> {
+  for (;;) {
+    const agora = Date.now();
+    while (chamadasRecentes.length && agora - chamadasRecentes[0]! >= JANELA_COTA_MS) {
+      chamadasRecentes.shift();
+    }
+    if (chamadasRecentes.length < LIMITE_CHAMADAS_POR_JANELA) {
+      chamadasRecentes.push(agora);
+      return;
+    }
+    await sleep(chamadasRecentes[0]! + JANELA_COTA_MS - agora + 25);
+  }
+}
+
 async function safeResponseText(response: Response): Promise<string> {
   try {
     const clone = response.clone();
@@ -92,6 +116,7 @@ async function autenticar(config: PierConfig, forcar = false): Promise<string> {
     return cache.token;
   }
 
+  await respeitarCota();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
@@ -208,6 +233,7 @@ export async function pierGet<T>(
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const token = await autenticar(config, renovou);
+    await respeitarCota();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
     try {
@@ -230,6 +256,14 @@ export async function pierGet<T>(
         throw integracaoIndisponivel(
           "O PIER recusou a credencial configurada. Revise a chave de integração.",
         );
+      }
+
+      if (response.status === 429 && attempt < MAX_ATTEMPTS) {
+        lastDetail = `HTTP 429: ${await safeResponseText(response)}`;
+        // A cota já é respeitada preventivamente; se mesmo assim o PIER
+        // recusar, espera mais que o backoff padrão antes de tentar de novo.
+        await sleep(2000 + attempt * 1000 + Math.random() * 500);
+        continue;
       }
 
       if (response.status >= 500 && attempt < MAX_ATTEMPTS) {
@@ -274,6 +308,7 @@ export async function pierPost<T>(path: string, body?: unknown): Promise<T> {
 
   for (let attempt = 1; attempt <= 2; attempt++) {
     const token = await autenticar(config, renovou);
+    await respeitarCota();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
     try {

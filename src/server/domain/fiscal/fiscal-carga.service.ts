@@ -3,6 +3,7 @@ import { assertCanWrite, type AppContext } from "../../lib/context";
 import { AppError } from "../../lib/errors";
 import { pierAdapter } from "../../integrations/pier/pier.adapter";
 import { listarMeses, proximaCompetencia } from "../gestao/carga.service";
+import { resolverTipoSolicitacao } from "../gestao/escopo.service";
 import { selecionarParaCarga } from "../gestao/status-pier";
 import { departamentosFiscais, mapaDepartamentoUsuarios, responsavelHumano } from "./fiscal-gestao.service";
 
@@ -43,33 +44,26 @@ export interface PreviewCargaFiscal {
 async function contexto(ctx: AppContext) {
   const departamentos = new Set(await departamentosFiscais(ctx));
   const deptoPorUsuario = await mapaDepartamentoUsuarios(ctx);
-  // O PIER não tem um único tipo de solicitação para fiscal: cada obrigação
-  // (Fechamento Contábil, EFD, DCTFWeb, REINF, PGDAS, Malha Fiscal etc.) é
-  // um tipo separado. Por isso a busca varre TODOS os tipos ativos — quem
-  // decide o que é fiscal é só o departamento do responsável, aplicado
-  // depois em cada tipo.
-  const tipos = await pierAdapter.listRequestTypes();
-  return { departamentos, deptoPorUsuario, tipos };
+  // Mesmo conceito e mecanismo de busca do Contábil (listRequestsByType pelo
+  // tipo oficial "Fechamento Contábil") — só o filtro de departamento muda,
+  // para Tributário Legacy/BPO. Quais outros tipos/departamentos entram na
+  // Gestão Fiscal fica para uma etapa seguinte, definida à parte.
+  const typeExternalId = await resolverTipoSolicitacao(ctx, "CONTABIL");
+  return { departamentos, deptoPorUsuario, typeExternalId };
 }
 
 type Ambiente = Awaited<ReturnType<typeof contexto>>;
-type Candidato = Awaited<ReturnType<typeof pierAdapter.listRequestsByType>>[number];
 
 async function buscarDoMes(competencia: string, amb: Ambiente) {
-  const porId = new Map<string, Candidato>();
-  for (const tipo of amb.tipos) {
-    if (!tipo.externalId) continue;
-    const solicitacoes = await pierAdapter.listRequestsByType({
-      typeExternalId: tipo.externalId,
-      referenceMonth: competencia,
-      incluirSemCompetencia: true,
-    });
-    for (const s of solicitacoes) if (!porId.has(s.externalId)) porId.set(s.externalId, s);
-  }
+  const solicitacoes = await pierAdapter.listRequestsByType({
+    typeExternalId: amb.typeExternalId,
+    referenceMonth: competencia,
+    incluirSemCompetencia: true,
+  });
 
-  const fiscais: Candidato[] = [];
+  const fiscais: typeof solicitacoes = [];
   let ignoradasForaDoEscopo = 0;
-  for (const s of porId.values()) {
+  for (const s of solicitacoes) {
     const depto = s.responsibleExternalId
       ? (amb.deptoPorUsuario.get(s.responsibleExternalId) ?? null)
       : null;
