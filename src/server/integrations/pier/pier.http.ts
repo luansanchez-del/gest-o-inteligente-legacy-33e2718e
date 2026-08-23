@@ -239,8 +239,9 @@ export async function pierGet<T>(
       }
 
       if (!response.ok) {
+        const corpo = await safeResponseText(response);
         throw integracaoFalhou(
-          `O PIER respondeu com erro ao consultar ${path}.`,
+          `O PIER respondeu com erro ${response.status} ao consultar ${path}.${corpo ? ` ${corpo}` : ""}`,
           `HTTP ${response.status}`,
         );
       }
@@ -300,9 +301,10 @@ export async function pierPost<T>(path: string, body?: unknown): Promise<T> {
       }
 
       if (!response.ok) {
+        const corpo = await safeResponseText(response);
         throw integracaoFalhou(
-          `O PIER respondeu com erro em ${path}.`,
-          `HTTP ${response.status}: ${await safeResponseText(response)}`,
+          `O PIER respondeu com erro ${response.status} em ${path}.${corpo ? ` ${corpo}` : ""}`,
+          `HTTP ${response.status}`,
         );
       }
 
