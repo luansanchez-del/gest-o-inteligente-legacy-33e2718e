@@ -321,23 +321,11 @@ export async function validarSolicitacaoFiscal(
   } catch (e) {
     throw new AppError("INTEGRACAO_FALHA", "Não foi possível conferir o estado atual no PIER.", erroSeguro(e));
   }
-  if (finalizada(detalhe.status, detalhe.finishedAt))
-    return {
-      solicitacaoExternalId: request.external_id,
-      numero: request.number,
-      clienteNome: request.client_name,
-      statusPier: detalhe.status,
-      finalizadaEm: detalhe.finishedAt,
-      grupo: "—",
-      grupoRotulo: "Finalizada no PIER",
-      situacao: "FINALIZADA" as const,
-      regime: await carregarRegime(ctx, request.client_document),
-      evidenciasEncontradas: [],
-      achados: [],
-      totalImpedimentos: 0,
-      totalAlertas: 0,
-      respostaSugerida: "A solicitação já está finalizada no PIER. Nenhuma nova ação é necessária.",
-    };
+  // Já finalizada no PIER não impede a análise: ela roda do mesmo jeito,
+  // somente leitura, para permitir conferir como ficou o fechamento.
+  // `finalizadaEm` no retorno é o sinal de que nenhuma nova ação de
+  // escrita (postar/finalizar) deve ser enviada — nunca `situacao`.
+  const jaFinalizada = finalizada(detalhe.status, detalhe.finishedAt);
 
   const [arquivos, postagens, regime] = await Promise.all([
     pierAdapter.listFiles({ requestExternalId: request.external_id }),
@@ -355,10 +343,11 @@ export async function validarSolicitacaoFiscal(
   });
 
   const outcome = resultado.situacao === "APROVADA" ? "PENDENTE" : "EM_REVISAO";
-  const motivo =
+  const motivoBase =
     resultado.situacao === "APROVADA"
       ? `Fiscal ${resultado.grupoRotulo}: checklist documental atendido; aguardando decisão humana.`
       : `Fiscal ${resultado.grupoRotulo}: ${resultado.totalImpedimentos} impedimento(s) e ${resultado.totalAlertas} alerta(s).`;
+  const motivo = jaFinalizada ? `${motivoBase} (já finalizada no PIER — consulta apenas)` : motivoBase;
 
   await ctx.db.from("request_processing").upsert(
     {
@@ -395,8 +384,11 @@ export async function validarSolicitacaoFiscal(
     numero: request.number,
     clienteNome: request.client_name,
     statusPier: detalhe.status,
-    finalizadaEm: null,
+    finalizadaEm: jaFinalizada ? detalhe.finishedAt : null,
     ...resultado,
+    respostaSugerida: jaFinalizada
+      ? "A solicitação já está finalizada no PIER. Resultado mostrado apenas para consulta — nenhuma nova ação será enviada, mas você pode publicar um comentário."
+      : resultado.respostaSugerida,
   };
 }
 
@@ -437,8 +429,16 @@ export async function executarDecisaoFiscal(
   const analise = await validarSolicitacaoFiscal(ctx, {
     solicitacaoExternalId: input.solicitacaoExternalId,
   });
-  if (analise.situacao === "FINALIZADA")
-    return { situacao: "JA_FINALIZADA" as const, mensagem: analise.respostaSugerida, postagemId: null, finalizadaEm: analise.finalizadaEm };
+  const jaFinalizada = Boolean(analise.finalizadaEm);
+  // Proteção: nunca refinalizar. Comentar/responder continua permitido —
+  // só a finalização em si é bloqueada quando já está fechada no PIER.
+  if (input.finalizar && jaFinalizada)
+    return {
+      situacao: "JA_FINALIZADA" as const,
+      mensagem: "A solicitação já está finalizada no PIER. Nenhuma nova finalização foi executada.",
+      postagemId: null,
+      finalizadaEm: analise.finalizadaEm,
+    };
   if (input.finalizar && ["BLOQUEADA", "NAO_MAPEADA"].includes(analise.situacao))
     throw new AppError("REGRA_NEGOCIO", "A solicitação fiscal possui impedimento ou assunto não mapeado e não pode ser finalizada.");
 
@@ -480,9 +480,11 @@ export async function executarDecisaoFiscal(
   if (!input.finalizar)
     return {
       situacao: "RESPONDIDA" as const,
-      mensagem: "Resposta fiscal publicada no PIER. A solicitação permaneceu aberta.",
+      mensagem: jaFinalizada
+        ? "Comentário publicado no PIER. A solicitação já estava finalizada e continua finalizada."
+        : "Resposta fiscal publicada no PIER. A solicitação permaneceu aberta.",
       postagemId: postagem.externalId,
-      finalizadaEm: null,
+      finalizadaEm: jaFinalizada ? analise.finalizadaEm : null,
     };
 
   try {

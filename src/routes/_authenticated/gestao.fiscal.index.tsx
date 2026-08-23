@@ -365,7 +365,9 @@ function GestaoFiscalPage() {
   }
 
   const processaveis = linhasFiltradas.filter((l) => l.situacao !== "FINALIZADA").length;
-  const podeFinalizar = Boolean(analise) && !["BLOQUEADA", "NAO_MAPEADA", "FINALIZADA"].includes(analise?.situacao ?? "");
+  const analiseJaFinalizada = Boolean(analise?.finalizadaEm);
+  const podeFinalizar =
+    Boolean(analise) && !analiseJaFinalizada && !["BLOQUEADA", "NAO_MAPEADA"].includes(analise?.situacao ?? "");
   const exigeJustificativa = analise?.situacao === "COM_RESSALVAS";
 
   return (
@@ -657,8 +659,12 @@ function GestaoFiscalPage() {
                       <span className={`inline-flex rounded-full bg-muted px-2 py-1 text-xs font-medium ${info.classe}`}>{info.rotulo}</span>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button size="sm" variant="ghost" disabled={validarUma.isPending || linha.situacao === "FINALIZADA"} onClick={() => validarUma.mutate(linha.solicitacaoId)}>
-                        {linha.situacao === "REVISAO_NECESSARIA" ? "Revisar" : "Validar"}
+                      <Button size="sm" variant="ghost" disabled={validarUma.isPending} onClick={() => validarUma.mutate(linha.solicitacaoId)}>
+                        {linha.situacao === "FINALIZADA"
+                          ? "Ver análise"
+                          : linha.situacao === "REVISAO_NECESSARIA"
+                            ? "Revisar"
+                            : "Validar"}
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -678,6 +684,12 @@ function GestaoFiscalPage() {
 
           {analise ? (
             <div className="space-y-4">
+              {analiseJaFinalizada ? (
+                <div className="rounded-lg border border-muted-foreground/30 bg-muted p-3 text-sm text-muted-foreground">
+                  Já finalizada no PIER em {new Date(analise.finalizadaEm!).toLocaleString("pt-BR")}. Mostrado
+                  apenas para consulta — nenhuma nova finalização será enviada, mas você pode comentar.
+                </div>
+              ) : null}
               <div className="grid gap-3 sm:grid-cols-4">
                 <Card className="p-3"><p className="text-xs text-muted-foreground">Situação</p><p className="font-semibold">{analise.situacao}</p></Card>
                 <Card className="p-3"><p className="text-xs text-muted-foreground">Regime</p><p className="font-semibold">{analise.regime ?? "Não identificado"}</p></Card>
@@ -726,7 +738,9 @@ function GestaoFiscalPage() {
 
           <DialogFooter className="sticky bottom-0 border-t bg-background pt-4">
             <Button variant="ghost" onClick={() => setDialogAberto(false)}>Fechar</Button>
-            <Button variant="outline" disabled={decidir.isPending || !analise || analise.situacao === "FINALIZADA"} onClick={() => decidir.mutate(false)}>Responder e manter aberta</Button>
+            <Button variant="outline" disabled={decidir.isPending || !analise} onClick={() => decidir.mutate(false)}>
+              {analiseJaFinalizada ? "Comentar no PIER" : "Responder e manter aberta"}
+            </Button>
             <Button disabled={decidir.isPending || !podeFinalizar || (exigeJustificativa && justificativa.trim().length < 10)} onClick={() => decidir.mutate(true)}>
               {decidir.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
               {exigeJustificativa ? "Aprovar com ressalva e finalizar" : "Responder e finalizar"}

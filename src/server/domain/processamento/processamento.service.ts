@@ -309,7 +309,7 @@ export async function processarSolicitacao(
     ctx,
     input.solicitacaoExternalId,
   );
-  const permitirFinalizar = input.permitirFinalizar !== false;
+  let permitirFinalizar = input.permitirFinalizar !== false;
 
   const base: ResultadoProcessamento = {
     solicitacaoExternalId: solicitacao.external_id,
@@ -399,16 +399,13 @@ export async function processarSolicitacao(
     })
     .eq("id", solicitacao.id);
 
-  // Proteção: nunca refinalizar.
-  if (pareceFinalizada(detalhe.status, detalhe.finishedAt)) {
-    return encerrar(
-      "JA_FINALIZADA",
-      "A solicitação já está finalizada no PIER. Nenhuma ação foi executada.",
-      {
-        finalizadaEm: detalhe.finishedAt ?? anteriorProc?.finalized_at ?? null,
-      },
-    );
-  }
+  // Proteção: nunca refinalizar nem publicar de novo. A análise ainda roda
+  // (somente leitura) para que seja possível conferir como ficou o
+  // fechamento mesmo depois de finalizado no PIER.
+  const jaFinalizadaNoPier = pareceFinalizada(detalhe.status, detalhe.finishedAt);
+  if (jaFinalizadaNoPier) permitirFinalizar = false;
+  const finalizadaEmAnterior =
+    detalhe.finishedAt ?? anteriorProc?.finalized_at ?? null;
 
   // 2. Postagens (contexto para identificar o balancete).
   let textoPostagens = "";
@@ -470,10 +467,16 @@ export async function processarSolicitacao(
       Number(conferencia.comprovantesEcac.length === 0);
 
     if (!permitirFinalizar) {
-      return encerrar(
-        "PENDENTE",
-        "Documentação mínima identificada. O fechamento contábil está liberado; finalização no PIER não solicitada.",
-      );
+      return jaFinalizadaNoPier
+        ? encerrar(
+            "JA_FINALIZADA",
+            "Já finalizada no PIER. Documentação conferida apenas para consulta — nenhuma nova ação foi enviada.",
+            { finalizadaEm: finalizadaEmAnterior },
+          )
+        : encerrar(
+            "PENDENTE",
+            "Documentação mínima identificada. O fechamento contábil está liberado; finalização no PIER não solicitada.",
+          );
     }
 
     let postagemId = anteriorProc?.pier_post_external_id ?? null;
@@ -620,25 +623,35 @@ export async function processarSolicitacao(
     resultado.resultado === "APROVADO" && erros === 0 && alertas === 0;
 
   if (!aprovado) {
+    const sufixo = jaFinalizadaNoPier
+      ? " A solicitação já está finalizada no PIER; nenhuma nova ação foi enviada."
+      : " A solicitação não pode ser finalizada.";
     return encerrar(
       "EM_REVISAO",
-      erros
-        ? `A análise apontou ${erros} erro(s) contábil(is). A solicitação não pode ser finalizada.`
+      (erros
+        ? `A análise apontou ${erros} erro(s) contábil(is).`
         : alertas
-          ? `A análise apontou ${alertas} alerta(s) que exigem revisão humana. A solicitação não pode ser finalizada.`
-          : "A análise não resultou em aprovação objetiva. Revise antes de finalizar.",
-      {},
+          ? `A análise apontou ${alertas} alerta(s) que exigem revisão humana.`
+          : "A análise não resultou em aprovação objetiva.") + sufixo,
+      jaFinalizadaNoPier ? { finalizadaEm: finalizadaEmAnterior } : {},
       persistirAnalise,
     );
   }
 
   if (!permitirFinalizar) {
-    return encerrar(
-      "PENDENTE",
-      "Análise aprovada. Finalização no PIER não solicitada nesta execução.",
-      {},
-      persistirAnalise,
-    );
+    return jaFinalizadaNoPier
+      ? encerrar(
+          "JA_FINALIZADA",
+          "Já finalizada no PIER. Balancete analisado apenas para consulta — nenhuma nova ação foi enviada.",
+          { finalizadaEm: finalizadaEmAnterior },
+          persistirAnalise,
+        )
+      : encerrar(
+          "PENDENTE",
+          "Análise aprovada. Finalização no PIER não solicitada nesta execução.",
+          {},
+          persistirAnalise,
+        );
   }
 
   // 5. Postagem privada ANTES da finalização (reaproveitada se já existir).
