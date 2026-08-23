@@ -4,7 +4,6 @@ import { AppError } from "../../lib/errors";
 import { erroSeguro, mascararTexto } from "../../lib/mascara";
 import { pierAdapter } from "../../integrations/pier/pier.adapter";
 import { carregarTodasAsLinhas, carregarUsuariosPier } from "../gestao/pier-user.repo";
-import { resolverTipoSolicitacao } from "../gestao/escopo.service";
 import { verificarRespostaPierPorExternalId } from "../gestao/resposta-pier.service";
 import { solicitacaoFinalizadaPier } from "../gestao/status-pier";
 import { validarManualFiscal } from "./fiscal-manual.service";
@@ -157,7 +156,6 @@ export async function sincronizarSolicitacoesFiscais(
     throw new AppError("VALIDACAO", "Selecione um intervalo de no máximo 24 meses.");
 
   const departamentos = new Set(await departamentosFiscais(ctx));
-  const tipoFiscalId = await resolverTipoSolicitacao(ctx, "FISCAL");
   let deptoPorUsuario = await mapaDepartamentoUsuarios(ctx);
   const agora = new Date().toISOString();
 
@@ -169,7 +167,6 @@ export async function sincronizarSolicitacoesFiscais(
       competenciaFim: input.competenciaFim,
       meses,
       departamentos: [...departamentos],
-      tipoFiscalId,
       incluirFinalizadas: Boolean(input.incluirFinalizadas),
     },
   });
@@ -198,29 +195,18 @@ export async function sincronizarSolicitacoesFiscais(
       ...deptoPorUsuario,
       ...usuariosPier.map((u) => [u.externalId, u.departmentExternalId] as const),
     ]);
-    const tiposPier = await pierAdapter.listRequestTypes();
-    const nomeTipoFiscal =
-      tiposPier.find((tipo) => tipo.externalId === tipoFiscalId)?.name ?? "FECHAMENTO FISCAL";
-
-    const comoFiscal = (s: Candidato): Candidato => ({
-      ...s,
-      typeExternalId: tipoFiscalId,
-      typeName: nomeTipoFiscal,
-      purpose: "TAX_CLOSING",
-    });
 
     for (const competencia of meses) {
       const [ano, mes] = competencia.split("-");
       const termoBusca = `${mes}/${ano}`;
-      const lote = await pierAdapter.listRequestsByType({
-        typeExternalId: tipoFiscalId,
-        referenceMonth: competencia,
-        incluirSemCompetencia: true,
+      const lote = await pierAdapter.listRequests({
+        status: "Todas",
+        maxPages: 200,
+        busca: termoBusca,
       });
       recebidasDaBusca += lote.length;
 
-      for (const item of lote) {
-        const s = comoFiscal(item);
+      for (const s of lote) {
         if (!doDepartamento(s)) continue;
         doDepartamentoFiscal += 1;
         if (s.referenceMonth && s.referenceMonth !== competencia) continue;
@@ -250,7 +236,6 @@ export async function sincronizarSolicitacoesFiscais(
     recebidasDaBusca += genericas.length;
     for (const s of genericas) {
       if (selecionadas.has(s.externalId)) continue;
-      if (s.typeExternalId !== tipoFiscalId) continue;
       if (!doDepartamento(s)) continue;
       doDepartamentoFiscal += 1;
       if (
@@ -263,7 +248,7 @@ export async function sincronizarSolicitacoesFiscais(
       }
       if (!input.incluirFinalizadas && finalizada(s.status, s.finishedAt)) continue;
       competenciaInterpretada += 1;
-      selecionadas.set(s.externalId, comoFiscal(s));
+      selecionadas.set(s.externalId, s);
     }
   } catch (error) {
     await audit(ctx, {
@@ -384,14 +369,12 @@ export async function listarGestaoFiscal(
   const inicio = input.competenciaInicio;
   const fim = input.competenciaFim < inicio ? inicio : input.competenciaFim;
   const departamentos = await departamentosFiscais(ctx);
-  const tipoFiscalId = await resolverTipoSolicitacao(ctx, "FISCAL");
   let consulta = ctx.db
     .from("request")
     .select(
       "id,external_id,number,description,type_name,purpose,status,reference_month,responsible_external_id,responsible_name,department_external_id,client_name,client_document,has_attachment,deadline_at,finished_at",
     )
     .eq("organization_id", ctx.organizationId)
-    .eq("type_external_id", tipoFiscalId)
     .gte("reference_month", inicio)
     .lte("reference_month", fim)
     .in("department_external_id", departamentos);
