@@ -12,6 +12,64 @@ function validarIntervalo(input: { competenciaInicio: string; competenciaFim: st
   return input;
 }
 
+function validarIntervaloCarga(input: { inicio: string; fim: string }) {
+  if (!COMPETENCIA.test(input?.inicio ?? "") || !COMPETENCIA.test(input?.fim ?? ""))
+    throw new Error("VALIDACAO::Informe as competências no formato AAAA-MM.");
+  if (input.inicio > input.fim)
+    throw new Error("VALIDACAO::A competência inicial deve ser anterior ou igual à final.");
+  return input;
+}
+
+export const previsualizarCargaFiscal = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { inicio: string; fim: string; incluirFinalizadas?: boolean }) =>
+    validarIntervaloCarga(input),
+  )
+  .handler(async ({ data, context }) =>
+    comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
+      const service = await import("@/server/domain/fiscal/fiscal-carga.service");
+      return service.previsualizarCargaFiscal(ctx, data);
+    }),
+  );
+
+export const abrirCargaFiscal = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(
+    (input: { inicio: string; fim: string; tipoCarga: "HISTORICA" | "MENSAL"; incluirFinalizadas?: boolean }) => {
+      validarIntervaloCarga(input);
+      return input;
+    },
+  )
+  .handler(async ({ data, context }) =>
+    comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
+      const service = await import("@/server/domain/fiscal/fiscal-carga.service");
+      return service.abrirCargaFiscal(ctx, data);
+    }),
+  );
+
+export const carregarCompetenciaFiscal = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { competencia: string; runId?: string | null; incluirFinalizadas?: boolean }) => {
+    if (!COMPETENCIA.test(input?.competencia ?? ""))
+      throw new Error("VALIDACAO::Informe a competência no formato AAAA-MM.");
+    return input;
+  })
+  .handler(async ({ data, context }) =>
+    comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
+      const service = await import("@/server/domain/fiscal/fiscal-carga.service");
+      return service.carregarCompetenciaFiscal(ctx, data);
+    }),
+  );
+
+export const estadoCargaFiscal = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) =>
+    comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
+      const service = await import("@/server/domain/fiscal/fiscal-carga.service");
+      return service.estadoCargaFiscal(ctx);
+    }),
+  );
+
 export const listarEquipeFiscal = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input?: { incluirInativos?: boolean }) => input ?? {})
@@ -28,21 +86,6 @@ export const sincronizarEquipeFiscal = createServerFn({ method: "POST" })
     comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
       const service = await import("@/server/domain/fiscal/fiscal-equipe-sync.service");
       return service.sincronizarEquipeFiscal(ctx);
-    }),
-  );
-
-export const sincronizarSolicitacoesFiscais = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator(
-    (input: { competenciaInicio: string; competenciaFim: string; incluirFinalizadas?: boolean }) => {
-      validarIntervalo(input);
-      return input;
-    },
-  )
-  .handler(async ({ data, context }) =>
-    comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
-      const service = await import("@/server/domain/fiscal/fiscal-gestao.service");
-      return service.sincronizarSolicitacoesFiscais(ctx, data);
     }),
   );
 

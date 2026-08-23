@@ -17,11 +17,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import {
-  abrirCarga,
-  carregarCompetencia,
-  encerrarCarga,
-  estadoCarga,
-  previsualizarCarga,
+  abrirCarga as abrirCargaContabil,
+  carregarCompetencia as carregarCompetenciaContabil,
+  encerrarCarga as encerrarCargaContabil,
+  estadoCarga as estadoCargaContabil,
+  previsualizarCarga as previsualizarCargaContabil,
 } from "@/lib/api/gestao.functions";
 import { mensagemDeErro } from "@/lib/erros";
 
@@ -31,6 +31,66 @@ interface Passo {
   competencia: string;
   status: "PENDENTE" | "PROCESSANDO" | "CONCLUIDA" | "ERRO";
   mensagem?: string;
+}
+
+interface EstadoCargaLike {
+  possuiCarga: boolean;
+  primeiraCompetencia: string | null;
+  ultimaCompetencia: string | null;
+  ultimaSincronizacao: string | null;
+  proximaSugerida: string;
+  emRevisaoCompetencia: number;
+}
+
+interface ResumoMesLike {
+  competencia: string;
+  encontradas: number;
+  novas: number;
+  existentes: number;
+  semCompetencia: number;
+  erro: string | null;
+}
+
+interface PreviewCargaLike {
+  totalMeses: number;
+  totalNovas: number;
+  totalExistentes: number;
+  totalComAnexo: number;
+  totalSemAnexo: number;
+  totalSemCompetencia: number;
+  totalErros: number;
+  meses: ResumoMesLike[];
+}
+
+interface CargaCompetenciasApi {
+  estadoCarga: () => Promise<EstadoCargaLike>;
+  previsualizarCarga: (opts: {
+    data: { inicio: string; fim: string };
+  }) => Promise<PreviewCargaLike>;
+  abrirCarga: (opts: {
+    data: { inicio: string; fim: string; tipoCarga: Modo };
+  }) => Promise<{ runId: string }>;
+  carregarCompetencia: (opts: {
+    data: { competencia: string; runId: string | null };
+  }) => Promise<ResumoMesLike>;
+  encerrarCarga: (opts: {
+    data: { runId: string; status: "COMPLETED" | "FAILED"; mensagem?: string };
+  }) => Promise<unknown>;
+}
+
+const API_CONTABIL: CargaCompetenciasApi = {
+  estadoCarga: estadoCargaContabil,
+  previsualizarCarga: previsualizarCargaContabil,
+  abrirCarga: abrirCargaContabil,
+  carregarCompetencia: carregarCompetenciaContabil,
+  encerrarCarga: encerrarCargaContabil,
+};
+
+interface CargaCompetenciasProps {
+  api?: CargaCompetenciasApi;
+  queryKeyEstado?: unknown[];
+  invalidateQueryKeys?: unknown[][];
+  assunto?: string;
 }
 
 function competenciaAtual() {
@@ -44,7 +104,12 @@ function rotuloCompetencia(valor: string | null) {
   return `${mes}/${ano}`;
 }
 
-export function CargaCompetencias() {
+export function CargaCompetencias({
+  api = API_CONTABIL,
+  queryKeyEstado = ["estado-carga"],
+  invalidateQueryKeys = [["preview-gestao"]],
+  assunto = "Fechamento Contábil",
+}: CargaCompetenciasProps = {}) {
   const queryClient = useQueryClient();
   const [modo, setModo] = useState<Modo | null>(null);
   const [inicio, setInicio] = useState("");
@@ -52,10 +117,10 @@ export function CargaCompetencias() {
   const [passos, setPassos] = useState<Passo[]>([]);
   const [executando, setExecutando] = useState(false);
 
-  const estado = useQuery({ queryKey: ["estado-carga"], queryFn: () => estadoCarga() });
+  const estado = useQuery({ queryKey: queryKeyEstado, queryFn: () => api.estadoCarga() });
 
   const preview = useMutation({
-    mutationFn: (dados: { inicio: string; fim: string }) => previsualizarCarga({ data: dados }),
+    mutationFn: (dados: { inicio: string; fim: string }) => api.previsualizarCarga({ data: dados }),
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
 
@@ -96,7 +161,7 @@ export function CargaCompetencias() {
 
     let runId: string | null = null;
     try {
-      const aberta = await abrirCarga({
+      const aberta = await api.abrirCarga({
         data: { inicio, fim, tipoCarga: modo === "MENSAL" ? "MENSAL" : "HISTORICA" },
       });
       runId = aberta.runId;
@@ -112,7 +177,7 @@ export function CargaCompetencias() {
         ),
       );
       try {
-        const resumo = await carregarCompetencia({
+        const resumo = await api.carregarCompetencia({
           data: { competencia: passo.competencia, runId },
         });
         setPassos((atual) =>
@@ -140,7 +205,7 @@ export function CargaCompetencias() {
 
     if (runId) {
       try {
-        await encerrarCarga({
+        await api.encerrarCarga({
           data: {
             runId,
             status: falhas ? "FAILED" : "COMPLETED",
@@ -153,8 +218,8 @@ export function CargaCompetencias() {
     }
 
     setExecutando(false);
-    void queryClient.invalidateQueries({ queryKey: ["estado-carga"] });
-    void queryClient.invalidateQueries({ queryKey: ["preview-gestao"] });
+    void queryClient.invalidateQueries({ queryKey: queryKeyEstado });
+    for (const key of invalidateQueryKeys) void queryClient.invalidateQueries({ queryKey: key });
     if (falhas)
       toast.warning(`${falhas} competência(s) falharam. Você pode retomar apenas as pendentes.`);
     else toast.success("Carga concluída.");
@@ -184,8 +249,8 @@ export function CargaCompetencias() {
           <div>
             <p className="font-medium">Realizar carga inicial</p>
             <p className="text-sm text-muted-foreground">
-              Nenhuma competência contábil foi carregada ainda. Informe o intervalo (AAAA-MM) para
-              trazer o histórico das solicitações de Fechamento Contábil.
+              Nenhuma competência foi carregada ainda. Informe o intervalo (AAAA-MM) para
+              trazer o histórico das solicitações de {assunto}.
             </p>
           </div>
           <Button onClick={() => abrirModo("HISTORICA")}>

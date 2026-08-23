@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import {
   CheckCircle2,
-  Download,
   FileCheck2,
   FilterX,
   Loader2,
@@ -13,6 +12,7 @@ import {
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/common/PageHeader";
+import { CargaCompetencias } from "@/components/gestao/CargaCompetencias";
 import { CarregandoTabela, ErroConsulta, EstadoVazio } from "@/components/common/EstadoConsulta";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -46,15 +46,18 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  abrirCargaFiscal,
+  carregarCompetenciaFiscal,
+  estadoCargaFiscal,
   executarDecisaoFiscal,
   listarEquipeFiscal,
   listarGestaoFiscal,
+  previsualizarCargaFiscal,
   sincronizarEquipeFiscal,
-  sincronizarSolicitacoesFiscais,
   validarLoteFiscal,
   validarSolicitacaoFiscal,
 } from "@/lib/api/fiscal.functions";
-import { sincronizarRespostasPier } from "@/lib/api/gestao.functions";
+import { encerrarCarga, sincronizarRespostasPier } from "@/lib/api/gestao.functions";
 import { mensagemDeErro } from "@/lib/erros";
 import { formatarCnpj } from "@/lib/formato";
 
@@ -62,6 +65,14 @@ export const Route = createFileRoute("/_authenticated/gestao/fiscal/")({
   head: () => ({ meta: [{ title: "Gestão Fiscal | Gestão Inteligente" }] }),
   component: GestaoFiscalPage,
 });
+
+const API_CARGA_FISCAL = {
+  estadoCarga: estadoCargaFiscal,
+  previsualizarCarga: previsualizarCargaFiscal,
+  abrirCarga: abrirCargaFiscal,
+  carregarCompetencia: carregarCompetenciaFiscal,
+  encerrarCarga,
+};
 
 const TODOS = "__TODOS__";
 const TODOS_REGIMES = "__TODOS_REGIMES__";
@@ -201,26 +212,6 @@ function GestaoFiscalPage() {
     onSuccess: (r) => {
       toast.success(`${r.processados} usuários fiscais atualizados em ${r.departamentos} departamentos.`);
       void queryClient.invalidateQueries({ queryKey: ["equipe-fiscal"] });
-    },
-    onError: (e) => toast.error(mensagemDeErro(e)),
-  });
-
-  const carregar = useMutation({
-    mutationFn: () => {
-      if (!intervaloValido) throw new Error("A competência inicial deve ser anterior ou igual à final.");
-      return sincronizarSolicitacoesFiscais({
-        data: {
-          competenciaInicio,
-          competenciaFim,
-          incluirFinalizadas: statusPier !== "PENDENTES",
-        },
-      });
-    },
-    onSuccess: (r) => {
-      toast.success(`${r.totalGravado} solicitações fiscais atualizadas do PIER.`, {
-        description: `Recebidas: ${r.recebidasDaBusca} · Fiscal: ${r.doDepartamentoFiscal} · Competência identificada: ${r.competenciaInterpretada} · Assumida: ${r.competenciaAssumida}`,
-      });
-      void queryClient.invalidateQueries({ queryKey: ["gestao-fiscal"] });
     },
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
@@ -388,10 +379,6 @@ function GestaoFiscalPage() {
               <Users className="mr-2 h-4 w-4" />
               Sincronizar equipe
             </Button>
-            <Button variant="outline" onClick={() => carregar.mutate()} disabled={carregar.isPending || !intervaloValido}>
-              <Download className="mr-2 h-4 w-4" />
-              Carregar solicitações da competência
-            </Button>
             <Button variant="outline" onClick={() => atualizarRespostas.mutate()} disabled={atualizarRespostas.isPending || !linhasFiltradas.length}>
               <RefreshCw className={`mr-2 h-4 w-4 ${atualizarRespostas.isPending ? "animate-spin" : ""}`} />
               {atualizarRespostas.isPending ? "Verificando respostas…" : "Atualizar respostas PIER"}
@@ -405,6 +392,13 @@ function GestaoFiscalPage() {
           Integração com o PIER indisponível: {equipe.data.integracao.reason ?? "não configurada"}.
         </Card>
       ) : null}
+
+      <CargaCompetencias
+        api={API_CARGA_FISCAL}
+        queryKeyEstado={["estado-carga-fiscal"]}
+        invalidateQueryKeys={[["gestao-fiscal"]]}
+        assunto="Fechamento Fiscal"
+      />
 
       <Card className="p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
