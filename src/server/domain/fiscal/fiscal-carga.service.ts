@@ -3,6 +3,7 @@ import { assertCanWrite, type AppContext } from "../../lib/context";
 import { AppError } from "../../lib/errors";
 import { pierAdapter } from "../../integrations/pier/pier.adapter";
 import { listarMeses, proximaCompetencia } from "../gestao/carga.service";
+import { resolverTipoSolicitacao } from "../gestao/escopo.service";
 import { selecionarParaCarga } from "../gestao/status-pier";
 import { departamentosFiscais, mapaDepartamentoUsuarios, responsavelHumano } from "./fiscal-gestao.service";
 
@@ -43,24 +44,21 @@ export interface PreviewCargaFiscal {
 async function contexto(ctx: AppContext) {
   const departamentos = new Set(await departamentosFiscais(ctx));
   const deptoPorUsuario = await mapaDepartamentoUsuarios(ctx);
-  return { departamentos, deptoPorUsuario };
+  // O PIER não tem um tipo de solicitação exclusivo para fiscal: fiscal e
+  // contábil usam o mesmo tipo ("Fechamento Contábil"). Por isso a busca
+  // usa o mesmo mecanismo confiável do Contábil (listRequestsByType) — só o
+  // filtro de departamento aplicado depois é que muda.
+  const typeExternalId = await resolverTipoSolicitacao(ctx, "CONTABIL");
+  return { departamentos, deptoPorUsuario, typeExternalId };
 }
 
 type Ambiente = Awaited<ReturnType<typeof contexto>>;
 
-/**
- * Diferente do Contábil, o PIER não tem um tipo de solicitação exclusivo
- * para fiscal: quem define o escopo é o departamento do responsável
- * (Tributário Legacy/BPO). O tipo/descrição real de cada solicitação é
- * preservado e serve só para classificação posterior, nunca para filtrar.
- */
 async function buscarDoMes(competencia: string, amb: Ambiente) {
-  const [ano, mes] = competencia.split("-");
-  const termoBusca = `${mes}/${ano}`;
-  const solicitacoes = await pierAdapter.listRequests({
-    status: "Todas",
-    maxPages: 200,
-    busca: termoBusca,
+  const solicitacoes = await pierAdapter.listRequestsByType({
+    typeExternalId: amb.typeExternalId,
+    referenceMonth: competencia,
+    incluirSemCompetencia: true,
   });
 
   const fiscais: typeof solicitacoes = [];
@@ -71,12 +69,8 @@ async function buscarDoMes(competencia: string, amb: Ambiente) {
       : null;
     const doEscopo =
       Boolean(depto && amb.departamentos.has(depto)) && responsavelHumano(s.responsibleName);
-    if (!doEscopo) {
-      ignoradasForaDoEscopo += 1;
-      continue;
-    }
-    if (s.referenceMonth && s.referenceMonth !== competencia) continue;
-    fiscais.push(s.referenceMonth === competencia ? s : { ...s, referenceMonth: competencia });
+    if (doEscopo) fiscais.push(s);
+    else ignoradasForaDoEscopo += 1;
   }
   return { fiscais, ignoradasForaDoEscopo };
 }
