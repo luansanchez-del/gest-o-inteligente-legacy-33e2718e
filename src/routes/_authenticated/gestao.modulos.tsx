@@ -5,7 +5,6 @@ import {
   Calculator,
   ContactRound,
   Landmark,
-  ReceiptText,
   Users,
 } from "lucide-react";
 
@@ -41,17 +40,6 @@ function ModulosGestaoPage() {
             { rotulo: "Carteira Contábil", to: "/carteira-inteligente", icon: BriefcaseBusiness },
             { rotulo: "Currículos BPO Contábil", to: "/curriculos-bpo", icon: BookUser },
             { rotulo: "Equipe e departamentos", to: "/equipe", icon: Users },
-          ]}
-        />
-
-        <Modulo
-          titulo="Gestão Fiscal"
-          descricao="Solicitações tributárias, carteira fiscal, equipe BPO Fiscal, currículos e capacidade da operação fiscal."
-          itens={[
-            { rotulo: "Operação Fiscal", to: "/gestao/fiscal", icon: ReceiptText },
-            { rotulo: "Carteira Fiscal", to: "/gestao/fiscal/carteira", icon: BriefcaseBusiness },
-            { rotulo: "Currículos BPO Fiscal", to: "/gestao/fiscal/curriculos", icon: BookUser },
-            { rotulo: "Equipe Fiscal", to: "/gestao/fiscal/equipe", icon: Users },
           ]}
         />
 

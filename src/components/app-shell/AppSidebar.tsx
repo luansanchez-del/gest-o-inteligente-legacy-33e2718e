@@ -10,7 +10,6 @@ import {
   Landmark,
   LayoutGrid,
   PlayCircle,
-  ReceiptText,
   Users,
 } from "lucide-react";
 
@@ -41,15 +40,6 @@ const GRUPOS = [
       { title: "Operação Contábil", to: "/gestao", icon: PlayCircle, exact: true },
       { title: "Carteira Contábil", to: "/carteira-inteligente", icon: BrainCircuit },
       { title: "Currículos BPO Contábil", to: "/curriculos-bpo", icon: BookUser },
-    ],
-  },
-  {
-    label: "Gestão Fiscal",
-    itens: [
-      { title: "Operação Fiscal", to: "/gestao/fiscal", icon: ReceiptText, exact: true },
-      { title: "Carteira Fiscal", to: "/gestao/fiscal/carteira", icon: BrainCircuit },
-      { title: "Currículos BPO Fiscal", to: "/gestao/fiscal/curriculos", icon: BookUser },
-      { title: "Equipe Fiscal", to: "/gestao/fiscal/equipe", icon: Users },
     ],
   },
   {
