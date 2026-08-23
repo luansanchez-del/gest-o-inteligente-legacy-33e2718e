@@ -630,32 +630,6 @@ function GestaoPage() {
               onChange={(e) => setCompetenciaFim(e.target.value)}
             />
           </div>
-          <div className="space-y-1.5 lg:w-[220px]">
-            <Label>Tipo de solicitação</Label>
-            <Select value={tipo} onValueChange={setTipo}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="max-h-80">
-                <SelectItem value="CONTABIL">Fechamento Contábil</SelectItem>
-                <SelectItem value="MOVIMENTO_FINANCEIRO">
-                  Movimento Financeiro Mensal
-                </SelectItem>
-                {(tiposPier.data ?? [])
-                  .filter((t) => {
-                    const nome = t.nome.trim().toUpperCase();
-                    return (
-                      nome !== "FECHAMENTO CONTÁBIL" && !nome.includes("MOVIMENTO FINANCEIRO")
-                    );
-                  })
-                  .map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.nome}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-          </div>
           <div className="space-y-1.5 lg:min-w-[280px] lg:flex-1">
             <Label>Departamento responsável</Label>
             <div className="flex items-center gap-1.5">
@@ -696,6 +670,32 @@ function GestaoPage() {
                 </Button>
               ) : null}
             </div>
+          </div>
+          <div className="space-y-1.5 lg:w-[220px]">
+            <Label>Tipo de solicitação</Label>
+            <Select value={tipo} onValueChange={setTipo}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="max-h-80">
+                <SelectItem value="CONTABIL">Fechamento Contábil</SelectItem>
+                <SelectItem value="MOVIMENTO_FINANCEIRO">
+                  Movimento Financeiro Mensal
+                </SelectItem>
+                {(tiposPier.data ?? [])
+                  .filter((t) => {
+                    const nome = t.nome.trim().toUpperCase();
+                    return (
+                      nome !== "FECHAMENTO CONTÁBIL" && !nome.includes("MOVIMENTO FINANCEIRO")
+                    );
+                  })
+                  .map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.nome}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-1.5 lg:min-w-[280px] lg:flex-1">
             <div className="flex items-center justify-between gap-2">
