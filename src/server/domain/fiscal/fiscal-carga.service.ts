@@ -137,7 +137,9 @@ export async function previsualizarCargaFiscal(
         semCompetencia: 0,
         ignoradasForaDoEscopo: 0,
         finalizadasIgnoradas: 0,
-        erro: error instanceof AppError ? error.userMessage : "Falha ao consultar o PIER.",
+        erro: error instanceof AppError
+          ? error.userMessage
+          : `Falha ao consultar o PIER: ${error instanceof Error ? `${error.name}: ${error.message}` : String(error)}`,
       });
     }
   }
