@@ -284,9 +284,13 @@ function GestaoPage() {
       listarEquipe({ data: { incluirInativos, somenteContabeis: true } }),
   });
 
+  const [tiposPierAbertoUmaVez, setTiposPierAbertoUmaVez] = useState(false);
   const tiposPier = useQuery({
     queryKey: ["tipos-solicitacao-pier"],
     queryFn: () => listarTiposSolicitacaoPier(),
+    // Só busca quando o filtro é realmente aberto: evita competir com outras
+    // chamadas ao PIER (ex.: a Carga histórica) pela cota de 50/min.
+    enabled: tiposPierAbertoUmaVez,
     staleTime: 5 * 60_000,
   });
 
@@ -687,7 +691,13 @@ function GestaoPage() {
                     : ""}
               </span>
             </Label>
-            <Select value={tipo} onValueChange={setTipo}>
+            <Select
+              value={tipo}
+              onValueChange={setTipo}
+              onOpenChange={(aberto) => {
+                if (aberto) setTiposPierAbertoUmaVez(true);
+              }}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>

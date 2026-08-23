@@ -32,7 +32,7 @@ export function readPierConfig(): { ok: true; config: PierConfig } | { ok: false
 }
 
 const TIMEOUT_MS = 20000;
-const MAX_ATTEMPTS = 3;
+const MAX_ATTEMPTS = 4;
 /** Renova o token um pouco antes do vencimento informado pelo PIER. */
 const RENOVAR_ANTES_MS = 60_000;
 
@@ -260,9 +260,12 @@ export async function pierGet<T>(
 
       if (response.status === 429 && attempt < MAX_ATTEMPTS) {
         lastDetail = `HTTP 429: ${await safeResponseText(response)}`;
-        // A cota já é respeitada preventivamente; se mesmo assim o PIER
-        // recusar, espera mais que o backoff padrão antes de tentar de novo.
-        await sleep(2000 + attempt * 1000 + Math.random() * 500);
+        // É uma cota por minuto, não uma falha transitória: espera de verdade
+        // o suficiente pra janela liberar, em vez de um backoff curto. O
+        // limitador preventivo não é confiável sozinho neste runtime porque
+        // requisições concorrentes podem cair em isolates diferentes, sem
+        // memória compartilhada entre eles.
+        await sleep(12000 + attempt * 3000 + Math.random() * 1000);
         continue;
       }
 
