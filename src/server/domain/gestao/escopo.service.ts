@@ -34,18 +34,17 @@ function normalizarNome(value: string) {
 
 /**
  * Contas autom\u00e1ticas do PIER (bots de gera\u00e7\u00e3o em massa, caixas gen\u00e9ricas
- * como "EMAIL" ou "MOVIMENTO FINANCEIRO MENSAL") n\u00e3o s\u00e3o respons\u00e1veis reais
- * e n\u00e3o devem contar como time humano nem entrar no escopo da gest\u00e3o.
+ * como "EMAIL") n\u00e3o s\u00e3o respons\u00e1veis reais e n\u00e3o devem contar como time
+ * humano nem entrar no escopo da gest\u00e3o.
+ *
+ * "MOVIMENTO FINANCEIRO MENSAL" fica de fora dessa lista de prop\u00f3sito: \u00e9
+ * usada como respons\u00e1vel provis\u00f3rio para empresas que ainda n\u00e3o t\u00eam um
+ * respons\u00e1vel real atribu\u00eddo \u2014 excluir esconderia esse trabalho pendente.
  */
 export function responsavelHumano(nome: string | null | undefined): boolean {
   const n = normalizarNome(nome ?? "");
   if (!n) return true;
-  const padroesConhecidos = [
-    "automacao",
-    "fechamento contabil",
-    "movimento financeiro mensal",
-    "contratos antigos",
-  ];
+  const padroesConhecidos = ["automacao", "fechamento contabil", "contratos antigos"];
   if (padroesConhecidos.some((p) => n.includes(p))) return false;
   return n !== "email";
 }
