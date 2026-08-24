@@ -92,15 +92,29 @@ async function contexto(ctx: AppContext) {
 type Ambiente = Awaited<ReturnType<typeof contexto>>;
 
 async function buscarDoMes(competencia: string, amb: Ambiente) {
-  const solicitacoes = await pierAdapter.listRequestsByType({
+  type Candidato = Awaited<ReturnType<typeof pierAdapter.listRequestsByType>>[number];
+  const porId = new Map<string, Candidato>();
+
+  // 1. Busca tipada: o Fechamento Contábil oficial, como já funcionava.
+  const tipadas = await pierAdapter.listRequestsByType({
     typeExternalId: amb.typeExternalId,
     referenceMonth: competencia,
     incluirSemCompetencia: true,
   });
+  for (const s of tipadas) porId.set(s.externalId, s);
 
-  const contabeis: typeof solicitacoes = [];
+  // 2. Busca ampla por texto (MM/AAAA): pega solicitações de outros tipos
+  // (ex.: DAS, REINF, DCTFWEB) que departamentos como o Tributário também
+  // trabalham, e que não têm tipo fixo no código. Complementa a busca
+  // tipada; nunca some, o texto pode não bater 100% da competência.
+  const [ano, mes] = competencia.split("-");
+  const termoBusca = `${mes}/${ano}`;
+  const amplas = await pierAdapter.listRequests({ status: "Todas", maxPages: 25, busca: termoBusca });
+  for (const s of amplas) if (!porId.has(s.externalId)) porId.set(s.externalId, s);
+
+  const contabeis: Candidato[] = [];
   let ignoradasNaoContabeis = 0;
-  for (const s of solicitacoes) {
+  for (const s of porId.values()) {
     const depto = s.responsibleExternalId
       ? (amb.deptoPorUsuario.get(s.responsibleExternalId) ?? null)
       : null;
