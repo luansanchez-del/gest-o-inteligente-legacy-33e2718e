@@ -109,10 +109,14 @@ async function buscarDoMes(competencia: string, amb: Ambiente) {
   // descrição varia por departamento (o Tributário usa ponto, não barra) e a
   // busca do PIER é literal, então tenta os dois formatos. Complementa a
   // busca tipada; nunca some, o texto pode não bater 100% da competência.
+  // maxPages foi reduzido pela metade (25 -> 12) porque agora são duas
+  // buscas por mês: no dobro de páginas, uma carga histórica de vários
+  // meses estourava a cota do PIER e os meses seguintes falhavam em
+  // cascata ("Não foi possível falar com o PIER agora").
   const [ano, mes] = competencia.split("-");
   const termosBusca = [`${mes}/${ano}`, `${mes}.${ano}`];
   for (const termoBusca of termosBusca) {
-    const amplas = await pierAdapter.listRequests({ status: "Todas", maxPages: 25, busca: termoBusca });
+    const amplas = await pierAdapter.listRequests({ status: "Todas", maxPages: 12, busca: termoBusca });
     for (const s of amplas) if (!porId.has(s.externalId)) porId.set(s.externalId, s);
   }
 
