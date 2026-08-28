@@ -6,6 +6,7 @@ import {
   Building2,
   Download,
   FilterX,
+  History,
   Pencil,
   PlayCircle,
   RefreshCw,
@@ -20,6 +21,7 @@ import {
   ErroConsulta,
   EstadoVazio,
 } from "@/components/common/EstadoConsulta";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -52,6 +54,8 @@ import {
   configurarDepartamentosContabeis,
   iniciarGestao,
   listarEquipe,
+  listarExecucoes,
+  listarTiposSolicitacaoPier,
   montarPreview,
   obterDepartamentosContabeis,
   renomearDepartamento,
@@ -60,7 +64,7 @@ import {
   sincronizarSolicitacoes,
 } from "@/lib/api/gestao.functions";
 import { processarEscopo } from "@/lib/api/processamento.functions";
-import { formatarCnpj } from "@/lib/formato";
+import { formatarCnpj, formatarCompetencia } from "@/lib/formato";
 import { mensagemDeErro } from "@/lib/erros";
 
 export const Route = createFileRoute("/_authenticated/gestao/")({
@@ -93,6 +97,7 @@ type StatusRespostaFiltro =
 
 interface FiltrosGestaoSalvos {
   competencia: string;
+  tipo: string;
   competenciaFim: string;
   busca: string;
   revisaoCompetencia: boolean;
@@ -156,6 +161,7 @@ function formatarDataHora(value: string | null | undefined) {
 function filtrosPadrao(): FiltrosGestaoSalvos {
   return {
     competencia: competenciaAtual(),
+    tipo: "CONTABIL",
     competenciaFim: "",
     busca: "",
     revisaoCompetencia: false,
@@ -184,6 +190,7 @@ function carregarFiltrosGestao(): FiltrosGestaoSalvos {
       competencia: /^\d{4}-\d{2}$/.test(salvo.competencia ?? "")
         ? salvo.competencia!
         : padrao.competencia,
+      tipo: salvo.tipo?.trim() || "CONTABIL",
       statusPier: ["PENDENTES", "FINALIZADAS", "TODOS"].includes(
         salvo.statusPier ?? "",
       )
@@ -207,10 +214,7 @@ function GestaoPage() {
   const queryClient = useQueryClient();
   const [filtrosIniciais] = useState(carregarFiltrosGestao);
   const [competencia, setCompetencia] = useState(filtrosIniciais.competencia);
-  // Fixo por enquanto: o filtro de Tipo de solicitação foi retirado da tela
-  // (voltará quando o escopo por departamento estiver validado). A Carga
-  // (CargaCompetencias) só traz mesmo Fechamento Contábil hoje.
-  const tipo = "CONTABIL";
+  const [tipo, setTipo] = useState<string>(filtrosIniciais.tipo);
   const [competenciaFim, setCompetenciaFim] = useState(
     filtrosIniciais.competenciaFim,
   );
@@ -241,12 +245,14 @@ function GestaoPage() {
   const [selecaoDepartamentosGestao, setSelecaoDepartamentosGestao] = useState<Set<string>>(
     new Set(),
   );
+  const [historicoAberto, setHistoricoAberto] = useState(false);
 
   useEffect(() => {
     window.sessionStorage.setItem(
       CHAVE_FILTROS_GESTAO,
       JSON.stringify({
         competencia,
+        tipo,
         competenciaFim,
         busca,
         revisaoCompetencia,
@@ -273,6 +279,7 @@ function GestaoPage() {
     revisaoCompetencia,
     statusPier,
     statusResposta,
+    tipo,
   ]);
 
   const equipe = useQuery({
@@ -280,6 +287,25 @@ function GestaoPage() {
     queryFn: () =>
       listarEquipe({ data: { incluirInativos, somenteContabeis: true } }),
   });
+
+  const [tiposPierAbertoUmaVez, setTiposPierAbertoUmaVez] = useState(false);
+  const tiposPier = useQuery({
+    queryKey: ["tipos-solicitacao-pier"],
+    queryFn: () => listarTiposSolicitacaoPier(),
+    // Só busca quando o filtro é realmente aberto: evita competir com outras
+    // chamadas ao PIER (ex.: a Carga histórica) pela cota de 50/min. O
+    // limitador de cota (pier.http.ts) hoje enfileira em vez de estourar o
+    // 429, então essa chamada eventual não compromete outras em andamento.
+    enabled: tiposPierAbertoUmaVez,
+    staleTime: 5 * 60_000,
+  });
+
+  useEffect(() => {
+    if (tiposPier.isError)
+      toast.error(
+        `Não foi possível carregar os tipos de solicitação do PIER: ${mensagemDeErro(tiposPier.error)}`,
+      );
+  }, [tiposPier.isError, tiposPier.error]);
 
   const filtro = {
     competencia,
@@ -391,6 +417,7 @@ function GestaoPage() {
           : "Gestão iniciada para o escopo selecionado.",
       );
       void queryClient.invalidateQueries({ queryKey: ["preview-gestao"] });
+      void queryClient.invalidateQueries({ queryKey: ["execucoes-gestao"] });
     },
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
@@ -477,6 +504,12 @@ function GestaoPage() {
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
 
+  const historico = useQuery({
+    queryKey: ["execucoes-gestao"],
+    queryFn: () => listarExecucoes(),
+    enabled: historicoAberto,
+  });
+
   const departamentos = equipe.data?.departamentos ?? [];
   const usuarios = equipe.data?.usuarios ?? [];
   const departamentoSelecionado = departamentos.find(
@@ -488,6 +521,7 @@ function GestaoPage() {
   }, [usuarios, departamento]);
 
   const filtrosAtivos =
+    tipo !== "CONTABIL" ||
     departamento !== TODOS_DEPARTAMENTOS ||
     responsavel !== TODOS_USUARIOS ||
     fila !== TODAS_FILAS ||
@@ -503,6 +537,7 @@ function GestaoPage() {
 
   function limparFiltros() {
     setCompetencia(competenciaAtual());
+    setTipo("CONTABIL");
     setDepartamento(TODOS_DEPARTAMENTOS);
     setResponsavel(TODOS_USUARIOS);
     setFila(TODAS_FILAS);
@@ -545,7 +580,7 @@ function GestaoPage() {
     <div className="space-y-6">
       <PageHeader
         titulo="Gestão de solicitações contábeis"
-        descricao="Escolha a competência, o departamento e o responsável do PIER antes de iniciar a gestão."
+        descricao="Escolha o tipo, a competência, o departamento e o responsável do PIER antes de iniciar a gestão."
         acoes={
           <div className="flex flex-wrap items-center gap-2">
             <Button
@@ -562,6 +597,10 @@ function GestaoPage() {
             >
               <Building2 className="mr-2 h-4 w-4" />
               Departamentos da gestão
+            </Button>
+            <Button variant="outline" onClick={() => setHistoricoAberto(true)}>
+              <History className="mr-2 h-4 w-4" />
+              Histórico de execuções
             </Button>
             <Button
               variant="outline"
@@ -659,6 +698,48 @@ function GestaoPage() {
                 </Button>
               ) : null}
             </div>
+          </div>
+          <div className="space-y-1.5 lg:w-[220px]">
+            <Label>
+              Tipo de solicitação{" "}
+              <span className="font-normal text-muted-foreground">
+                {tiposPier.isLoading
+                  ? "(carregando tipos do PIER…)"
+                  : tiposPier.data
+                    ? `(${tiposPier.data.length} tipos no PIER)`
+                    : ""}
+              </span>
+            </Label>
+            <Select
+              value={tipo}
+              onValueChange={setTipo}
+              onOpenChange={(aberto) => {
+                if (aberto) setTiposPierAbertoUmaVez(true);
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="max-h-80">
+                <SelectItem value="CONTABIL">Fechamento Contábil</SelectItem>
+                <SelectItem value="MOVIMENTO_FINANCEIRO">
+                  Movimento Financeiro Mensal
+                </SelectItem>
+                {(tiposPier.data ?? [])
+                  .filter((t) => {
+                    const nome = t.nome.trim().toUpperCase();
+                    return (
+                      nome !== "FECHAMENTO CONTÁBIL" &&
+                      !nome.includes("MOVIMENTO FINANCEIRO")
+                    );
+                  })
+                  .map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.nome}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-1.5 lg:min-w-[280px] lg:flex-1">
             <div className="flex items-center justify-between gap-2">
@@ -855,6 +936,13 @@ function GestaoPage() {
               filtros passam a considerar somente os departamentos marcados aqui.
             </DialogDescription>
           </DialogHeader>
+          {departamentosGestao.data?.usandoPadraoFixo ? (
+            <p className="rounded-md border border-warning-strong/40 bg-warning-strong/10 p-2 text-xs text-warning-strong">
+              Nenhum departamento foi configurado nem encontrado pelo nome ("Contabilidade
+              Legacy"/"Contabilidade BPO") no PIER. O escopo está usando um padrão fixo desta
+              organização — selecione os departamentos corretos abaixo para confirmar.
+            </p>
+          ) : null}
           {departamentosGestao.isLoading ? (
             <p className="text-sm text-muted-foreground">Carregando departamentos…</p>
           ) : (
@@ -892,6 +980,74 @@ function GestaoPage() {
               disabled={salvarDepartamentosGestao.isPending || !selecaoDepartamentosGestao.size}
             >
               Salvar departamentos
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={historicoAberto} onOpenChange={setHistoricoAberto}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Histórico de execuções</DialogTitle>
+            <DialogDescription>
+              Registro dos escopos em que a Gestão Contábil foi iniciada: quando, para qual
+              competência e quantas empresas entraram. Não reflete o resultado do processamento —
+              veja o resultado atual na tabela e nos indicadores da tela.
+            </DialogDescription>
+          </DialogHeader>
+          {historico.isLoading ? (
+            <p className="text-sm text-muted-foreground">Carregando histórico…</p>
+          ) : historico.isError ? (
+            <ErroConsulta
+              error={historico.error}
+              onRetry={() => void historico.refetch()}
+            />
+          ) : !historico.data?.length ? (
+            <p className="text-sm text-muted-foreground">
+              Nenhuma execução registrada ainda.
+            </p>
+          ) : (
+            <div className="max-h-96 space-y-2 overflow-y-auto">
+              {historico.data.map((execucao) => (
+                <div
+                  key={execucao.id}
+                  className="rounded-md border p-3 text-sm"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-medium">
+                      {formatarCompetencia(execucao.competencia)} ·{" "}
+                      {execucao.escopo.departamentoNome ?? "Todos os departamentos"}
+                    </span>
+                    <Badge
+                      variant={
+                        execucao.status === "COMPLETED"
+                          ? "secondary"
+                          : execucao.status === "FAILED"
+                            ? "destructive"
+                            : "outline"
+                      }
+                    >
+                      {execucao.status}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Responsável: {execucao.escopo.responsavelNome ?? "Todos"} · {execucao.total}{" "}
+                    empresa(s) no escopo · {execucao.concluidos} concluída(s),{" "}
+                    {execucao.alertas} alerta(s), {execucao.erros} erro(s)
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Iniciada em {formatarDataHora(execucao.iniciadaEm)}
+                    {execucao.finalizadaEm
+                      ? ` · finalizada em ${formatarDataHora(execucao.finalizadaEm)}`
+                      : ""}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setHistoricoAberto(false)}>
+              Fechar
             </Button>
           </DialogFooter>
         </DialogContent>

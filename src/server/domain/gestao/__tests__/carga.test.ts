@@ -3,20 +3,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { criarDbFalso } from "../../carteira/__tests__/db-falso";
 
 const listRequestsByType = vi.fn();
+const listRequests = vi.fn();
 
 vi.mock("../../../integrations/pier/pier.adapter", () => ({
   pierAdapter: {
     listRequestsByType: (args: unknown) => listRequestsByType(args),
+    listRequests: (args: unknown) => listRequests(args),
   },
 }));
 
-const {
-  carregarCompetencia,
-  estadoCarga,
-  listarMeses,
-  previsualizarCarga,
-  proximaCompetencia,
-} = await import("../carga.service");
+const { carregarCompetencia, estadoCarga, listarMeses, previsualizarCarga, proximaCompetencia } =
+  await import("../carga.service");
 
 function solicitacao(externalId: string, competencia: string | null, anexo = true) {
   return {
@@ -57,7 +54,10 @@ function base(requests: Record<string, unknown>[] = []) {
   };
 }
 
-beforeEach(() => listRequestsByType.mockReset());
+beforeEach(() => {
+  listRequestsByType.mockReset();
+  listRequests.mockReset().mockResolvedValue([]);
+});
 
 describe("intervalo de competências", () => {
   it("expande o intervalo mês a mês, inclusive virando o ano", () => {
@@ -133,6 +133,20 @@ describe("preview da carga histórica", () => {
     const preview = await previsualizarCarga(ctx, { inicio: "2026-01", fim: "2026-01" });
     expect(preview.totalEncontradas).toBe(1);
     expect(preview.meses[0]?.ignoradasNaoContabeis).toBe(1);
+  });
+
+  it("complementa a busca tipada com a busca ampla por texto, sem duplicar", async () => {
+    const { ctx } = criarDbFalso(base());
+    listRequestsByType.mockResolvedValue([solicitacao("A1", "2026-01")]);
+    listRequests.mockResolvedValue([
+      solicitacao("A1", "2026-01"), // já veio da busca tipada: não deve duplicar
+      solicitacao("A2", "2026-01"), // só apareceu na busca ampla (ex.: DAS, REINF)
+    ]);
+
+    const preview = await previsualizarCarga(ctx, { inicio: "2026-01", fim: "2026-01" });
+
+    expect(listRequests).toHaveBeenCalledWith(expect.objectContaining({ busca: "01/2026" }));
+    expect(preview.totalEncontradas).toBe(2);
   });
 });
 

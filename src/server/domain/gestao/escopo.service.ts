@@ -11,7 +11,6 @@ import { selecionarParaCarga } from "./status-pier";
  */
 const TIPOS_PADRAO: Record<string, string> = {
   CONTABIL: "117418", // FECHAMENTO CONTÁBIL
-  FISCAL: "117811", // FECHAMENTO FISCAL
 };
 
 /** Tipos considerados internos do escritório (o PIER também lista usuários "Cliente"). */
@@ -268,16 +267,19 @@ const DEPARTAMENTOS_CONTABEIS_PADRAO = ["9625", "16104"];
 
 const CHAVE_DEPARTAMENTOS_CONTABEIS = "pier.departamentos_contabeis";
 
+export type OrigemDepartamentosContabeis = "CONFIGURADO" | "NOME" | "PADRAO_FIXO";
+
 /**
- * Resolve os códigos PIER dos departamentos da Gestão Contábil. Se o
- * escritório já configurou a seleção manualmente (tela de departamentos da
- * gestão), usa exatamente isso. Sem configuração, cai no comportamento
- * anterior: casar pelo nome cadastrado, com um padrão fixo como último
- * recurso.
+ * Resolve os códigos PIER dos departamentos da Gestão Contábil, e de onde
+ * vieram. Se o escritório já configurou a seleção manualmente (tela de
+ * departamentos da gestão), usa exatamente isso. Sem configuração, casa pelo
+ * nome cadastrado; sem nome batendo, cai num padrão fixo (IDs desta
+ * organização) como último recurso — silencioso demais para passar
+ * despercebido, por isso a origem é reportada para quem chama.
  */
-export async function departamentosContabeis(
+async function resolverDepartamentosContabeis(
   ctx: AppContext,
-): Promise<string[]> {
+): Promise<{ ids: string[]; origem: OrigemDepartamentosContabeis }> {
   const { data: setting } = await ctx.db
     .from("app_setting")
     .select("value")
@@ -288,7 +290,7 @@ export async function departamentosContabeis(
   const valorConfigurado = setting?.value as unknown;
   if (Array.isArray(valorConfigurado)) {
     const ids = valorConfigurado.map(String).map((v) => v.trim()).filter(Boolean);
-    if (ids.length) return [...new Set(ids)];
+    if (ids.length) return { ids: [...new Set(ids)], origem: "CONFIGURADO" };
   }
 
   const { data } = await ctx.db
@@ -302,18 +304,29 @@ export async function departamentosContabeis(
     )
     .map((d) => d.external_id);
 
-  return encontrados.length ? encontrados : DEPARTAMENTOS_CONTABEIS_PADRAO;
+  if (encontrados.length) return { ids: encontrados, origem: "NOME" };
+
+  console.warn(
+    `[gestao] organization_id=${ctx.organizationId}: nenhum departamento contábil configurado nem encontrado por nome; usando padrão fixo (${DEPARTAMENTOS_CONTABEIS_PADRAO.join(", ")}).`,
+  );
+  return { ids: DEPARTAMENTOS_CONTABEIS_PADRAO, origem: "PADRAO_FIXO" };
+}
+
+export async function departamentosContabeis(
+  ctx: AppContext,
+): Promise<string[]> {
+  return (await resolverDepartamentosContabeis(ctx)).ids;
 }
 
 /** Lista todos os departamentos do PIER e quais estão vinculados à Gestão Contábil hoje. */
 export async function obterDepartamentosContabeis(ctx: AppContext) {
-  const [{ data: departamentos, error }, selecionados] = await Promise.all([
+  const [{ data: departamentos, error }, { ids: selecionados, origem }] = await Promise.all([
     ctx.db
       .from("pier_department")
       .select("external_id, name, user_count")
       .eq("organization_id", ctx.organizationId)
       .order("name"),
-    departamentosContabeis(ctx),
+    resolverDepartamentosContabeis(ctx),
   ]);
 
   if (error)
@@ -330,6 +343,8 @@ export async function obterDepartamentosContabeis(ctx: AppContext) {
       totalUsuarios: d.user_count ?? 0,
     })),
     selecionados,
+    /** true quando nenhum departamento foi configurado nem casou pelo nome: escopo caiu no padrão fixo desta organização. */
+    usandoPadraoFixo: origem === "PADRAO_FIXO",
   };
 }
 
