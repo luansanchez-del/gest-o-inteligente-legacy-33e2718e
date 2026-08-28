@@ -371,6 +371,16 @@ export async function montarPreview(
   };
 }
 
+/**
+ * Registra o escopo (auditoria + idempotência) de um clique em "Validar em
+ * lote". Não processa nada: quem faz o trabalho real (analisar balancete,
+ * postar, finalizar no PIER) é `processarEscopo`
+ * (../processamento/processamento.service.ts), chamado pela UI logo depois
+ * desta função, item a item. Este registro (`batch_execution`/`batch_item`)
+ * e o resultado de `processarEscopo` (`request_processing`) são histórias
+ * independentes: um erro em `processarEscopo` não muda o status já gravado
+ * aqui.
+ */
 export async function iniciarGestao(
   ctx: AppContext,
   filtro: EscopoFiltro & { idempotencyKey: string },
@@ -427,11 +437,8 @@ export async function iniciarGestao(
   let concluidos = 0;
   let alertas = 0;
   let erros = 0;
-  let ignorados = 0;
+  const ignorados = 0;
 
-  // Nesta fase a gestão apenas REGISTRA o escopo operacional.
-  // Nenhuma empresa é criada e nenhum closing_period é aberto: a solicitação do PIER
-  // é a fonte operacional e a análise não depende de cadastro interno.
   for (const linha of linhas) {
     const semResponsavel = !linha.responsavelId;
     if (semResponsavel) alertas += 1;
