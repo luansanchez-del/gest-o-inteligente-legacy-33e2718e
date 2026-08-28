@@ -10,6 +10,7 @@ import {
   Pencil,
   PlayCircle,
   RefreshCw,
+  Stethoscope,
   Users,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -25,6 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { diagnosticarConexaoPier } from "@/lib/api/carteira.functions";
 import {
   Dialog,
   DialogContent,
@@ -359,6 +361,20 @@ function GestaoPage() {
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
 
+  const diagnosticarPier = useMutation({
+    mutationFn: () => diagnosticarConexaoPier(),
+    onSuccess: (r) => {
+      if (r.ok) {
+        toast.success("Conexão com o PIER OK — autenticação funcionando.");
+      } else {
+        toast.error(`Conexão com o PIER falhou: ${r.detalhe ?? "erro desconhecido"}`, {
+          duration: 8000,
+        });
+      }
+    },
+    onError: (e) => toast.error(mensagemDeErro(e)),
+  });
+
   const prepararSolicitacoes = useMutation({
     mutationFn: () =>
       sincronizarSolicitacoes({ data: { competencia, tipo, statusPier } }),
@@ -590,6 +606,15 @@ function GestaoPage() {
             >
               <Users className="mr-2 h-4 w-4" />
               Sincronizar equipe
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => diagnosticarPier.mutate()}
+              disabled={diagnosticarPier.isPending}
+              title="Testar autenticação com o PIER, sem carregar nada"
+            >
+              <Stethoscope className="mr-2 h-4 w-4" />
+              Testar conexão
             </Button>
             <Button
               variant="outline"
