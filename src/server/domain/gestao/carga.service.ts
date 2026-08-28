@@ -153,10 +153,15 @@ async function externalIdsJaGravados(ctx: AppContext, ids: string[]) {
 /** Pré-visualização somente leitura: nada é gravado no banco nem no PIER. */
 export async function previsualizarCarga(
   ctx: AppContext,
-  input: { inicio: string; fim: string; incluirFinalizadas?: boolean },
+  input: {
+    inicio: string;
+    fim: string;
+    incluirFinalizadas?: boolean;
+    departamentoIds?: string[] | null;
+  },
 ): Promise<PreviewCarga> {
   const meses = listarMeses(input.inicio, input.fim);
-  const amb = await contexto(ctx);
+  const amb = await contexto(ctx, input.departamentoIds);
   const resumos: ResumoCompetencia[] = [];
 
   for (const competencia of meses) {
@@ -237,6 +242,7 @@ export async function abrirCarga(
     fim: string;
     tipoCarga: "HISTORICA" | "MENSAL";
     incluirFinalizadas?: boolean;
+    departamentoIds?: string[] | null;
   },
 ) {
   assertCanWrite(ctx);
@@ -253,6 +259,7 @@ export async function abrirCarga(
         fim: input.fim,
         meses,
         incluirFinalizadas: Boolean(input.incluirFinalizadas),
+        departamentoIds: input.departamentoIds ?? null,
       } as never,
       status: "RUNNING",
       total_items: meses.length,
@@ -294,6 +301,7 @@ export async function carregarCompetencia(
     competencia: string;
     runId?: string | null;
     incluirFinalizadas?: boolean;
+    departamentoIds?: string[] | null;
   },
 ): Promise<ResumoCompetencia> {
   assertCanWrite(ctx);
@@ -303,7 +311,7 @@ export async function carregarCompetencia(
       "Informe a competência no formato AAAA-MM.",
     );
 
-  const amb = await contexto(ctx);
+  const amb = await contexto(ctx, input.departamentoIds);
   const agora = new Date().toISOString();
 
   try {
@@ -330,7 +338,9 @@ export async function carregarCompetencia(
           number: s.number,
           description: s.description,
           type_name: s.typeName,
-          type_external_id: amb.typeExternalId,
+          // Grava o tipo real do PIER: assim os filtros por tipo enxergam
+          // solicitações de outros departamentos (DAS, REINF, DCTFWEB…).
+          type_external_id: s.typeExternalId ?? amb.typeExternalId,
           purpose: s.purpose,
           // Sem competência interpretável a solicitação fica em revisão, nunca descartada.
           reference_month: s.referenceMonth,
