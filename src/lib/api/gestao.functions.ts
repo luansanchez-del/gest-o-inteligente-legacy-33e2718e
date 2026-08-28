@@ -62,7 +62,14 @@ function validarIntervalo<T extends { inicio: string; fim: string }>(input: T): 
 
 export const previsualizarCarga = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { inicio: string; fim: string; incluirFinalizadas?: boolean }) => validarIntervalo(input))
+  .inputValidator(
+    (input: {
+      inicio: string;
+      fim: string;
+      incluirFinalizadas?: boolean;
+      departamentoIds?: string[] | null;
+    }) => validarIntervalo(input),
+  )
   .handler(async ({ data, context }) =>
     comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
       const service = await import("@/server/domain/gestao/carga.service");
@@ -72,7 +79,7 @@ export const previsualizarCarga = createServerFn({ method: "POST" })
 
 export const abrirCarga = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { inicio: string; fim: string; tipoCarga: "HISTORICA" | "MENSAL"; incluirFinalizadas?: boolean }) => {
+  .inputValidator((input: { inicio: string; fim: string; tipoCarga: "HISTORICA" | "MENSAL"; incluirFinalizadas?: boolean; departamentoIds?: string[] | null }) => {
     validarIntervalo(input);
     return input;
   })
@@ -85,7 +92,7 @@ export const abrirCarga = createServerFn({ method: "POST" })
 
 export const carregarCompetencia = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { competencia: string; runId?: string | null; incluirFinalizadas?: boolean }) => {
+  .inputValidator((input: { competencia: string; runId?: string | null; incluirFinalizadas?: boolean; departamentoIds?: string[] | null }) => {
     if (!COMPETENCIA.test(input?.competencia ?? ""))
       throw new Error("VALIDACAO::Informe a competência no formato AAAA-MM.");
     return input;
