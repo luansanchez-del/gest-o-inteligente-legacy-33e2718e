@@ -38,6 +38,8 @@ export interface PreviewCarga {
   totalSemAnexo: number;
   totalSemCompetencia: number;
   totalFinalizadasIgnoradas: number;
+  /** Encontradas no PIER mas fora de qualquer departamento configurado como Gestão Contábil. */
+  totalIgnoradasNaoContabeis: number;
   totalErros: number;
 }
 
@@ -226,6 +228,7 @@ export async function previsualizarCarga(
     totalSemAnexo: soma("semAnexo"),
     totalSemCompetencia: soma("semCompetencia"),
     totalFinalizadasIgnoradas: soma("finalizadasIgnoradas"),
+    totalIgnoradasNaoContabeis: soma("ignoradasNaoContabeis"),
     totalErros: resumos.filter((m) => m.erro).length,
   };
 }

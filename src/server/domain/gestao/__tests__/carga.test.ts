@@ -133,6 +133,7 @@ describe("preview da carga histórica", () => {
     const preview = await previsualizarCarga(ctx, { inicio: "2026-01", fim: "2026-01" });
     expect(preview.totalEncontradas).toBe(1);
     expect(preview.meses[0]?.ignoradasNaoContabeis).toBe(1);
+    expect(preview.totalIgnoradasNaoContabeis).toBe(1);
   });
 
   it("complementa a busca tipada com a busca ampla por texto, sem duplicar", async () => {

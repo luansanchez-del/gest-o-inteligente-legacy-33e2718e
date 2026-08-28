@@ -58,6 +58,7 @@ interface PreviewCargaLike {
   totalComAnexo: number;
   totalSemAnexo: number;
   totalSemCompetencia: number;
+  totalIgnoradasNaoContabeis: number;
   totalErros: number;
   meses: ResumoMesLike[];
 }
@@ -238,6 +239,7 @@ export function CargaCompetencias({
       { rotulo: "Com anexo", valor: p.totalComAnexo },
       { rotulo: "Sem anexo", valor: p.totalSemAnexo },
       { rotulo: "Sem competência", valor: p.totalSemCompetencia },
+      { rotulo: "Fora do departamento", valor: p.totalIgnoradasNaoContabeis },
       { rotulo: "Erros", valor: p.totalErros },
     ];
   }, [preview.data]);
