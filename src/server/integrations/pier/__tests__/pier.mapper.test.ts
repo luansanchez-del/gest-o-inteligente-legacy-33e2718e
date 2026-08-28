@@ -1,6 +1,20 @@
 import { describe, expect, it } from "vitest";
 
-import { mapPost, mapRequest, mapRequestType } from "../pier.mapper";
+import { extrairCompetencia, mapPost, mapRequest, mapRequestType } from "../pier.mapper";
+
+describe("extrairCompetencia", () => {
+  it("reconhece barra, hífen e ponto como separador", () => {
+    expect(extrairCompetencia("FECHAMENTO CONTÁBIL - 01/2026")).toBe("2026-01");
+    expect(extrairCompetencia("FECHAMENTO CONTÁBIL - 01-2026")).toBe("2026-01");
+    // Formato real visto em dados do Tributário (ex.: postagens de DAS/REINF).
+    expect(extrairCompetencia("DAS - 01.2026")).toBe("2026-01");
+  });
+
+  it("devolve null sem descrição ou sem padrão reconhecível", () => {
+    expect(extrairCompetencia(null)).toBeNull();
+    expect(extrairCompetencia("sem competência informada")).toBeNull();
+  });
+});
 
 describe("mapPost", () => {
   it("reconhece os aliases reais da API V2", () => {

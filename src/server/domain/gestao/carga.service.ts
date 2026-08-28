@@ -103,14 +103,18 @@ async function buscarDoMes(competencia: string, amb: Ambiente) {
   });
   for (const s of tipadas) porId.set(s.externalId, s);
 
-  // 2. Busca ampla por texto (MM/AAAA): pega solicitações de outros tipos
-  // (ex.: DAS, REINF, DCTFWEB) que departamentos como o Tributário também
-  // trabalham, e que não têm tipo fixo no código. Complementa a busca
-  // tipada; nunca some, o texto pode não bater 100% da competência.
+  // 2. Busca ampla por texto (MM/AAAA e MM.AAAA): pega solicitações de outros
+  // tipos (ex.: DAS, REINF, DCTFWEB) que departamentos como o Tributário
+  // também trabalham, e que não têm tipo fixo no código. O separador na
+  // descrição varia por departamento (o Tributário usa ponto, não barra) e a
+  // busca do PIER é literal, então tenta os dois formatos. Complementa a
+  // busca tipada; nunca some, o texto pode não bater 100% da competência.
   const [ano, mes] = competencia.split("-");
-  const termoBusca = `${mes}/${ano}`;
-  const amplas = await pierAdapter.listRequests({ status: "Todas", maxPages: 25, busca: termoBusca });
-  for (const s of amplas) if (!porId.has(s.externalId)) porId.set(s.externalId, s);
+  const termosBusca = [`${mes}/${ano}`, `${mes}.${ano}`];
+  for (const termoBusca of termosBusca) {
+    const amplas = await pierAdapter.listRequests({ status: "Todas", maxPages: 25, busca: termoBusca });
+    for (const s of amplas) if (!porId.has(s.externalId)) porId.set(s.externalId, s);
+  }
 
   const contabeis: Candidato[] = [];
   let ignoradasNaoContabeis = 0;

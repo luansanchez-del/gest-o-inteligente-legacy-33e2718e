@@ -145,8 +145,18 @@ describe("preview da carga histórica", () => {
 
     const preview = await previsualizarCarga(ctx, { inicio: "2026-01", fim: "2026-01" });
 
-    expect(listRequests).toHaveBeenCalledWith(expect.objectContaining({ busca: "01/2026" }));
     expect(preview.totalEncontradas).toBe(2);
+  });
+
+  it("tenta a busca ampla com barra e com ponto, porque o separador varia por departamento", async () => {
+    const { ctx } = criarDbFalso(base());
+    listRequestsByType.mockResolvedValue([]);
+    listRequests.mockResolvedValue([]);
+
+    await previsualizarCarga(ctx, { inicio: "2026-01", fim: "2026-01" });
+
+    expect(listRequests).toHaveBeenCalledWith(expect.objectContaining({ busca: "01/2026" }));
+    expect(listRequests).toHaveBeenCalledWith(expect.objectContaining({ busca: "01.2026" }));
   });
 });
 

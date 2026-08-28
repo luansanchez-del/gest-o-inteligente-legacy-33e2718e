@@ -50,10 +50,12 @@ export function mapRequestType(raw: Raw): PierRequestType {
 /**
  * O PIER não expõe competência em campo próprio: ela vem na descrição
  * ("FECHAMENTO CONTÁBIL - 01/2026"). Extrai MM/AAAA e normaliza para AAAA-MM.
+ * O separador varia por departamento/tipo — barra, hífen e ponto já foram
+ * vistos em dados reais (ex.: postagens do Tributário usam "01.2026").
  */
 export function extrairCompetencia(descricao: string | null): string | null {
   if (!descricao) return null;
-  const match = descricao.match(/(0[1-9]|1[0-2])[/-](20\d{2})/);
+  const match = descricao.match(/(0[1-9]|1[0-2])[./-](20\d{2})/);
   return match ? `${match[2]}-${match[1]}` : null;
 }
 
