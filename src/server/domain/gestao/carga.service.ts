@@ -473,13 +473,13 @@ export interface EstadoCarga {
 
 /** Situação atual da base: o que já foi carregado e qual o próximo mês sugerido. */
 export async function estadoCarga(ctx: AppContext): Promise<EstadoCarga> {
-  const typeExternalId = await resolverTipoSolicitacao(ctx, "CONTABIL");
-
+  // Sem recorte por tipo: a carga agora traz solicitações de qualquer tipo
+  // conforme o departamento escolhido, e o estado precisa refletir isso.
   const { data: linhas, error } = await ctx.db
     .from("request")
     .select("reference_month, synced_at")
-    .eq("organization_id", ctx.organizationId)
-    .eq("type_external_id", typeExternalId);
+    .eq("organization_id", ctx.organizationId);
+
 
   if (error)
     throw new AppError(
