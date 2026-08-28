@@ -76,9 +76,14 @@ export function proximaCompetencia(competencia: string): string {
     : `${ano}-${String(mes + 1).padStart(2, "0")}`;
 }
 
-async function contexto(ctx: AppContext) {
+async function contexto(ctx: AppContext, departamentoIds?: string[] | null) {
   const typeExternalId = await resolverTipoSolicitacao(ctx, "CONTABIL");
-  const contabeis = new Set(await departamentosContabeis(ctx));
+  // Departamentos escolhidos na tela têm prioridade; sem escolha, mantém o
+  // recorte padrão da contabilidade (CONTABILIDADE LEGACY/BPO).
+  const selecionados = (departamentoIds ?? []).map(String).filter(Boolean);
+  const departamentos = new Set(
+    selecionados.length ? selecionados : await departamentosContabeis(ctx),
+  );
   const usuarios = await carregarUsuariosPier<{
     external_id: string;
     department_external_id: string | null;
@@ -86,7 +91,7 @@ async function contexto(ctx: AppContext) {
   const deptoPorUsuario = new Map(
     usuarios.map((u) => [u.external_id, u.department_external_id]),
   );
-  return { typeExternalId, contabeis, deptoPorUsuario };
+  return { typeExternalId, departamentos, deptoPorUsuario };
 }
 
 type Ambiente = Awaited<ReturnType<typeof contexto>>;
@@ -112,17 +117,19 @@ async function buscarDoMes(competencia: string, amb: Ambiente) {
   const amplas = await pierAdapter.listRequests({ status: "Todas", maxPages: 25, busca: termoBusca });
   for (const s of amplas) if (!porId.has(s.externalId)) porId.set(s.externalId, s);
 
-  const contabeis: Candidato[] = [];
+  const selecionadas: Candidato[] = [];
   let ignoradasNaoContabeis = 0;
   for (const s of porId.values()) {
     const depto = s.responsibleExternalId
       ? (amb.deptoPorUsuario.get(s.responsibleExternalId) ?? null)
       : null;
-    if (depto && amb.contabeis.has(depto) && responsavelHumano(s.responsibleName)) contabeis.push(s);
+    if (depto && amb.departamentos.has(depto) && responsavelHumano(s.responsibleName))
+      selecionadas.push(s);
     else ignoradasNaoContabeis += 1;
   }
-  return { contabeis, ignoradasNaoContabeis };
+  return { contabeis: selecionadas, ignoradasNaoContabeis };
 }
+
 
 async function externalIdsJaGravados(ctx: AppContext, ids: string[]) {
   const existentes = new Set<string>();
