@@ -17,6 +17,14 @@ const POR_PAGINA = 500;
 /** A API de solicitações rejeita mais de 30 registros por página. */
 const POR_PAGINA_SOLICITACOES = 30;
 const MAX_PAGINAS = 200;
+/**
+ * Tipos de solicitação são um catálogo pequeno e fixo (dezenas, não
+ * milhares), diferente de clientes/usuários. Um limite baixo evita que uma
+ * resposta inesperada da API (ex.: sempre "página cheia") force até 200
+ * chamadas sequenciais só para um dropdown — o que na prática trava a tela
+ * esperando a cota do PIER liberar.
+ */
+const MAX_PAGINAS_TIPOS = 5;
 /** Páginas buscadas em paralelo para a listagem de solicitações (limitada a 30/página). */
 const CONCORRENCIA = 5;
 
@@ -86,7 +94,7 @@ export const pierAdapter: PierAdapter = {
 
   async listRequestTypes() {
     const resultados: Raw[] = [];
-    for (let pagina = 1; pagina <= MAX_PAGINAS; pagina++) {
+    for (let pagina = 1; pagina <= MAX_PAGINAS_TIPOS; pagina++) {
       const payload = await pierGet<unknown>("/api/v2/tipos-solicitacao", {
         pagina,
         quantidadePorPagina: POR_PAGINA,
