@@ -215,7 +215,9 @@ export async function previsualizarCarga(
         finalizadasIgnoradas: 0,
         erro:
           error instanceof AppError
-            ? error.userMessage
+            ? error.detail
+              ? `${error.userMessage} (${error.detail})`
+              : error.userMessage
             : "Falha ao consultar o PIER.",
       });
     }
