@@ -36,7 +36,6 @@ describe("registrarDecisao", () => {
         solicitacaoExternalId: SOLICITACAO.external_id,
         decisao: "APPROVED",
         notas: "Tudo certo",
-        autorEmail: "contabilidade@grouplegacy.com.br",
       },
       { pier: { createPost } },
     );
@@ -46,6 +45,8 @@ describe("registrarDecisao", () => {
       expect.objectContaining({
         requestExternalId: SOLICITACAO.external_id,
         privada: true,
+        // Mensagem enxuta e sem identificar quem decidiu (não expõe e-mail no PIER).
+        mensagem: "Aprovado. Tudo certo",
       }),
     );
     const update = gravacoes.find(

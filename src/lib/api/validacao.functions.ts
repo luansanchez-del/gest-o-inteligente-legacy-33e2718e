@@ -105,10 +105,7 @@ export const registrarDecisao = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) =>
     comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
       const service = await import("@/server/domain/validacao/validacao.service");
-      return service.registrarDecisao(ctx, {
-        ...data,
-        autorEmail: emailDoToken(context.claims) ?? null,
-      });
+      return service.registrarDecisao(ctx, data);
     }),
   );
 

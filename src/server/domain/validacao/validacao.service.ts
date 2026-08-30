@@ -686,7 +686,6 @@ export async function registrarDecisao(
     execucaoId?: string | null;
     decisao: "APPROVED" | "RETURNED" | "NEEDS_REVIEW";
     notas?: string | null;
-    autorEmail?: string | null;
   },
   deps: { pier: Pick<import("../../integrations/pier/pier.types").PierAdapter, "createPost"> } = {
     pier: pierAdapter,
@@ -739,16 +738,10 @@ export async function registrarDecisao(
   // A decisão é publicada como comentário privado no PIER para ficar visível
   // por lá também. Isso não finaliza nem move a solicitação — só documenta a
   // decisão tomada aqui; a falha ao publicar não invalida a decisão registrada.
+  // Mensagem enxuta de propósito: só o rótulo da decisão (+ notas, se houver)
+  // — sem identificar quem decidiu, para não expor e-mail pessoal no PIER.
   const rotulo = ROTULO_DECISAO[input.decisao] ?? input.decisao;
-  const mensagem = mascararTexto(
-    [
-      `Decisão registrada no sistema interno: ${rotulo}.`,
-      input.autorEmail ? `Por: ${input.autorEmail}.` : null,
-      notas ? `Observações: ${notas}` : null,
-    ]
-      .filter(Boolean)
-      .join(" "),
-  );
+  const mensagem = mascararTexto(notas ? `${rotulo}. ${notas}` : rotulo);
 
   let pierEnviado = false;
   let pierPostId: string | null = null;
