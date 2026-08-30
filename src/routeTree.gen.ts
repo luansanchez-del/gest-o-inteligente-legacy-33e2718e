@@ -25,7 +25,9 @@ import { Route as Char91DotmcpChar93InvokeToolToolRouteImport } from './routes/[
 import { Route as AuthenticatedGestaoIndexRouteImport } from './routes/_authenticated/gestao.index'
 import { Route as AuthenticatedGestaoDepartamentoPessoalRouteImport } from './routes/_authenticated/gestao.departamento-pessoal'
 import { Route as AuthenticatedGestaoFinanceiroRouteImport } from './routes/_authenticated/gestao.financeiro'
+import { Route as AuthenticatedGestaoInteligenciaRouteImport } from './routes/_authenticated/gestao.inteligencia'
 import { Route as AuthenticatedGestaoModulosRouteImport } from './routes/_authenticated/gestao.modulos'
+import { Route as AuthenticatedGestaoRelatoriosRouteImport } from './routes/_authenticated/gestao.relatorios'
 import { Route as AuthenticatedGestaoSolicitacoesExternalIdRouteImport } from './routes/_authenticated/gestao.solicitacoes.$externalId'
 
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
@@ -116,10 +118,22 @@ const AuthenticatedGestaoFinanceiroRoute =
     path: '/gestao/financeiro',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedGestaoInteligenciaRoute =
+  AuthenticatedGestaoInteligenciaRouteImport.update({
+    id: '/gestao/inteligencia',
+    path: '/gestao/inteligencia',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedGestaoModulosRoute =
   AuthenticatedGestaoModulosRouteImport.update({
     id: '/gestao/modulos',
     path: '/gestao/modulos',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedGestaoRelatoriosRoute =
+  AuthenticatedGestaoRelatoriosRouteImport.update({
+    id: '/gestao/relatorios',
+    path: '/gestao/relatorios',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedGestaoSolicitacoesExternalIdRoute =
@@ -144,7 +158,9 @@ export interface FileRoutesByFullPath {
   '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
   '/gestao/departamento-pessoal': typeof AuthenticatedGestaoDepartamentoPessoalRoute
   '/gestao/financeiro': typeof AuthenticatedGestaoFinanceiroRoute
+  '/gestao/inteligencia': typeof AuthenticatedGestaoInteligenciaRoute
   '/gestao/modulos': typeof AuthenticatedGestaoModulosRoute
+  '/gestao/relatorios': typeof AuthenticatedGestaoRelatoriosRoute
   '/gestao/': typeof AuthenticatedGestaoIndexRoute
   '/gestao/solicitacoes/$externalId': typeof AuthenticatedGestaoSolicitacoesExternalIdRoute
 }
@@ -163,7 +179,9 @@ export interface FileRoutesByTo {
   '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
   '/gestao/departamento-pessoal': typeof AuthenticatedGestaoDepartamentoPessoalRoute
   '/gestao/financeiro': typeof AuthenticatedGestaoFinanceiroRoute
+  '/gestao/inteligencia': typeof AuthenticatedGestaoInteligenciaRoute
   '/gestao/modulos': typeof AuthenticatedGestaoModulosRoute
+  '/gestao/relatorios': typeof AuthenticatedGestaoRelatoriosRoute
   '/gestao': typeof AuthenticatedGestaoIndexRoute
   '/gestao/solicitacoes/$externalId': typeof AuthenticatedGestaoSolicitacoesExternalIdRoute
 }
@@ -184,7 +202,9 @@ export interface FileRoutesById {
   '/.mcp/invoke-tool/$tool': typeof Char91DotmcpChar93InvokeToolToolRoute
   '/_authenticated/gestao/departamento-pessoal': typeof AuthenticatedGestaoDepartamentoPessoalRoute
   '/_authenticated/gestao/financeiro': typeof AuthenticatedGestaoFinanceiroRoute
+  '/_authenticated/gestao/inteligencia': typeof AuthenticatedGestaoInteligenciaRoute
   '/_authenticated/gestao/modulos': typeof AuthenticatedGestaoModulosRoute
+  '/_authenticated/gestao/relatorios': typeof AuthenticatedGestaoRelatoriosRoute
   '/_authenticated/gestao/': typeof AuthenticatedGestaoIndexRoute
   '/_authenticated/gestao/solicitacoes/$externalId': typeof AuthenticatedGestaoSolicitacoesExternalIdRoute
 }
@@ -205,7 +225,9 @@ export interface FileRouteTypes {
     | '/.mcp/invoke-tool/$tool'
     | '/gestao/departamento-pessoal'
     | '/gestao/financeiro'
+    | '/gestao/inteligencia'
     | '/gestao/modulos'
+    | '/gestao/relatorios'
     | '/gestao/'
     | '/gestao/solicitacoes/$externalId'
   fileRoutesByTo: FileRoutesByTo
@@ -224,7 +246,9 @@ export interface FileRouteTypes {
     | '/.mcp/invoke-tool/$tool'
     | '/gestao/departamento-pessoal'
     | '/gestao/financeiro'
+    | '/gestao/inteligencia'
     | '/gestao/modulos'
+    | '/gestao/relatorios'
     | '/gestao'
     | '/gestao/solicitacoes/$externalId'
   id:
@@ -244,7 +268,9 @@ export interface FileRouteTypes {
     | '/.mcp/invoke-tool/$tool'
     | '/_authenticated/gestao/departamento-pessoal'
     | '/_authenticated/gestao/financeiro'
+    | '/_authenticated/gestao/inteligencia'
     | '/_authenticated/gestao/modulos'
+    | '/_authenticated/gestao/relatorios'
     | '/_authenticated/gestao/'
     | '/_authenticated/gestao/solicitacoes/$externalId'
   fileRoutesById: FileRoutesById
@@ -373,11 +399,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedGestaoFinanceiroRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/gestao/inteligencia': {
+      id: '/_authenticated/gestao/inteligencia'
+      path: '/gestao/inteligencia'
+      fullPath: '/gestao/inteligencia'
+      preLoaderRoute: typeof AuthenticatedGestaoInteligenciaRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/gestao/modulos': {
       id: '/_authenticated/gestao/modulos'
       path: '/gestao/modulos'
       fullPath: '/gestao/modulos'
       preLoaderRoute: typeof AuthenticatedGestaoModulosRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/gestao/relatorios': {
+      id: '/_authenticated/gestao/relatorios'
+      path: '/gestao/relatorios'
+      fullPath: '/gestao/relatorios'
+      preLoaderRoute: typeof AuthenticatedGestaoRelatoriosRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/gestao/solicitacoes/$externalId': {
@@ -399,7 +439,9 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedGestaoDepartamentoPessoalRoute: typeof AuthenticatedGestaoDepartamentoPessoalRoute
   AuthenticatedGestaoFinanceiroRoute: typeof AuthenticatedGestaoFinanceiroRoute
+  AuthenticatedGestaoInteligenciaRoute: typeof AuthenticatedGestaoInteligenciaRoute
   AuthenticatedGestaoModulosRoute: typeof AuthenticatedGestaoModulosRoute
+  AuthenticatedGestaoRelatoriosRoute: typeof AuthenticatedGestaoRelatoriosRoute
   AuthenticatedGestaoIndexRoute: typeof AuthenticatedGestaoIndexRoute
   AuthenticatedGestaoSolicitacoesExternalIdRoute: typeof AuthenticatedGestaoSolicitacoesExternalIdRoute
 }
@@ -414,7 +456,9 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedGestaoDepartamentoPessoalRoute:
     AuthenticatedGestaoDepartamentoPessoalRoute,
   AuthenticatedGestaoFinanceiroRoute: AuthenticatedGestaoFinanceiroRoute,
+  AuthenticatedGestaoInteligenciaRoute: AuthenticatedGestaoInteligenciaRoute,
   AuthenticatedGestaoModulosRoute: AuthenticatedGestaoModulosRoute,
+  AuthenticatedGestaoRelatoriosRoute: AuthenticatedGestaoRelatoriosRoute,
   AuthenticatedGestaoIndexRoute: AuthenticatedGestaoIndexRoute,
   AuthenticatedGestaoSolicitacoesExternalIdRoute:
     AuthenticatedGestaoSolicitacoesExternalIdRoute,
@@ -436,13 +480,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

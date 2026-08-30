@@ -1,16 +1,16 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
+  BarChart3,
   BookUser,
   BrainCircuit,
   Building2,
   ClipboardList,
-  ContactRound,
   Gauge,
   Inbox,
-  Landmark,
   LayoutGrid,
-  PlayCircle,
+  ListChecks,
   Users,
+  Wallet,
 } from "lucide-react";
 
 import {
@@ -27,37 +27,23 @@ import {
 
 const GRUPOS = [
   {
-    label: "Minha Gestão",
+    label: "Gestão Inteligente",
     itens: [
-      { title: "Painel", to: "/", icon: Gauge },
-      { title: "Módulos de gestão", to: "/gestao/modulos", icon: LayoutGrid },
+      { title: "Visão Geral", to: "/", icon: Gauge, exact: true },
+      { title: "Operação", to: "/gestao/modulos", icon: LayoutGrid },
+      { title: "Solicitações", to: "/gestao", icon: ListChecks, exact: true },
+      { title: "Carteira", to: "/carteira-inteligente", icon: Wallet },
+      { title: "Equipe", to: "/equipe", icon: Users },
+      { title: "PIER", to: "/carteira", icon: Building2, exact: true },
+      { title: "Inteligência", to: "/gestao/inteligencia", icon: BrainCircuit },
+      { title: "Relatórios", to: "/gestao/relatorios", icon: BarChart3 },
+    ],
+  },
+  {
+    label: "Outros",
+    itens: [
       { title: "Minha Caixa", to: "/minhas-solicitacoes", icon: Inbox },
-    ],
-  },
-  {
-    label: "Gestão Contábil",
-    itens: [
-      { title: "Operação Contábil", to: "/gestao", icon: PlayCircle, exact: true },
-      { title: "Carteira Contábil", to: "/carteira-inteligente", icon: BrainCircuit },
       { title: "Currículos BPO Contábil", to: "/curriculos-bpo", icon: BookUser },
-    ],
-  },
-  {
-    label: "Novos módulos",
-    itens: [
-      { title: "BPO Financeiro · Em desenvolvimento", to: "/gestao/financeiro", icon: Landmark },
-      {
-        title: "Departamento Pessoal · Em desenvolvimento",
-        to: "/gestao/departamento-pessoal",
-        icon: ContactRound,
-      },
-    ],
-  },
-  {
-    label: "Estrutura / PIER",
-    itens: [
-      { title: "Carteira PIER", to: "/carteira", icon: Building2 },
-      { title: "Equipe e departamentos", to: "/equipe", icon: Users },
     ],
   },
 ] as const;

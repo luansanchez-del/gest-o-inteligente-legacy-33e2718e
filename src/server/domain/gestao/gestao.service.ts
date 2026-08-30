@@ -8,10 +8,7 @@ import {
   type TipoFechamento,
 } from "./escopo.service";
 import { carregarTodasAsLinhas, carregarUsuariosPier } from "./pier-user.repo";
-import {
-  solicitacaoFinalizadaPier,
-  type StatusPierFiltro,
-} from "./status-pier";
+import { solicitacaoFinalizadaPier, type StatusPierFiltro } from "./status-pier";
 
 /** Fila operacional do fechamento contábil, do documento pendente até a finalização interna. */
 export type StatusFila =
@@ -56,6 +53,7 @@ export interface EscopoLinha {
   /** external_id da solicitação no PIER — a chave operacional desta tela. */
   solicitacaoId: string;
   numero: string | null;
+  assunto: string | null;
   clienteExternalId: string | null;
   clienteNome: string;
   documento: string | null;
@@ -68,6 +66,7 @@ export interface EscopoLinha {
   /** Aviso cadastral: a ficha do cliente não tem responsável contábil. Nunca bloqueia. */
   avisoCadastral: string | null;
   competencia: string | null;
+  prazo: string | null;
   temAnexo: boolean;
   /** true quando o PDF já está armazenado internamente e pode ser analisado. */
   documentoDisponivel: boolean;
@@ -102,7 +101,7 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
   let consulta = ctx.db
     .from("request")
     .select(
-      "id, external_id, number, description, status, client_external_id, client_name, client_document, responsible_external_id, responsible_name, department_external_id, has_attachment, reference_month, finished_at",
+      "id, external_id, number, description, status, client_external_id, client_name, client_document, responsible_external_id, responsible_name, department_external_id, has_attachment, reference_month, finished_at, deadline_at",
     )
     .eq("organization_id", ctx.organizationId);
   // Sem tipo informado, mostra qualquer tipo carregado (Fechamento Contábil,
@@ -117,10 +116,7 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
   if (filtro.revisaoCompetencia) {
     // Sem competência interpretável: fila de revisão, nunca descarte.
     consulta = consulta.is("reference_month", null);
-  } else if (
-    filtro.competenciaFim &&
-    filtro.competenciaFim !== filtro.competencia
-  ) {
+  } else if (filtro.competenciaFim && filtro.competenciaFim !== filtro.competencia) {
     consulta = consulta
       .gte("reference_month", filtro.competencia)
       .lte("reference_month", filtro.competenciaFim);
@@ -128,19 +124,12 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
     consulta = consulta.eq("reference_month", filtro.competencia);
   }
 
-  if (filtro.anexo === "COM_ANEXO")
-    consulta = consulta.eq("has_attachment", true);
-  if (filtro.anexo === "SEM_ANEXO")
-    consulta = consulta.eq("has_attachment", false);
+  if (filtro.anexo === "COM_ANEXO") consulta = consulta.eq("has_attachment", true);
+  if (filtro.anexo === "SEM_ANEXO") consulta = consulta.eq("has_attachment", false);
 
   const { data: solicitacoesBrutas, error } = await consulta;
 
-  if (error)
-    throw new AppError(
-      "INESPERADO",
-      "Não foi possível montar o escopo.",
-      error.message,
-    );
+  if (error) throw new AppError("INESPERADO", "Não foi possível montar o escopo.", error.message);
 
   // Contas automáticas (ex.: "MOVIMENTO FINANCEIRO MENSAL") não são
   // responsáveis reais — inclusive filtra registros antigos já gravados.
@@ -168,20 +157,13 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
 
   const usuarioPorId = new Map(usuarios.map((u) => [u.external_id, u]));
 
-  const deptoNome = new Map(
-    (departamentos ?? []).map((d) => [d.external_id, d.name]),
-  );
+  const deptoNome = new Map((departamentos ?? []).map((d) => [d.external_id, d.name]));
   // Ficha do cliente é complementar: usada só para regime e aviso cadastral.
-  const fichaPorDoc = new Map(
-    (clientes ?? []).map((c) => [normalizarDocumento(c.document), c]),
-  );
+  const fichaPorDoc = new Map((clientes ?? []).map((c) => [normalizarDocumento(c.document), c]));
 
   // Estado da análise interna (a última execução por solicitação).
   const idsSolicitacoes = (solicitacoes ?? []).map((s) => s.id);
-  const analisePorRequest = new Map<
-    string,
-    { status: string; resultado: string | null }
-  >();
+  const analisePorRequest = new Map<string, { status: string; resultado: string | null }>();
   const comAnexoInterno = new Set<string>();
   if (idsSolicitacoes.length) {
     const [{ data: execucoes }, { data: anexos }] = await Promise.all([
@@ -219,8 +201,7 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
     const usuario = s.responsible_external_id
       ? (usuarioPorId.get(s.responsible_external_id) ?? null)
       : null;
-    const departamentoId =
-      s.department_external_id ?? usuario?.department_external_id ?? null;
+    const departamentoId = s.department_external_id ?? usuario?.department_external_id ?? null;
     const documentoDisponivel = comAnexoInterno.has(s.id);
     const finalizadaPier = solicitacaoFinalizadaPier(s.status, s.finished_at);
 
@@ -233,28 +214,25 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
           : statusAnalise === "CONCLUIDA"
             ? analise?.resultado === "REPROVADO"
               ? "BLOQUEADA"
-              : analise?.resultado === "REVISAO_HUMANA" ||
-                  analise?.resultado === "COM_ALERTAS"
+              : analise?.resultado === "REVISAO_HUMANA" || analise?.resultado === "COM_ALERTAS"
                 ? "REVISAO_NECESSARIA"
                 : "ANALISE_CONCLUIDA"
             : documentoDisponivel
               ? "PRONTO_PARA_ANALISE"
               : "AGUARDANDO_DOCUMENTO";
 
-    const ficha =
-      fichaPorDoc.get(normalizarDocumento(s.client_document)) ?? null;
+    const ficha = fichaPorDoc.get(normalizarDocumento(s.client_document)) ?? null;
 
     return {
       solicitacaoId: s.external_id,
       numero: s.number,
+      assunto: s.description,
       clienteExternalId: s.client_external_id,
       clienteNome: s.client_name ?? "—",
       documento: s.client_document,
       regime: ficha?.tax_regime ?? null,
       departamentoId,
-      departamentoNome: departamentoId
-        ? (deptoNome.get(departamentoId) ?? null)
-        : null,
+      departamentoNome: departamentoId ? (deptoNome.get(departamentoId) ?? null) : null,
       responsavelId: s.responsible_external_id,
       responsavelNome: s.responsible_name ?? usuario?.name ?? null,
       statusSolicitacao: s.status,
@@ -265,6 +243,7 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
           ? "Ficha do cliente sem responsável contábil."
           : null,
       competencia: s.reference_month,
+      prazo: s.deadline_at,
       temAnexo: Boolean(s.has_attachment),
       documentoDisponivel,
       statusAnalise,
@@ -275,9 +254,7 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
 
   // Escopo contábil restrito: só entram responsáveis dos departamentos de contabilidade.
   const contabeis = new Set(await departamentosContabeis(ctx));
-  linhas = linhas.filter(
-    (l) => l.departamentoId && contabeis.has(l.departamentoId),
-  );
+  linhas = linhas.filter((l) => l.departamentoId && contabeis.has(l.departamentoId));
 
   if (filtro.responsavelId) {
     const usuario = usuarioPorId.get(filtro.responsavelId);
@@ -300,15 +277,15 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
   if (filtro.statusPier === "FINALIZADAS")
     linhas = linhas.filter((l) => l.statusFila === "HISTORICO");
 
-  if (filtro.statusFila)
-    linhas = linhas.filter((l) => l.statusFila === filtro.statusFila);
+  if (filtro.statusFila) linhas = linhas.filter((l) => l.statusFila === filtro.statusFila);
 
-  const regimesDisponiveis = [...new Set(
-    linhas.map((l) => l.regime?.trim()).filter((regime): regime is string => Boolean(regime)),
-  )].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const regimesDisponiveis = [
+    ...new Set(
+      linhas.map((l) => l.regime?.trim()).filter((regime): regime is string => Boolean(regime)),
+    ),
+  ].sort((a, b) => a.localeCompare(b, "pt-BR"));
 
-  if (filtro.regime)
-    linhas = linhas.filter((l) => l.regime?.trim() === filtro.regime);
+  if (filtro.regime) linhas = linhas.filter((l) => l.regime?.trim() === filtro.regime);
 
   const busca = (filtro.busca ?? "").trim().toLowerCase();
   if (busca) {
@@ -316,16 +293,14 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
     linhas = linhas.filter(
       (l) =>
         l.clienteNome.toLowerCase().includes(busca) ||
-        (digitos.length >= 3 &&
-          normalizarDocumento(l.documento).includes(digitos)),
+        (digitos.length >= 3 && normalizarDocumento(l.documento).includes(digitos)),
     );
   }
 
   linhas.sort((a, b) => a.clienteNome.localeCompare(b.clienteNome, "pt-BR"));
 
   const departamentoNome = filtro.departamentoId
-    ? (deptoNome.get(filtro.departamentoId) ??
-      `Departamento ${filtro.departamentoId}`)
+    ? (deptoNome.get(filtro.departamentoId) ?? `Departamento ${filtro.departamentoId}`)
     : "Todos os departamentos";
   const responsavelNome = filtro.responsavelId
     ? (usuarioPorId.get(filtro.responsavelId)?.name ?? filtro.responsavelId)
@@ -340,17 +315,11 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
   };
 }
 
-export async function montarPreview(
-  ctx: AppContext,
-  filtro: EscopoFiltro,
-): Promise<EscopoPreview> {
+export async function montarPreview(ctx: AppContext, filtro: EscopoFiltro): Promise<EscopoPreview> {
   const { linhas, departamentoNome, responsavelNome, totalSolicitacoes, regimesDisponiveis } =
     await carregarEscopo(ctx, filtro);
 
-  const porResponsavel = new Map<
-    string,
-    { id: string | null; nome: string; total: number }
-  >();
+  const porResponsavel = new Map<string, { id: string | null; nome: string; total: number }>();
   for (const linha of linhas) {
     const chave = linha.responsavelId ?? "sem-responsavel";
     const atual = porResponsavel.get(chave) ?? {
@@ -371,13 +340,10 @@ export async function montarPreview(
     totalSemResponsavel: linhas.filter((l) => !l.responsavelId).length,
     totalComDocumento: linhas.filter((l) => l.documentoDisponivel).length,
     totalSemDocumento: linhas.filter((l) => !l.documentoDisponivel).length,
-    totalAvisosCadastrais: linhas.filter((l) => Boolean(l.avisoCadastral))
-      .length,
+    totalAvisosCadastrais: linhas.filter((l) => Boolean(l.avisoCadastral)).length,
     solicitacoesEmCache: totalSolicitacoes,
     regimesDisponiveis,
-    responsaveis: [...porResponsavel.values()].sort(
-      (a, b) => b.total - a.total,
-    ),
+    responsaveis: [...porResponsavel.values()].sort((a, b) => b.total - a.total),
     empresas: linhas,
   };
 }
@@ -397,15 +363,9 @@ export async function iniciarGestao(
   filtro: EscopoFiltro & { idempotencyKey: string },
 ) {
   assertCanWrite(ctx);
-  const { linhas, departamentoNome, responsavelNome } = await carregarEscopo(
-    ctx,
-    filtro,
-  );
+  const { linhas, departamentoNome, responsavelNome } = await carregarEscopo(ctx, filtro);
   if (!linhas.length)
-    throw new AppError(
-      "REGRA_NEGOCIO",
-      "Nenhuma empresa entra neste escopo. Ajuste os filtros.",
-    );
+    throw new AppError("REGRA_NEGOCIO", "Nenhuma empresa entra neste escopo. Ajuste os filtros.");
 
   const { data: existente } = await ctx.db
     .from("batch_execution")
@@ -439,11 +399,7 @@ export async function iniciarGestao(
     .single();
 
   if (error || !execucao)
-    throw new AppError(
-      "INESPERADO",
-      "Não foi possível iniciar a gestão.",
-      error?.message,
-    );
+    throw new AppError("INESPERADO", "Não foi possível iniciar a gestão.", error?.message);
 
   let concluidos = 0;
   let alertas = 0;
@@ -514,11 +470,7 @@ export async function listarExecucoes(ctx: AppContext) {
     .limit(50);
 
   if (error)
-    throw new AppError(
-      "INESPERADO",
-      "Não foi possível carregar as execuções.",
-      error.message,
-    );
+    throw new AppError("INESPERADO", "Não foi possível carregar as execuções.", error.message);
 
   return (data ?? []).map((e) => ({
     id: e.id,
@@ -550,11 +502,7 @@ export async function detalharExecucao(ctx: AppContext, execucaoId: string) {
     .eq("batch_execution_id", execucaoId);
 
   if (error)
-    throw new AppError(
-      "INESPERADO",
-      "Não foi possível carregar a execução.",
-      error.message,
-    );
+    throw new AppError("INESPERADO", "Não foi possível carregar a execução.", error.message);
 
   return (itens ?? []).map((i) => {
     const empresa = i.company as unknown as {
