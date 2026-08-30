@@ -1350,6 +1350,7 @@ export type Database = {
           notes: string | null
           organization_id: string
           pier_action_status: Database["public"]["Enums"]["pier_action_status"]
+          pier_post_id: string | null
           request_id: string
           updated_at: string
         }
@@ -1363,6 +1364,7 @@ export type Database = {
           notes?: string | null
           organization_id: string
           pier_action_status?: Database["public"]["Enums"]["pier_action_status"]
+          pier_post_id?: string | null
           request_id: string
           updated_at?: string
         }
@@ -1376,6 +1378,7 @@ export type Database = {
           notes?: string | null
           organization_id?: string
           pier_action_status?: Database["public"]["Enums"]["pier_action_status"]
+          pier_post_id?: string | null
           request_id?: string
           updated_at?: string
         }

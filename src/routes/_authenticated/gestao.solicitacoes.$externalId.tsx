@@ -11,6 +11,7 @@ import {
   PlayCircle,
   RotateCcw,
   ShieldAlert,
+  Trash2,
   Undo2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -57,6 +58,7 @@ import {
   detalharSolicitacao,
   enviarAnexo,
   executarValidacao,
+  excluirDecisao,
   obterResultadoValidacao,
   registrarDecisao,
 } from "@/lib/api/validacao.functions";
@@ -142,6 +144,28 @@ interface GrupoBalancete {
   saldo: number;
 }
 
+const DECISOES: Record<string, { rotulo: string; classe: string }> = {
+  APPROVED: { rotulo: "Aprovado", classe: "bg-success-soft text-success-strong" },
+  RETURNED: {
+    rotulo: "Devolvido ao cliente",
+    classe: "bg-warning-soft text-warning-strong",
+  },
+  NEEDS_REVIEW: {
+    rotulo: "Enviado para revisão",
+    classe: "bg-warning-soft text-warning-strong",
+  },
+};
+
+const STATUS_PIER: Record<string, { rotulo: string; classe: string }> = {
+  NOT_SENT: { rotulo: "Não enviado ao PIER", classe: "bg-muted text-muted-foreground" },
+  PENDING: { rotulo: "Publicando no PIER…", classe: "bg-muted text-muted-foreground" },
+  SENT: { rotulo: "Publicado no PIER", classe: "bg-success-soft text-success-strong" },
+  FAILED: {
+    rotulo: "Falha ao publicar no PIER",
+    classe: "bg-destructive/10 text-destructive",
+  },
+};
+
 function moeda(valor: unknown) {
   return typeof valor === "number"
     ? valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
@@ -170,6 +194,9 @@ function SolicitacaoPage() {
   const [expandido, setExpandido] = useState<string | null>(null);
   const [confirmarProcessar, setConfirmarProcessar] = useState(false);
   const [confirmarNotificacao, setConfirmarNotificacao] = useState(false);
+  const [decisaoParaExcluir, setDecisaoParaExcluir] = useState<string | null>(
+    null,
+  );
 
   const detalhe = useQuery({
     queryKey: ["solicitacao", id],
@@ -266,8 +293,20 @@ function SolicitacaoPage() {
         },
       }),
     onSuccess: (r) => {
-      toast.success(`Decisão registrada. ${r.avisoPier}`);
+      if (r.pierEnviado) toast.success(`Decisão registrada. ${r.avisoPier}`);
+      else toast.warning(`Decisão registrada. ${r.avisoPier}`);
       setNotas("");
+      invalidar();
+    },
+    onError: (e) => toast.error(mensagemDeErro(e)),
+  });
+
+  const excluir = useMutation({
+    mutationFn: (decisaoId: string) =>
+      excluirDecisao({ data: { solicitacaoExternalId: id, decisaoId } }),
+    onSuccess: () => {
+      toast.success("Decisão excluída.");
+      setDecisaoParaExcluir(null);
       invalidar();
     },
     onError: (e) => toast.error(mensagemDeErro(e)),
@@ -1086,6 +1125,81 @@ function SolicitacaoPage() {
           </ul>
         </Card>
       </div>
+
+      <Card className="space-y-3 p-4">
+        <p className="text-sm font-medium">Decisões e comentários</p>
+        {dados?.decisoes.length ? (
+          <ul className="space-y-2">
+            {dados.decisoes.map((d) => {
+              const decisaoEstilo = DECISOES[d.decisao] ?? {
+                rotulo: d.decisao,
+                classe: "bg-muted text-muted-foreground",
+              };
+              const pierEstilo = STATUS_PIER[d.statusPier ?? ""] ?? STATUS_PIER["NOT_SENT"]!;
+              return (
+                <li
+                  key={d.id}
+                  className="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-border p-3"
+                >
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge className={decisaoEstilo.classe}>
+                        {decisaoEstilo.rotulo}
+                      </Badge>
+                      <Badge className={pierEstilo.classe}>{pierEstilo.rotulo}</Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {dataHora(d.decididaEm)}
+                      </span>
+                    </div>
+                    {d.notas ? (
+                      <p className="text-sm text-muted-foreground">{d.notas}</p>
+                    ) : null}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setDecisaoParaExcluir(d.id)}
+                    disabled={excluir.isPending}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Excluir
+                  </Button>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <EstadoVazio titulo="Nenhuma decisão ou comentário registrado ainda." />
+        )}
+      </Card>
+
+      <AlertDialog
+        open={Boolean(decisaoParaExcluir)}
+        onOpenChange={(aberto) => {
+          if (!aberto) setDecisaoParaExcluir(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir esta decisão?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Remove o registro interno da decisão/comentário. Se ela foi
+              publicada como comentário privado no PIER, essa postagem lá
+              permanece — o PIER não oferece exclusão remota.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() =>
+                decisaoParaExcluir && excluir.mutate(decisaoParaExcluir)
+              }
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
