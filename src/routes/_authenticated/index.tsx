@@ -12,6 +12,7 @@ import {
   MessageSquare,
   RefreshCw,
   RotateCcw,
+  Sparkles,
   Users,
 } from "lucide-react";
 
@@ -68,9 +69,14 @@ type Risco = "ALTO" | "MEDIO" | "BAIXO";
 
 const RISCO_ROTULO: Record<Risco, string> = { ALTO: "Alto", MEDIO: "Médio", BAIXO: "Baixo" };
 const RISCO_CLASSE: Record<Risco, string> = {
-  ALTO: "text-destructive",
-  MEDIO: "text-warning-strong",
-  BAIXO: "text-success-strong",
+  ALTO: "text-red-600",
+  MEDIO: "text-amber-600",
+  BAIXO: "text-emerald-600",
+};
+const RISCO_PONTO: Record<Risco, string> = {
+  ALTO: "bg-red-500",
+  MEDIO: "bg-amber-500",
+  BAIXO: "bg-emerald-500",
 };
 
 const SITUACAO_ROTULO: Record<string, string> = {
@@ -84,15 +90,15 @@ const SITUACAO_ROTULO: Record<string, string> = {
   HISTORICO: "Finalizada",
 };
 
-const SITUACAO_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  AGUARDANDO_DOCUMENTO: "outline",
-  PRONTO_PARA_ANALISE: "secondary",
-  ANALISANDO: "secondary",
-  ANALISE_CONCLUIDA: "default",
-  REVISAO_NECESSARIA: "outline",
-  BLOQUEADA: "destructive",
-  ERRO: "destructive",
-  HISTORICO: "secondary",
+const SITUACAO_CLASSE: Record<string, string> = {
+  AGUARDANDO_DOCUMENTO: "border-amber-200 bg-amber-50 text-amber-700",
+  PRONTO_PARA_ANALISE: "border-blue-200 bg-blue-50 text-blue-700",
+  ANALISANDO: "border-violet-200 bg-violet-50 text-violet-700",
+  ANALISE_CONCLUIDA: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  REVISAO_NECESSARIA: "border-orange-200 bg-orange-50 text-orange-700",
+  BLOQUEADA: "border-red-200 bg-red-50 text-red-700",
+  ERRO: "border-red-200 bg-red-50 text-red-700",
+  HISTORICO: "border-emerald-200 bg-emerald-50 text-emerald-700",
 };
 
 function diasAtePrazo(prazo: string | null): number | null {
@@ -233,68 +239,81 @@ function VisaoGeral() {
   const usuarios = equipe.data?.usuarios ?? [];
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        titulo="Visão Geral"
-        descricao="Acompanhe os principais indicadores e as ações prioritárias do escritório."
-      />
+    <div className="space-y-5">
+      <div>
+        <PageHeader
+          titulo="Visão Geral"
+          descricao="Acompanhe os principais indicadores e as ações prioritárias do escritório."
+        />
+        <div className="mt-2 h-1 w-24 rounded-full bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-600" />
+      </div>
 
-      <Card className="flex flex-col gap-3 p-4 lg:flex-row lg:flex-wrap lg:items-end lg:justify-between">
-        <div className="grid gap-3 sm:grid-cols-3 lg:flex lg:flex-wrap">
-          <div className="space-y-1.5">
-            <Label htmlFor="visao-competencia" className="text-xs">
-              Competência
-            </Label>
-            <Input
-              id="visao-competencia"
-              type="month"
-              className="w-[150px]"
-              value={competencia}
-              onChange={(e) => setCompetencia(e.target.value)}
-            />
+      <Card className="border-indigo-100 bg-gradient-to-r from-white via-indigo-50/55 to-violet-50/60 p-4 shadow-sm">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="visao-competencia" className="text-xs font-semibold text-slate-600">
+                Competência
+              </Label>
+              <Input
+                id="visao-competencia"
+                type="month"
+                className="w-full border-slate-200 bg-white sm:w-[165px]"
+                value={competencia}
+                onChange={(e) => setCompetencia(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-slate-600">Departamento</Label>
+              <Select value={departamento} onValueChange={setDepartamento}>
+                <SelectTrigger className="w-full border-slate-200 bg-white sm:w-[230px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={TODOS_DEPARTAMENTOS}>Todos os departamentos</SelectItem>
+                  {departamentos.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-slate-600">Responsável</Label>
+              <Select value={responsavel} onValueChange={setResponsavel}>
+                <SelectTrigger className="w-full border-slate-200 bg-white sm:w-[230px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={TODOS_RESPONSAVEIS}>Todos os responsáveis</SelectItem>
+                  {usuarios.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {u.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">Departamento</Label>
-            <Select value={departamento} onValueChange={setDepartamento}>
-              <SelectTrigger className="w-[220px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={TODOS_DEPARTAMENTOS}>Todos os departamentos</SelectItem>
-                {departamentos.map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    {d.nome}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              onClick={limparFiltros}
+              className="border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+            >
+              <RotateCcw className="mr-2 h-4 w-4" />
+              Limpar filtros
+            </Button>
+            <Button
+              onClick={() => void preview.refetch()}
+              disabled={preview.isFetching}
+              className="border-0 bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md shadow-violet-500/15 hover:from-indigo-700 hover:to-violet-700"
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${preview.isFetching ? "animate-spin" : ""}`} />
+              Atualizar dados
+            </Button>
           </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">Responsável</Label>
-            <Select value={responsavel} onValueChange={setResponsavel}>
-              <SelectTrigger className="w-[220px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={TODOS_RESPONSAVEIS}>Todos os responsáveis</SelectItem>
-                {usuarios.map((u) => (
-                  <SelectItem key={u.id} value={u.id}>
-                    {u.nome}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="ghost" onClick={limparFiltros}>
-            <RotateCcw className="mr-2 h-4 w-4" />
-            Limpar filtros
-          </Button>
-          <Button onClick={() => void preview.refetch()} disabled={preview.isFetching}>
-            <RefreshCw className={`mr-2 h-4 w-4 ${preview.isFetching ? "animate-spin" : ""}`} />
-            Carregar dados
-          </Button>
         </div>
       </Card>
 
@@ -304,208 +323,337 @@ function VisaoGeral() {
         <CarregandoTabela linhas={4} />
       ) : (
         <>
-          {indice.data ? (
-            <Card className="grid gap-4 p-4 sm:grid-cols-3">
-              {[
-                indice.data.indicadores.find((i) => i.codigo === "INDICE"),
-                indice.data.indicadores.find((i) => i.codigo === "INDICE_PRAZO"),
-                indice.data.indicadores.find((i) => i.codigo === "ATRASO_MEDIO"),
-              ]
-                .filter((i): i is NonNullable<typeof i> => Boolean(i))
-                .map((i) => (
-                  <div key={i.codigo} className="space-y-1">
-                    <p className="text-sm font-medium">{i.titulo}</p>
-                    <p className="text-2xl font-semibold tabular-nums">
-                      {i.formato === "PERCENTUAL"
-                        ? `${i.valor.toFixed(1).replace(".", ",")}%`
-                        : i.formato === "DIAS"
-                          ? `${i.valor.toFixed(1).replace(".", ",")} d`
-                          : i.valor}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {i.formato === "PERCENTUAL"
-                        ? `${i.numerador} de ${i.denominador} · `
-                        : ""}
-                      {i.regra}
-                    </p>
-                  </div>
-                ))}
-            </Card>
-          ) : null}
-
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             {[
               {
                 rotulo: "Abertas",
                 valor: totais.abertas,
                 detalhe: "Solicitações no escopo",
                 icone: FileText,
+                card: "border-blue-100 bg-gradient-to-br from-blue-50 to-white",
+                bolha: "bg-blue-600 text-white shadow-blue-500/20",
+                valorClasse: "text-blue-950",
+                detalheClasse: "text-blue-700/65",
               },
               {
                 rotulo: "Aguardando documento",
                 valor: totais.aguardandoDocumento,
                 detalhe: "Atenção da carteira",
                 icone: Clock,
+                card: "border-amber-100 bg-gradient-to-br from-amber-50 to-white",
+                bolha: "bg-amber-500 text-white shadow-amber-500/20",
+                valorClasse: "text-amber-950",
+                detalheClasse: "text-amber-700/70",
               },
               {
                 rotulo: "Em risco",
                 valor: totais.emRisco,
                 detalhe: "Prazo vencido ou bloqueio",
                 icone: AlertTriangle,
+                card: "border-red-100 bg-gradient-to-br from-red-50 to-white",
+                bolha: "bg-red-500 text-white shadow-red-500/20",
+                valorClasse: "text-red-950",
+                detalheClasse: "text-red-700/70",
               },
               {
                 rotulo: "Em processamento",
                 valor: totais.emProcessamento,
                 detalhe: "Aguardando análise",
                 icone: Eye,
+                card: "border-violet-100 bg-gradient-to-br from-violet-50 to-white",
+                bolha: "bg-violet-600 text-white shadow-violet-500/20",
+                valorClasse: "text-violet-950",
+                detalheClasse: "text-violet-700/70",
               },
               {
                 rotulo: "Finalizadas",
                 valor: totais.finalizadas,
                 detalhe: "Competência atual",
                 icone: CheckCircle2,
+                card: "border-emerald-100 bg-gradient-to-br from-emerald-50 to-white",
+                bolha: "bg-emerald-500 text-white shadow-emerald-500/20",
+                valorClasse: "text-emerald-950",
+                detalheClasse: "text-emerald-700/70",
               },
             ].map((item) => (
-              <Card key={item.rotulo} className="space-y-2 p-4">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <item.icone className="h-4 w-4" />
-                  {item.rotulo}
+              <Card
+                key={item.rotulo}
+                className={`group relative overflow-hidden p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${item.card}`}
+              >
+                <div className="flex items-start gap-3">
+                  <span
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl shadow-lg ${item.bolha}`}
+                  >
+                    <item.icone className="h-5 w-5" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-slate-600">{item.rotulo}</p>
+                    <p className={`mt-0.5 text-2xl font-bold tabular-nums ${item.valorClasse}`}>
+                      {item.valor}
+                    </p>
+                    <p className={`mt-1 text-[11px] ${item.detalheClasse}`}>{item.detalhe}</p>
+                  </div>
                 </div>
-                <p className="text-2xl font-semibold tabular-nums">{item.valor}</p>
-                <p className="text-xs text-muted-foreground">{item.detalhe}</p>
+                <div className="pointer-events-none absolute -bottom-7 -right-6 h-20 w-20 rounded-full bg-white/55 blur-xl" />
               </Card>
             ))}
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <Card className="space-y-3 p-4">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">Atenção necessária</p>
-                <Badge variant="destructive">{atencaoNecessaria.length}</Badge>
+          {indice.data ? (
+            <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-indigo-600 via-violet-600 to-purple-700 p-0 text-white shadow-lg shadow-violet-500/15">
+              <div className="absolute -right-20 -top-24 h-56 w-56 rounded-full bg-white/10 blur-2xl" />
+              <div className="absolute -bottom-24 left-1/3 h-48 w-48 rounded-full bg-blue-400/15 blur-3xl" />
+              <div className="relative grid gap-3 p-5 md:grid-cols-3">
+                <div className="md:col-span-3 flex flex-wrap items-center justify-between gap-2 pb-1">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/15 backdrop-blur">
+                      <Sparkles className="h-4 w-4" />
+                    </span>
+                    <div>
+                      <p className="text-sm font-semibold">Cobertura e entrega</p>
+                      <p className="text-xs text-white/65">Leitura da competência com base nos dados reais do PIER.</p>
+                    </div>
+                  </div>
+                  <Badge className="border-white/20 bg-white/10 text-white hover:bg-white/15">
+                    {formatarCompetencia(competencia)}
+                  </Badge>
+                </div>
+
+                {[
+                  indice.data.indicadores.find((i) => i.codigo === "INDICE"),
+                  indice.data.indicadores.find((i) => i.codigo === "INDICE_PRAZO"),
+                  indice.data.indicadores.find((i) => i.codigo === "ATRASO_MEDIO"),
+                ]
+                  .filter((i): i is NonNullable<typeof i> => Boolean(i))
+                  .map((i) => (
+                    <div
+                      key={i.codigo}
+                      className="rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur-sm"
+                    >
+                      <p className="text-xs font-medium text-white/70">{i.titulo}</p>
+                      <p className="mt-1 text-3xl font-bold tabular-nums tracking-tight">
+                        {i.formato === "PERCENTUAL"
+                          ? `${i.valor.toFixed(1).replace(".", ",")}%`
+                          : i.formato === "DIAS"
+                            ? `${i.valor.toFixed(1).replace(".", ",")} d`
+                            : i.valor}
+                      </p>
+                      <p className="mt-2 text-[11px] leading-relaxed text-white/60">
+                        {i.formato === "PERCENTUAL"
+                          ? `${i.numerador} de ${i.denominador} · `
+                          : ""}
+                        {i.regra}
+                      </p>
+                    </div>
+                  ))}
               </div>
-              {atencaoNecessaria.length ? (
-                <div className="space-y-2">
-                  {atencaoNecessaria.map(({ linha, risco }) => {
+            </Card>
+          ) : null}
+
+          <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+            <Card className="overflow-hidden border-red-100 shadow-sm">
+              <div className="flex items-center justify-between border-b border-red-100 bg-gradient-to-r from-red-50 via-orange-50/60 to-white px-4 py-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">Atenção necessária</p>
+                  <p className="text-xs text-slate-500">Prioridades que exigem ação do gestor.</p>
+                </div>
+                <Badge className="bg-red-500 text-white hover:bg-red-500">{atencaoNecessaria.length}</Badge>
+              </div>
+
+              <div className="space-y-2 p-3">
+                {atencaoNecessaria.length ? (
+                  atencaoNecessaria.map(({ linha, risco }) => {
                     const dias = diasAtePrazo(linha.prazo);
+                    const atrasoCritico = dias !== null && dias < -30;
                     return (
                       <Link
                         key={linha.solicitacaoId}
                         to="/gestao/solicitacoes/$externalId"
                         params={{ externalId: linha.solicitacaoId }}
-                        className="flex items-center justify-between gap-2 rounded-lg border p-3 text-sm transition-colors hover:bg-muted/40"
+                        className={`group flex items-center gap-3 rounded-xl border border-l-4 p-3 text-sm transition-all hover:translate-x-0.5 hover:shadow-sm ${
+                          atrasoCritico
+                            ? "border-red-100 border-l-red-500 bg-red-50/75"
+                            : "border-orange-100 border-l-orange-400 bg-orange-50/65"
+                        }`}
                       >
-                        <div className="min-w-0">
-                          <p className="truncate font-medium">{linha.clienteNome}</p>
-                          <p className="truncate text-xs text-muted-foreground">
-                            {linha.departamentoNome ?? "—"} ·{" "}
-                            {SITUACAO_ROTULO[linha.statusFila] ?? linha.statusFila}
+                        <span
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+                            atrasoCritico ? "bg-red-100 text-red-600" : "bg-orange-100 text-orange-600"
+                          }`}
+                        >
+                          <AlertTriangle className="h-4 w-4" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-semibold text-slate-900">{linha.clienteNome}</p>
+                          <p className="truncate text-xs text-slate-500">
+                            {linha.departamentoNome ?? "—"} · {SITUACAO_ROTULO[linha.statusFila] ?? linha.statusFila}
                           </p>
                         </div>
-                        <span className={`shrink-0 text-xs font-medium ${RISCO_CLASSE[risco]}`}>
+                        <span className={`shrink-0 text-xs font-semibold ${RISCO_CLASSE[risco]}`}>
                           {dias === null
                             ? "sem prazo"
                             : dias < 0
                               ? `${Math.abs(dias)}d atrasado`
                               : "bloqueio"}
                         </span>
-                        <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <ArrowRight className="h-4 w-4 shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5" />
                       </Link>
                     );
-                  })}
-                </div>
-              ) : (
-                <p className="py-6 text-center text-sm text-muted-foreground">
-                  Nada em risco neste escopo agora.
-                </p>
-              )}
-              <Button asChild variant="link" size="sm" className="px-0">
-                <Link to="/gestao">Ver todas as pendências →</Link>
-              </Button>
+                  })
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <span className="mb-2 flex h-11 w-11 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                      <CheckCircle2 className="h-5 w-5" />
+                    </span>
+                    <p className="text-sm font-medium text-slate-700">Nenhum item crítico agora.</p>
+                    <p className="text-xs text-slate-500">O escopo selecionado está sem riscos altos.</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-slate-100 px-4 py-2.5">
+                <Button asChild variant="link" size="sm" className="px-0 text-indigo-600">
+                  <Link to="/gestao">Ver todas as pendências →</Link>
+                </Button>
+              </div>
             </Card>
 
-            <Card className="space-y-3 p-4">
-              <p className="text-sm font-medium">Carteira por responsável</p>
-              {carteiraPorResponsavel.length ? (
-                <div className="space-y-3">
-                  {carteiraPorResponsavel.map((item) => (
-                    <div key={item.nome} className="space-y-1">
-                      <div className="flex items-center justify-between text-sm">
-                        <div className="min-w-0">
-                          <p className="truncate font-medium">{item.nome}</p>
-                          <p className="truncate text-xs text-muted-foreground">
-                            {item.departamento ?? "Sem departamento"}
-                          </p>
-                        </div>
-                        <span className="shrink-0 text-sm font-semibold tabular-nums">
-                          {item.pendencias}
+            <Card className="overflow-hidden border-indigo-100 shadow-sm">
+              <div className="border-b border-indigo-100 bg-gradient-to-r from-indigo-50 via-violet-50/50 to-white px-4 py-3">
+                <p className="text-sm font-semibold text-slate-900">Carteira por responsável</p>
+                <p className="text-xs text-slate-500">Onde está concentrada a carga da equipe.</p>
+              </div>
+              <div className="space-y-4 p-4">
+                {carteiraPorResponsavel.length ? (
+                  carteiraPorResponsavel.map((item, index) => (
+                    <div key={item.nome} className="space-y-2">
+                      <div className="flex items-center gap-3">
+                        <span
+                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                            index % 3 === 0
+                              ? "bg-blue-100 text-blue-700"
+                              : index % 3 === 1
+                                ? "bg-violet-100 text-violet-700"
+                                : "bg-cyan-100 text-cyan-700"
+                          }`}
+                        >
+                          {item.nome.slice(0, 2).toUpperCase()}
                         </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-slate-900">{item.nome}</p>
+                              <p className="truncate text-[11px] uppercase tracking-wide text-slate-400">
+                                {item.departamento ?? "Sem departamento"}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm font-bold tabular-nums text-slate-900">{item.pendencias}</p>
+                              <p className="text-[10px] text-slate-400">pendências</p>
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
                         <div
-                          className="h-full rounded-full bg-primary"
-                          style={{
-                            width: `${Math.round((item.pendencias / maiorCarteira) * 100)}%`,
-                          }}
+                          className="h-full rounded-full bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-500"
+                          style={{ width: `${Math.round((item.pendencias / maiorCarteira) * 100)}%` }}
                         />
                       </div>
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="py-6 text-center text-sm text-muted-foreground">
-                  Sem responsáveis com solicitações neste escopo.
-                </p>
-              )}
-              <Button asChild variant="link" size="sm" className="px-0">
-                <Link to="/equipe">Ver toda a equipe →</Link>
-              </Button>
+                  ))
+                ) : (
+                  <p className="py-6 text-center text-sm text-slate-500">
+                    Sem responsáveis com solicitações neste escopo.
+                  </p>
+                )}
+              </div>
+              <div className="border-t border-slate-100 px-4 py-2.5">
+                <Button asChild variant="link" size="sm" className="px-0 text-indigo-600">
+                  <Link to="/equipe">Ver toda a equipe →</Link>
+                </Button>
+              </div>
             </Card>
           </div>
 
-          <Card className="space-y-3 p-4">
-            <p className="text-sm font-medium">Ações rápidas</p>
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              <Button asChild variant="outline" className="justify-start">
-                <Link to="/gestao">
-                  <MessageSquare className="mr-2 h-4 w-4" />
-                  Responder solicitações
-                </Link>
-              </Button>
-              <Button
-                variant="outline"
-                className="justify-start"
-                onClick={() => sincEquipe.mutate()}
-                disabled={sincEquipe.isPending}
-              >
-                <RefreshCw
-                  className={`mr-2 h-4 w-4 ${sincEquipe.isPending ? "animate-spin" : ""}`}
-                />
-                Sincronizar equipe
-              </Button>
-              <Button asChild variant="outline" className="justify-start">
-                <Link to="/gestao">
-                  <History className="mr-2 h-4 w-4" />
-                  Ir para Solicitações
-                </Link>
-              </Button>
-              <Button asChild variant="outline" className="justify-start">
-                <Link to="/equipe">
-                  <Users className="mr-2 h-4 w-4" />
-                  Equipe e departamentos
-                </Link>
-              </Button>
+          <Card className="overflow-hidden border-blue-100 bg-gradient-to-r from-blue-50/80 via-indigo-50/70 to-violet-50/80 shadow-sm">
+            <div className="flex flex-col gap-4 p-4 xl:flex-row xl:items-center">
+              <div className="min-w-[190px]">
+                <p className="text-sm font-semibold text-slate-900">Ações rápidas</p>
+                <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                  Atalhos para as principais ações do dia a dia.
+                </p>
+              </div>
+              <div className="grid flex-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                <Button
+                  asChild
+                  variant="ghost"
+                  className="h-auto justify-start rounded-xl border border-blue-100 bg-white/85 p-3 text-left shadow-sm hover:bg-blue-50"
+                >
+                  <Link to="/gestao">
+                    <span className="mr-3 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-600">
+                      <MessageSquare className="h-4 w-4" />
+                    </span>
+                    <span className="whitespace-normal text-xs font-semibold text-slate-800">Responder solicitações</span>
+                  </Link>
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="h-auto justify-start rounded-xl border border-violet-100 bg-white/85 p-3 text-left shadow-sm hover:bg-violet-50"
+                  onClick={() => sincEquipe.mutate()}
+                  disabled={sincEquipe.isPending}
+                >
+                  <span className="mr-3 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-600">
+                    <RefreshCw className={`h-4 w-4 ${sincEquipe.isPending ? "animate-spin" : ""}`} />
+                  </span>
+                  <span className="whitespace-normal text-xs font-semibold text-slate-800">Sincronizar equipe</span>
+                </Button>
+                <Button
+                  asChild
+                  variant="ghost"
+                  className="h-auto justify-start rounded-xl border border-amber-100 bg-white/85 p-3 text-left shadow-sm hover:bg-amber-50"
+                >
+                  <Link to="/gestao">
+                    <span className="mr-3 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-600">
+                      <History className="h-4 w-4" />
+                    </span>
+                    <span className="whitespace-normal text-xs font-semibold text-slate-800">Ir para Solicitações</span>
+                  </Link>
+                </Button>
+                <Button
+                  asChild
+                  variant="ghost"
+                  className="h-auto justify-start rounded-xl border border-emerald-100 bg-white/85 p-3 text-left shadow-sm hover:bg-emerald-50"
+                >
+                  <Link to="/equipe">
+                    <span className="mr-3 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600">
+                      <Users className="h-4 w-4" />
+                    </span>
+                    <span className="whitespace-normal text-xs font-semibold text-slate-800">Equipe e departamentos</span>
+                  </Link>
+                </Button>
+              </div>
             </div>
           </Card>
 
-          <Card className="space-y-3 p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-medium">Solicitações recentes</p>
-              <Badge variant="secondary">{empresas.length}</Badge>
+          <Card className="overflow-hidden border-slate-200 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-indigo-50/50 px-4 py-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-semibold text-slate-900">Solicitações recentes</p>
+                  <Badge className="bg-indigo-100 text-indigo-700 hover:bg-indigo-100">{empresas.length}</Badge>
+                </div>
+                <p className="mt-0.5 text-xs text-slate-500">Prazos, situação e risco no mesmo lugar.</p>
+              </div>
+              <Button asChild variant="link" size="sm" className="px-0 text-indigo-600">
+                <Link to="/gestao">Ver todas →</Link>
+              </Button>
             </div>
+
             {recentes.length ? (
               <div className="overflow-x-auto">
                 <Table>
-                  <TableHeader>
+                  <TableHeader className="bg-slate-50/80">
                     <TableRow>
                       <TableHead>Empresa</TableHead>
                       <TableHead>Assunto</TableHead>
@@ -521,24 +669,32 @@ function VisaoGeral() {
                     {recentes.map((linha) => {
                       const risco = classificarRisco(linha.statusFila, linha.prazo);
                       return (
-                        <TableRow key={linha.solicitacaoId}>
-                          <TableCell className="font-medium">{linha.clienteNome}</TableCell>
-                          <TableCell className="max-w-[220px] truncate text-muted-foreground">
+                        <TableRow key={linha.solicitacaoId} className="hover:bg-indigo-50/30">
+                          <TableCell className="font-semibold text-slate-900">{linha.clienteNome}</TableCell>
+                          <TableCell className="max-w-[220px] truncate text-slate-500">
                             {linha.assunto ?? "—"}
                           </TableCell>
-                          <TableCell>{linha.responsavelNome ?? "Sem responsável"}</TableCell>
-                          <TableCell>{formatarCompetencia(linha.competencia)}</TableCell>
-                          <TableCell>{formatarData(linha.prazo)}</TableCell>
+                          <TableCell className="text-slate-700">{linha.responsavelNome ?? "Sem responsável"}</TableCell>
+                          <TableCell className="text-slate-600">{formatarCompetencia(linha.competencia)}</TableCell>
+                          <TableCell className={risco === "ALTO" ? "font-semibold text-red-600" : "text-slate-600"}>
+                            {formatarData(linha.prazo)}
+                          </TableCell>
                           <TableCell>
-                            <Badge variant={SITUACAO_VARIANT[linha.statusFila] ?? "outline"}>
+                            <Badge
+                              variant="outline"
+                              className={SITUACAO_CLASSE[linha.statusFila] ?? "border-slate-200 bg-slate-50 text-slate-600"}
+                            >
                               {SITUACAO_ROTULO[linha.statusFila] ?? linha.statusFila}
                             </Badge>
                           </TableCell>
-                          <TableCell className={`font-medium ${RISCO_CLASSE[risco]}`}>
-                            {RISCO_ROTULO[risco]}
+                          <TableCell>
+                            <span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${RISCO_CLASSE[risco]}`}>
+                              <span className={`h-2 w-2 rounded-full ${RISCO_PONTO[risco]}`} />
+                              {RISCO_ROTULO[risco]}
+                            </span>
                           </TableCell>
                           <TableCell className="text-right">
-                            <Button asChild variant="ghost" size="sm">
+                            <Button asChild variant="ghost" size="sm" className="text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700">
                               <Link
                                 to="/gestao/solicitacoes/$externalId"
                                 params={{ externalId: linha.solicitacaoId }}
@@ -555,13 +711,10 @@ function VisaoGeral() {
                 </Table>
               </div>
             ) : (
-              <p className="py-6 text-center text-sm text-muted-foreground">
+              <p className="py-8 text-center text-sm text-slate-500">
                 Nenhuma solicitação carregada para este escopo ainda.
               </p>
             )}
-            <Button asChild variant="link" size="sm" className="px-0">
-              <Link to="/gestao">Ver todas →</Link>
-            </Button>
           </Card>
         </>
       )}
