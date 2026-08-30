@@ -160,13 +160,16 @@ async function listarInstrucoes(
     .eq("request_id", requestId)
     .order("occurred_at", { ascending: false, nullsFirst: false });
 
+  // Sempre reinterpreta a partir do texto em vez de confiar em `interpreted`
+  // (snapshot gravado no sync). Regras de interpretação evoluem; uma
+  // instrução sincronizada há semanas não pode ficar presa para sempre à
+  // versão da regra que existia quando ela chegou.
   return (data ?? []).map((i) => ({
     origem: i.source as Instrucao["origem"],
     origemExternalId: i.source_external_id,
     ocorridoEm: i.occurred_at ?? i.created_at,
     texto: i.text,
-    interpretado: (i.interpreted ??
-      interpretarTexto(i.text)) as Instrucao["interpretado"],
+    interpretado: interpretarTexto(i.text),
   }));
 }
 
