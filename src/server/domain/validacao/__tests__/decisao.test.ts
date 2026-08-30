@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { criarDbFalso } from "../../carteira/__tests__/db-falso";
-import { excluirDecisao, registrarDecisao } from "../validacao.service";
+import {
+  detalharSolicitacao,
+  excluirDecisao,
+  registrarDecisao,
+} from "../validacao.service";
 
 const SOLICITACAO = {
   id: "req-1",
@@ -103,5 +107,61 @@ describe("excluirDecisao", () => {
         decisaoId: "inexistente",
       }),
     ).rejects.toThrow();
+  });
+});
+
+describe("detalharSolicitacao / instrução efetiva", () => {
+  it("reinterpreta a instrução a partir do texto, sem travar no snapshot antigo salvo no sync", async () => {
+    // Caso real: um post foi sincronizado quando interpretarTexto ainda
+    // extraía qualquer data solta do texto. O snapshot `interpreted` salvo
+    // naquele momento ficou com um período errado (2026-03 a 2026-04) que
+    // não tem nada a ver com o fechamento -- e como o sync só insere
+    // instruções novas (nunca reprocessa as já salvas), reprocessar o
+    // balancete sozinho não corrigia isso: listarInstrucoes preferia o
+    // `interpreted` gravado em vez de recalcular.
+    const { ctx } = contexto({
+      request_instruction: [
+        {
+          organization_id: "org-1",
+          request_id: "req-1",
+          source: "TITLE",
+          source_external_id: null,
+          occurred_at: null,
+          created_at: "2026-08-14T01:30:09Z",
+          text: "FECHAMENTO CONTÁBIL - 01/2026",
+          interpreted: { inicio: "2026-01", fim: "2026-01", tipo: "MES", trecho: "..." },
+        },
+        {
+          organization_id: "org-1",
+          request_id: "req-1",
+          source: "POST",
+          source_external_id: "post-1",
+          occurred_at: "2026-06-01T15:42:16Z",
+          created_at: "2026-06-01T15:42:16Z",
+          text: "Fechamento contabil finalizado 01/2026, segue balancete para validação",
+          interpreted: { inicio: "2026-01", fim: "2026-01", tipo: "MES", trecho: "..." },
+        },
+        {
+          organization_id: "org-1",
+          request_id: "req-1",
+          source: "POST",
+          source_external_id: "post-2",
+          occurred_at: "2026-06-01T16:48:19Z",
+          created_at: "2026-06-01T16:48:19Z",
+          text: "OBSERVAÇÕES E SOLICITAÇÕES *EMPRESA ENVIOU ALGUNS BORDEROS EM 04/2026 *COFINS FALTOU PAGAMENTO DOS MESES 01/2026- 03/2026 CONFORME COMPROVANTES ECAC",
+          // Snapshot desatualizado: gravado com a regra antiga, que pegava
+          // qualquer data solta do texto inteiro.
+          interpreted: { inicio: "2026-03", fim: "2026-04", tipo: "INTERVALO", trecho: "..." },
+        },
+      ],
+    });
+
+    const resultado = await detalharSolicitacao(ctx, {
+      solicitacaoExternalId: SOLICITACAO.external_id,
+      sincronizarPostagens: false,
+    });
+
+    expect(resultado.instrucaoEfetiva?.interpretado.inicio).toBe("2026-01");
+    expect(resultado.instrucaoEfetiva?.interpretado.fim).toBe("2026-01");
   });
 });
