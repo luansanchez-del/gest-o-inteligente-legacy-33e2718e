@@ -201,6 +201,16 @@ export const montarPreview = createServerFn({ method: "GET" })
     }),
   );
 
+export const apurarIndiceEntrega = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(validarEscopo)
+  .handler(async ({ data, context }) =>
+    comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
+      const service = await import("@/server/domain/gestao/indice-entrega.service");
+      return service.apurarIndiceEntrega(ctx, data);
+    }),
+  );
+
 export const iniciarGestao = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: EscopoInput & { idempotencyKey: string }) => {

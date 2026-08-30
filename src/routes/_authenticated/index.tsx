@@ -37,7 +37,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { listarEquipe, montarPreview, sincronizarEquipe } from "@/lib/api/gestao.functions";
+import {
+  apurarIndiceEntrega,
+  listarEquipe,
+  montarPreview,
+  sincronizarEquipe,
+} from "@/lib/api/gestao.functions";
 import { competenciaAtual, formatarCompetencia, formatarData } from "@/lib/formato";
 import { mensagemDeErro } from "@/lib/erros";
 import { toast } from "sonner";
@@ -135,6 +140,18 @@ function VisaoGeral() {
       filtro.responsavelId,
     ],
     queryFn: () => montarPreview({ data: filtro }),
+    enabled: /^\d{4}-\d{2}$/.test(competencia),
+  });
+
+  const indice = useQuery({
+    queryKey: [
+      "indice-entrega",
+      "visao-geral",
+      filtro.competencia,
+      filtro.departamentoId,
+      filtro.responsavelId,
+    ],
+    queryFn: () => apurarIndiceEntrega({ data: filtro }),
     enabled: /^\d{4}-\d{2}$/.test(competencia),
   });
 
@@ -287,6 +304,35 @@ function VisaoGeral() {
         <CarregandoTabela linhas={4} />
       ) : (
         <>
+          {indice.data ? (
+            <Card className="grid gap-4 p-4 sm:grid-cols-3">
+              {[
+                indice.data.indicadores.find((i) => i.codigo === "INDICE"),
+                indice.data.indicadores.find((i) => i.codigo === "INDICE_PRAZO"),
+                indice.data.indicadores.find((i) => i.codigo === "ATRASO_MEDIO"),
+              ]
+                .filter((i): i is NonNullable<typeof i> => Boolean(i))
+                .map((i) => (
+                  <div key={i.codigo} className="space-y-1">
+                    <p className="text-sm font-medium">{i.titulo}</p>
+                    <p className="text-2xl font-semibold tabular-nums">
+                      {i.formato === "PERCENTUAL"
+                        ? `${i.valor.toFixed(1).replace(".", ",")}%`
+                        : i.formato === "DIAS"
+                          ? `${i.valor.toFixed(1).replace(".", ",")} d`
+                          : i.valor}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {i.formato === "PERCENTUAL"
+                        ? `${i.numerador} de ${i.denominador} · `
+                        : ""}
+                      {i.regra}
+                    </p>
+                  </div>
+                ))}
+            </Card>
+          ) : null}
+
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             {[
               {
