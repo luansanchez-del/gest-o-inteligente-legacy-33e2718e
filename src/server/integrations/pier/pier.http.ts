@@ -31,7 +31,14 @@ export function readPierConfig(): { ok: true; config: PierConfig } | { ok: false
   };
 }
 
-const TIMEOUT_MS = 20000;
+/**
+ * 20s cortava buscas amplas legítimas antes do PIER responder: o preview de
+ * carga passou a falhar com "The operation was aborted" (o nosso próprio
+ * AbortController, não o PIER recusando) em consultas de texto livre sem
+ * filtro de tipo (`busca` + `status: "Todas"`), que são mais lentas do lado
+ * do PIER do que uma busca tipada.
+ */
+const TIMEOUT_MS = 45000;
 const MAX_ATTEMPTS = 4;
 /** Renova o token um pouco antes do vencimento informado pelo PIER. */
 const RENOVAR_ANTES_MS = 60_000;
