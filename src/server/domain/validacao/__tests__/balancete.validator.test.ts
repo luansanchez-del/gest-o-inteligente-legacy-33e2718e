@@ -188,4 +188,26 @@ describe("totais por grupo raiz", () => {
       coincideComDiferencaEquacao: true,
     });
   });
+
+  it("reconhece grupo de apuração de resultado e não sugere falha de leitura do PDF", () => {
+    // Caso real: balancete cobrindo vários meses com fechamentos parciais
+    // já rodados -- o saldo não transferido para o PL fica numa conta
+    // "6 - RESULTADO" (ou "APURAÇÃO DO RESULTADO"), não é PDF mal lido.
+    const resultado = validar([
+      linha("1", "ATIVO", 325_972.69, false),
+      linha("2", "PASSIVO E PATRIMÔNIO LÍQUIDO", 101_836.69, false),
+      linha("4", "RECEITAS", 231_240, false),
+      linha("5", "DESPESAS", 1_600, false),
+      linha("6", "RESULTADO", 5_504, false),
+    ]);
+
+    const equacao = resultado.achados.find((a) => a.code === "EQUACAO_PATRIMONIAL_DIVERGENTE");
+    expect(equacao?.detail).toContain("apuração de resultado");
+    expect(equacao?.detail).not.toContain("Provável falha de leitura do PDF");
+
+    const achadoGrupo = resultado.achados.find((a) => a.code === "GRUPO_NAO_CLASSIFICADO");
+    expect(achadoGrupo?.detail).toContain("apuração de resultado");
+    expect(achadoGrupo?.detail).not.toContain("provável falha de leitura do PDF");
+    expect(achadoGrupo?.evidence).toMatchObject({ apuracaoDeResultado: true });
+  });
 });

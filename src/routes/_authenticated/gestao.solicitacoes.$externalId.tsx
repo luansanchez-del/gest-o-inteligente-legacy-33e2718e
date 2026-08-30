@@ -896,6 +896,7 @@ function SolicitacaoPage() {
               {composicaoEquacao.grupos.map((grupo) => {
                 const naoClassificado = grupo.natureza === "OUTRO";
                 const coincide = grupo.raiz === composicaoEquacao.raizCoincidente;
+                const apuracaoResultado = /RESULTADO|APURA[ÇC][ÃA]O/i.test(grupo.nome);
                 return (
                   <TableRow
                     key={grupo.raiz}
@@ -913,7 +914,11 @@ function SolicitacaoPage() {
                       >
                         {NATUREZAS[grupo.natureza] ?? grupo.natureza}
                       </span>
-                      {coincide ? (
+                      {naoClassificado && apuracaoResultado ? (
+                        <span className="ml-2 text-xs text-warning-strong">
+                          (provável apuração de resultado)
+                        </span>
+                      ) : coincide ? (
                         <span className="ml-2 text-xs text-warning-strong">
                           (possível falha de leitura)
                         </span>
