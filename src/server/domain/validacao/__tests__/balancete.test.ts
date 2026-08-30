@@ -77,13 +77,18 @@ describe("balancete piloto", () => {
     expect(relatorio.resultado).toBe("REVISAO_HUMANA");
   });
 
-  it("reprova quando as partidas não fecham", () => {
+  it("manda para revisão humana quando as partidas não fecham, sem bloquear sozinho", () => {
+    // Uma divergência de partidas dobradas pode ser um erro real da empresa
+    // ou uma falha nossa de leitura do PDF (ex.: um grupo não extraído) --
+    // não reprova sozinho, vai para um humano confirmar.
     const adulterado = PAGINAS_PILOTO[0]!.replace(
       "4 DESPESAS 0,00 7.239,64 3.888,56 3.351,08",
       "4 DESPESAS 0,00 9.000,00 3.888,56 5.111,44",
     );
     const r = validarBalancete(parseBalancete([adulterado]));
-    expect(r.resultado).toBe("REPROVADO");
-    expect(r.achados.map((a) => a.code)).toContain("PARTIDAS_DOBRADAS_DIVERGENTE");
+    expect(r.resultado).toBe("REVISAO_HUMANA");
+    const achado = r.achados.find((a) => a.code === "PARTIDAS_DOBRADAS_DIVERGENTE");
+    expect(achado?.severity).toBe("WARNING");
+    expect(achado?.requiresHuman).toBe(true);
   });
 });

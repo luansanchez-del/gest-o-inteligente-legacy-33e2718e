@@ -1,10 +1,13 @@
 /**
  * Validador do balancete.
  *
- * Regras objetivas (integridade do arquivo, fórmula da linha, débitos x
- * créditos, equação patrimonial) geram ERROR/BLOCKER e impedem aprovação.
- * Julgamentos contábeis (natureza invertida, caixa parado, adiantamentos)
- * geram WARNING com requires_human — nunca reprovam sozinhos.
+ * Regras de integridade do arquivo/linha (ex.: fórmula da linha não bate)
+ * geram ERROR/BLOCKER e impedem aprovação. Débitos x créditos e equação
+ * patrimonial geram WARNING com requires_human, não BLOCKER: uma divergência
+ * pode ser um erro real da empresa ou uma falha nossa de leitura do PDF (ex.:
+ * grupo não extraído), então nunca reprovam sozinhos — vão para revisão
+ * humana. Julgamentos contábeis (natureza invertida, caixa parado,
+ * adiantamentos) seguem o mesmo padrão: WARNING com requires_human.
  */
 
 import {
@@ -253,12 +256,19 @@ export function validarBalancete(
   }
 
   // 5. Totais pelos grupos raiz ----------------------------------------------
-  const raizes = documento.linhas.filter((l) => l.nivel === 1);
-  const base = raizes.length
-    ? raizes
-    : documento.linhas.filter(
-        (l) => l.nivel === Math.min(...documento.linhas.map((x) => x.nivel)),
-      );
+  // Para cada grupo (raiz), usa o nível mais raso PRESENTE NAQUELE GRUPO —
+  // não um nível fixo (ex.: sempre 1) para o documento inteiro. Um balancete
+  // pode ter a linha-resumo de nível 1 do Passivo mal extraída ou ausente
+  // enquanto os outros grupos estão completos; exigir nível 1 em todo o
+  // documento fazia o grupo faltante contar como zero, derrubando a equação
+  // patrimonial por um problema de leitura, não da empresa.
+  const raizesPresentes = new Set(documento.linhas.map((l) => l.raiz));
+  const base: LinhaBalancete[] = [];
+  for (const raiz of raizesPresentes) {
+    const linhasDoGrupo = documento.linhas.filter((l) => l.raiz === raiz);
+    const nivelMaisRaso = Math.min(...linhasDoGrupo.map((l) => l.nivel));
+    base.push(...linhasDoGrupo.filter((l) => l.nivel === nivelMaisRaso));
+  }
 
   let ativo = 0;
   let passivoPl = 0;
@@ -323,7 +333,11 @@ export function validarBalancete(
         Math.abs(diferenca) <= TOLERANCIA
           ? "PARTIDAS_DOBRADAS_OK"
           : "PARTIDAS_DOBRADAS_DIVERGENTE",
-      severity: Math.abs(diferenca) <= TOLERANCIA ? "INFO" : "BLOCKER",
+      // WARNING + revisão humana, não BLOCKER: essa conferência depende da
+      // extração do PDF ter ido bem para todos os grupos. Uma divergência
+      // pode ser um erro real da empresa ou uma falha nossa de leitura — não
+      // dá para saber sem um humano olhar, então não reprova sozinho.
+      severity: Math.abs(diferenca) <= TOLERANCIA ? "INFO" : "WARNING",
       title:
         Math.abs(diferenca) <= TOLERANCIA
           ? "Total de débitos igual ao total de créditos"
@@ -335,6 +349,7 @@ export function validarBalancete(
         diferenca,
         metodo: totais.metodoTotais,
       },
+      requiresHuman: Math.abs(diferenca) > TOLERANCIA,
     });
 
     achados.push({
@@ -342,7 +357,9 @@ export function validarBalancete(
         Math.abs(diferencaEquacao) <= TOLERANCIA
           ? "EQUACAO_PATRIMONIAL_OK"
           : "EQUACAO_PATRIMONIAL_DIVERGENTE",
-      severity: Math.abs(diferencaEquacao) <= TOLERANCIA ? "INFO" : "BLOCKER",
+      // Mesmo raciocínio: pode ser um grupo (ex.: Passivo/PL) que não foi
+      // lido corretamente do PDF, não necessariamente um balancete errado.
+      severity: Math.abs(diferencaEquacao) <= TOLERANCIA ? "INFO" : "WARNING",
       title:
         Math.abs(diferencaEquacao) <= TOLERANCIA
           ? "Equação patrimonial fecha (resultado ainda não encerrado)"
@@ -357,6 +374,7 @@ export function validarBalancete(
         equacaoDireita,
         diferencaEquacao,
       },
+      requiresHuman: Math.abs(diferencaEquacao) > TOLERANCIA,
     });
 
     achados.push({

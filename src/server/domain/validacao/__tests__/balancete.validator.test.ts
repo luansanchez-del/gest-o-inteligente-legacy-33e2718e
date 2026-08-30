@@ -83,3 +83,37 @@ describe("natureza contábil pelo plano de contas", () => {
     });
   });
 });
+
+describe("totais por grupo raiz", () => {
+  it("soma pelo nível mais raso de CADA grupo, não por um nível fixo do documento", () => {
+    // O Passivo não tem linha de nível 1 (pode ter sido mal extraída do
+    // PDF), só os subgrupos de nível 2 -- o total ainda precisa aparecer,
+    // em vez de contar como zero e derrubar a equação patrimonial.
+    const resultado = validar([
+      linha("1", "ATIVO", 100_000, false),
+      linha("2.1", "Passivo Circulante", 70_000, false),
+      linha("2.2", "Patrimônio Líquido", 30_000, false),
+      linha("4", "RECEITAS", 0, false),
+      linha("5", "DESPESAS", 0, false),
+    ]);
+
+    expect(resultado.totais.passivoPl).toBe(100_000);
+    const equacao = resultado.achados.find((a) => a.code.startsWith("EQUACAO_PATRIMONIAL"));
+    expect(equacao?.code).toBe("EQUACAO_PATRIMONIAL_OK");
+  });
+
+  it("diferença na equação patrimonial vai para revisão humana, não bloqueia sozinha", () => {
+    const resultado = validar([
+      linha("1", "ATIVO", 100_000, false),
+      linha("2", "PASSIVO E PATRIMÔNIO LÍQUIDO", 40_000, false),
+      linha("4", "RECEITAS", 0, false),
+      linha("5", "DESPESAS", 30_000, false),
+    ]);
+
+    const equacao = resultado.achados.find((a) => a.code === "EQUACAO_PATRIMONIAL_DIVERGENTE");
+    expect(equacao?.severity).toBe("WARNING");
+    expect(equacao?.requiresHuman).toBe(true);
+    expect(resultado.achados.some((a) => a.severity === "BLOCKER")).toBe(false);
+    expect(resultado.resultado).toBe("REVISAO_HUMANA");
+  });
+});
