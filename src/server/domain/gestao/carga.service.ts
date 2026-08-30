@@ -81,19 +81,31 @@ export function proximaCompetencia(competencia: string): string {
 async function contexto(ctx: AppContext, departamentoIds?: string[] | null) {
   const typeExternalId = await resolverTipoSolicitacao(ctx, "CONTABIL");
   // Departamentos escolhidos na tela têm prioridade; sem escolha, mantém o
-  // recorte padrão da contabilidade (CONTABILIDADE LEGACY/BPO).
+  // recorte padrão (Contábil e Tributário, Legacy e BPO).
   const selecionados = (departamentoIds ?? []).map(String).filter(Boolean);
   const departamentos = new Set(
     selecionados.length ? selecionados : await departamentosContabeis(ctx),
   );
   const usuarios = await carregarUsuariosPier<{
     external_id: string;
+    name: string;
     department_external_id: string | null;
-  }>(ctx, "external_id, department_external_id");
+  }>(ctx, "external_id, name, department_external_id");
   const deptoPorUsuario = new Map(
     usuarios.map((u) => [u.external_id, u.department_external_id]),
   );
-  return { typeExternalId, departamentos, deptoPorUsuario };
+  // Nomes únicos dos responsáveis dos departamentos em escopo: base para a
+  // busca por responsável (mais específica que texto de competência, e o
+  // PIER exige especificidade quando não há filtro de tipo).
+  const nomesResponsaveis = [
+    ...new Set(
+      usuarios
+        .filter((u) => u.department_external_id && departamentos.has(u.department_external_id))
+        .map((u) => u.name?.trim())
+        .filter((nome): nome is string => Boolean(nome)),
+    ),
+  ];
+  return { typeExternalId, departamentos, deptoPorUsuario, nomesResponsaveis };
 }
 
 type Ambiente = Awaited<ReturnType<typeof contexto>>;
@@ -110,24 +122,19 @@ async function buscarDoMes(competencia: string, amb: Ambiente) {
   });
   for (const s of tipadas) porId.set(s.externalId, s);
 
-  // 2. Busca ampla por texto (MM/AAAA e MM.AAAA): pega solicitações de outros
-  // tipos (ex.: DAS, REINF, DCTFWEB) que departamentos como o Tributário
-  // também trabalham, e que não têm tipo fixo no código. O separador na
-  // descrição varia por departamento (o Tributário usa ponto, não barra) e a
-  // busca do PIER é literal, então tenta os dois formatos. Complementa a
-  // busca tipada; nunca some, o texto pode não bater 100% da competência.
-  // maxPages foi reduzido pela metade (25 -> 12) porque agora são duas
-  // buscas por mês: no dobro de páginas, uma carga histórica de vários
-  // meses estourava a cota do PIER e os meses seguintes falhavam em
-  // cascata ("Não foi possível falar com o PIER agora").
-  const [ano, mes] = competencia.split("-");
-  const termosBusca = [`${mes}/${ano}`, `${mes}.${ano}`];
-  for (const termoBusca of termosBusca) {
-    // Sem "status: Todas" explícito: o PIER recusa (HTTP 500, "tente um
-    // filtro mais específico") uma busca por texto sem tipo E sem status
-    // restrito ao mesmo tempo. Deixa o status no padrão do PIER.
-    const amplas = await pierAdapter.listRequests({ maxPages: 12, busca: termoBusca });
-    for (const s of amplas) if (!porId.has(s.externalId)) porId.set(s.externalId, s);
+  // 2. Busca por responsável: pega solicitações de outros tipos (ex.: DAS,
+  // REINF, DCTFWEB) que departamentos como o Tributário também trabalham, e
+  // que não têm tipo fixo no código. Complementa a busca tipada; nunca some.
+  // Preferida sobre buscar por texto de competência (MM/AAAA): não depende
+  // de como cada departamento escreve a data na descrição (o Tributário usa
+  // ponto, não barra), e o PIER exige um filtro específico quando não há
+  // tipo — o nome de uma pessoa é bem mais específico que uma data solta.
+  // Limita a quantidade de nomes buscados por competência para não estourar
+  // a cota do PIER — departamentos com muitos usuários entram aos poucos.
+  const MAX_RESPONSAVEIS_BUSCADOS = 30;
+  for (const nome of amb.nomesResponsaveis.slice(0, MAX_RESPONSAVEIS_BUSCADOS)) {
+    const doResponsavel = await pierAdapter.listRequests({ maxPages: 3, busca: nome });
+    for (const s of doResponsavel) if (!porId.has(s.externalId)) porId.set(s.externalId, s);
   }
 
   const selecionadas: Candidato[] = [];

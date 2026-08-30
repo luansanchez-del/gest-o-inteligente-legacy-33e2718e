@@ -256,12 +256,16 @@ export async function sincronizarEquipe(ctx: AppContext) {
 }
 
 /**
- * Nesta fase o fluxo é restrito à contabilidade: apenas estes departamentos entram no escopo.
- * CONTATO LEGACY e as áreas fiscal/folha/financeira ficam de fora por decisão de negócio.
+ * Nesta fase o fluxo é restrito a estes departamentos: Contábil e
+ * Tributário, Legacy e BPO. As demais áreas (folha, financeiro) ficam de
+ * fora por decisão de negócio — a lista deve crescer aos poucos, conforme o
+ * escritório for validando cada departamento novo.
  */
 export const DEPARTAMENTOS_CONTABEIS_NOMES = [
   "CONTABILIDADE LEGACY",
   "CONTABILIDADE BPO",
+  "TRIBUTARIO LEGACY",
+  "TRIBUTARIO BPO",
 ];
 const DEPARTAMENTOS_CONTABEIS_PADRAO = ["9625", "16104"];
 

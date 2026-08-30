@@ -44,8 +44,8 @@ function base(requests: Record<string, unknown>[] = []) {
       { external_id: "9625", name: "CONTABILIDADE LEGACY", organization_id: "org-1" },
     ],
     pier_user: [
-      { external_id: "u-1", department_external_id: "9625", organization_id: "org-1" },
-      { external_id: "u-9", department_external_id: "7777", organization_id: "org-1" },
+      { external_id: "u-1", name: "VINICIUS", department_external_id: "9625", organization_id: "org-1" },
+      { external_id: "u-9", name: "OUTRO", department_external_id: "7777", organization_id: "org-1" },
     ],
     request: requests,
     sync_run: [],
@@ -136,12 +136,12 @@ describe("preview da carga histórica", () => {
     expect(preview.totalIgnoradasNaoContabeis).toBe(1);
   });
 
-  it("complementa a busca tipada com a busca ampla por texto, sem duplicar", async () => {
+  it("complementa a busca tipada com a busca por responsável, sem duplicar", async () => {
     const { ctx } = criarDbFalso(base());
     listRequestsByType.mockResolvedValue([solicitacao("A1", "2026-01")]);
     listRequests.mockResolvedValue([
       solicitacao("A1", "2026-01"), // já veio da busca tipada: não deve duplicar
-      solicitacao("A2", "2026-01"), // só apareceu na busca ampla (ex.: DAS, REINF)
+      solicitacao("A2", "2026-01"), // só apareceu na busca por responsável (ex.: DAS, REINF)
     ]);
 
     const preview = await previsualizarCarga(ctx, { inicio: "2026-01", fim: "2026-01" });
@@ -149,15 +149,16 @@ describe("preview da carga histórica", () => {
     expect(preview.totalEncontradas).toBe(2);
   });
 
-  it("tenta a busca ampla com barra e com ponto, porque o separador varia por departamento", async () => {
+  it("busca por cada responsável dos departamentos em escopo, não por texto de data", async () => {
     const { ctx } = criarDbFalso(base());
     listRequestsByType.mockResolvedValue([]);
     listRequests.mockResolvedValue([]);
 
     await previsualizarCarga(ctx, { inicio: "2026-01", fim: "2026-01" });
 
-    expect(listRequests).toHaveBeenCalledWith(expect.objectContaining({ busca: "01/2026" }));
-    expect(listRequests).toHaveBeenCalledWith(expect.objectContaining({ busca: "01.2026" }));
+    // VINICIUS está no departamento em escopo (9625); OUTRO está fora (7777).
+    expect(listRequests).toHaveBeenCalledWith(expect.objectContaining({ busca: "VINICIUS" }));
+    expect(listRequests).not.toHaveBeenCalledWith(expect.objectContaining({ busca: "OUTRO" }));
   });
 });
 
