@@ -77,6 +77,15 @@ const MATERIALIDADE_PADRAO = 1000;
 
 type Natureza = "ATIVO" | "PASSIVO_PL" | "RECEITA" | "DESPESA" | "OUTRO";
 
+interface ComposicaoGrupo {
+  raiz: string;
+  nome: string;
+  natureza: Natureza;
+  nivelUsado: number;
+  linhas: number;
+  saldo: number;
+}
+
 function naturezaDaRaiz(linha: LinhaBalancete): Natureza {
   const nome = linha.nome.toUpperCase();
   if (/RECEITA/.test(nome)) return "RECEITA";
@@ -264,10 +273,25 @@ export function validarBalancete(
   // patrimonial por um problema de leitura, não da empresa.
   const raizesPresentes = new Set(documento.linhas.map((l) => l.raiz));
   const base: LinhaBalancete[] = [];
+  const composicaoPorGrupo: ComposicaoGrupo[] = [];
   for (const raiz of raizesPresentes) {
     const linhasDoGrupo = documento.linhas.filter((l) => l.raiz === raiz);
     const nivelMaisRaso = Math.min(...linhasDoGrupo.map((l) => l.nivel));
-    base.push(...linhasDoGrupo.filter((l) => l.nivel === nivelMaisRaso));
+    const linhasDoNivel = linhasDoGrupo.filter(
+      (l) => l.nivel === nivelMaisRaso,
+    );
+    base.push(...linhasDoNivel);
+    composicaoPorGrupo.push({
+      raiz,
+      nome: [...new Set(linhasDoNivel.map((l) => l.nome))].join("; "),
+      natureza:
+        naturezaPorRaiz.get(raiz) ?? naturezaDaRaiz(linhasDoNivel[0]!),
+      nivelUsado: nivelMaisRaso,
+      linhas: linhasDoNivel.length,
+      saldo: arredondar(
+        linhasDoNivel.reduce((soma, l) => soma + l.saldoAtual, 0),
+      ),
+    });
   }
 
   let ativo = 0;
@@ -327,6 +351,20 @@ export function validarBalancete(
   };
 
   if (base.length) {
+    // Grupos com natureza "OUTRO" ficam de fora do cálculo de
+    // Ativo/Passivo/Receita/Despesa. Quando o saldo ignorado é material —
+    // e principalmente quando ele coincide com a diferença da equação —,
+    // é um indício de falha de leitura do PDF (grupo não classificado),
+    // não necessariamente um erro do cliente.
+    const gruposIgnorados = composicaoPorGrupo.filter(
+      (g) => g.natureza === "OUTRO" && Math.abs(g.saldo) >= materialidade,
+    );
+    const grupoCoincidente = gruposIgnorados.find(
+      (g) =>
+        Math.abs(Math.abs(diferencaEquacao) - Math.abs(g.saldo)) <=
+        TOLERANCIA,
+    );
+
     const diferenca = arredondar(totalDebitos - totalCreditos);
     achados.push({
       code:
@@ -364,7 +402,14 @@ export function validarBalancete(
         Math.abs(diferencaEquacao) <= TOLERANCIA
           ? "Equação patrimonial fecha (resultado ainda não encerrado)"
           : "Equação patrimonial não fecha",
-      detail: `Ativo (R$ ${formatarBR(ativo)}) + Despesas (R$ ${formatarBR(despesas)}) = R$ ${formatarBR(equacaoEsquerda)} · Passivo/PL (R$ ${formatarBR(passivoPl)}) + Receitas (R$ ${formatarBR(receitas)}) = R$ ${formatarBR(equacaoDireita)}`,
+      detail: [
+        `Ativo (R$ ${formatarBR(ativo)}) + Despesas (R$ ${formatarBR(despesas)}) = R$ ${formatarBR(equacaoEsquerda)} · Passivo/PL (R$ ${formatarBR(passivoPl)}) + Receitas (R$ ${formatarBR(receitas)}) = R$ ${formatarBR(equacaoDireita)}`,
+        grupoCoincidente
+          ? `A diferença coincide com o saldo do grupo "${grupoCoincidente.raiz} — ${grupoCoincidente.nome}" (R$ ${formatarBR(grupoCoincidente.saldo)}), que não entrou na equação por não ter natureza identificada. Provável falha de leitura do PDF, não necessariamente erro do cliente.`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" "),
       evidence: {
         ativo,
         despesas,
@@ -373,9 +418,32 @@ export function validarBalancete(
         equacaoEsquerda,
         equacaoDireita,
         diferencaEquacao,
+        composicaoPorGrupo,
+        grupoCoincidenteComDiferenca: grupoCoincidente ?? null,
       },
       requiresHuman: Math.abs(diferencaEquacao) > TOLERANCIA,
     });
+
+    for (const grupo of gruposIgnorados) {
+      achados.push({
+        code: "GRUPO_NAO_CLASSIFICADO",
+        severity: "WARNING",
+        title: `Grupo "${grupo.raiz} — ${grupo.nome || "sem nome"}" não classificado na equação patrimonial`,
+        detail:
+          grupo === grupoCoincidente
+            ? `Saldo de R$ ${formatarBR(grupo.saldo)} não entrou no cálculo de Ativo/Passivo/Receita/Despesa e coincide com a diferença da equação patrimonial — provável falha de leitura do PDF, não erro do cliente.`
+            : `Saldo de R$ ${formatarBR(grupo.saldo)} não entrou no cálculo de Ativo/Passivo/Receita/Despesa por não ter sido possível identificar a natureza do grupo pelo nome ou pela raiz.`,
+        evidence: {
+          raiz: grupo.raiz,
+          nome: grupo.nome,
+          nivelUsado: grupo.nivelUsado,
+          linhas: grupo.linhas,
+          saldo: grupo.saldo,
+          coincideComDiferencaEquacao: grupo === grupoCoincidente,
+        },
+        requiresHuman: true,
+      });
+    }
 
     achados.push({
       code: "RESULTADO_PERIODO",

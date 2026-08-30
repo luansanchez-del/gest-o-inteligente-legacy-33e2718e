@@ -44,6 +44,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import {
   detalharSolicitacao,
@@ -116,6 +124,23 @@ const RESULTADOS: Record<string, { rotulo: string; classe: string }> = {
     classe: "bg-destructive/10 text-destructive",
   },
 };
+
+const NATUREZAS: Record<string, string> = {
+  ATIVO: "Ativo",
+  PASSIVO_PL: "Passivo/PL",
+  RECEITA: "Receita",
+  DESPESA: "Despesa",
+  OUTRO: "Não classificado",
+};
+
+interface GrupoBalancete {
+  raiz: string;
+  nome: string;
+  natureza: string;
+  nivelUsado: number;
+  linhas: number;
+  saldo: number;
+}
 
 function moeda(valor: unknown) {
   return typeof valor === "number"
@@ -259,6 +284,22 @@ function SolicitacaoPage() {
         .some((v) => String(v).toLowerCase().includes(termo));
     });
   }, [resultado.data, severidade, busca]);
+
+  const composicaoEquacao = useMemo(() => {
+    const lista = resultado.data?.achados ?? [];
+    const equacao = lista.find((a) => a.codigo?.startsWith("EQUACAO_PATRIMONIAL"));
+    const evidencia = (equacao?.evidencia ?? null) as Record<
+      string,
+      unknown
+    > | null;
+    const grupos = Array.isArray(evidencia?.["composicaoPorGrupo"])
+      ? (evidencia!["composicaoPorGrupo"] as GrupoBalancete[])
+      : [];
+    const coincidente = (evidencia?.["grupoCoincidenteComDiferenca"] ?? null) as
+      | { raiz: string }
+      | null;
+    return { grupos, raizCoincidente: coincidente?.raiz ?? null };
+  }, [resultado.data]);
 
   const totais = (resultado.data?.totais ?? {}) as Record<string, unknown>;
   const documento = (totais["documento"] ?? {}) as Record<string, unknown>;
@@ -796,6 +837,60 @@ function SolicitacaoPage() {
             </Card>
           </div>
         )
+      ) : null}
+
+      {composicaoEquacao.grupos.length ? (
+        <Card className="space-y-3 p-4">
+          <p className="text-sm font-medium">Composição por grupo raiz</p>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Raiz</TableHead>
+                <TableHead>Nome</TableHead>
+                <TableHead>Natureza</TableHead>
+                <TableHead>Nível usado</TableHead>
+                <TableHead>Linhas</TableHead>
+                <TableHead className="text-right">Saldo</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {composicaoEquacao.grupos.map((grupo) => {
+                const naoClassificado = grupo.natureza === "OUTRO";
+                const coincide = grupo.raiz === composicaoEquacao.raizCoincidente;
+                return (
+                  <TableRow
+                    key={grupo.raiz}
+                    className={naoClassificado ? "bg-warning-soft" : undefined}
+                  >
+                    <TableCell className="font-medium">{grupo.raiz}</TableCell>
+                    <TableCell>{grupo.nome || "—"}</TableCell>
+                    <TableCell>
+                      <span
+                        className={
+                          naoClassificado
+                            ? "text-warning-strong"
+                            : "text-muted-foreground"
+                        }
+                      >
+                        {NATUREZAS[grupo.natureza] ?? grupo.natureza}
+                      </span>
+                      {coincide ? (
+                        <span className="ml-2 text-xs text-warning-strong">
+                          (possível falha de leitura)
+                        </span>
+                      ) : null}
+                    </TableCell>
+                    <TableCell>{grupo.nivelUsado}</TableCell>
+                    <TableCell>{grupo.linhas}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {moeda(grupo.saldo)}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </Card>
       ) : null}
 
       <Card className="space-y-4 p-4">
