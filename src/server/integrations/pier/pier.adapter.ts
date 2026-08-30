@@ -17,14 +17,6 @@ const POR_PAGINA = 500;
 /** A API de solicitações rejeita mais de 30 registros por página. */
 const POR_PAGINA_SOLICITACOES = 30;
 const MAX_PAGINAS = 200;
-/**
- * Tipos de solicitação são um catálogo pequeno e fixo (dezenas, não
- * milhares), diferente de clientes/usuários. Um limite baixo evita que uma
- * resposta inesperada da API (ex.: sempre "página cheia") force até 200
- * chamadas sequenciais só para um dropdown — o que na prática trava a tela
- * esperando a cota do PIER liberar.
- */
-const MAX_PAGINAS_TIPOS = 5;
 /** Páginas buscadas em paralelo para a listagem de solicitações (limitada a 30/página). */
 const CONCORRENCIA = 5;
 
@@ -93,18 +85,22 @@ export const pierAdapter: PierAdapter = {
   },
 
   async listRequestTypes() {
-    const resultados: Raw[] = [];
-    for (let pagina = 1; pagina <= MAX_PAGINAS_TIPOS; pagina++) {
-      const payload = await pierGet<unknown>("/api/v2/tipos-solicitacao", {
-        pagina,
-        quantidadePorPagina: POR_PAGINA,
-        status: "Ativo",
-      });
-      const lote = asArray(payload);
-      resultados.push(...lote);
-      if (lote.length < POR_PAGINA) break;
+    // /api/v2/tipos-solicitacao devolve o catálogo inteiro na página 1,
+    // ignorando pagina/quantidadePorPagina: paginar aqui só repetia a mesma
+    // lista (uma vez chegou a "3110 tipos" — a mesma lista de ~600 buscada
+    // 5x) e gastava cota do PIER à toa. Uma chamada só, com deduplicação por
+    // segurança caso algum dia o endpoint pagine de verdade.
+    const payload = await pierGet<unknown>("/api/v2/tipos-solicitacao", {
+      pagina: 1,
+      quantidadePorPagina: POR_PAGINA,
+      status: "Ativo",
+    });
+    const porId = new Map<string, Raw>();
+    for (const raw of asArray(payload)) {
+      const tipo = mapRequestType(raw);
+      if (tipo.externalId) porId.set(tipo.externalId, raw);
     }
-    return resultados.map(mapRequestType).filter((tipo) => tipo.externalId);
+    return [...porId.values()].map(mapRequestType);
   },
 
   /**
