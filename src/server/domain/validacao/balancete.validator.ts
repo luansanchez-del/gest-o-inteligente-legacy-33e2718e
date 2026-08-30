@@ -17,7 +17,7 @@ import {
 } from "./balancete.parser";
 import { competenciaDaData, type Instrucao } from "./instrucao";
 
-export const VALIDATOR_VERSION = "balancete-v3";
+export const VALIDATOR_VERSION = "balancete-v4";
 
 export type Severidade = "INFO" | "WARNING" | "ERROR" | "BLOCKER";
 
@@ -104,6 +104,18 @@ function naturezaDaRaiz(linha: LinhaBalancete): Natureza {
     default:
       return "OUTRO";
   }
+}
+
+/**
+ * Grupo raiz de "Apuração do Resultado do Exercício" — conta transitória
+ * comum em planos de contas brasileiros, usada quando o fechamento já
+ * zerou receitas/despesas nela mas ainda não transferiu o saldo para o PL
+ * (frequente em balancetes que cobrem mais de um mês, com fechamentos
+ * mensais parciais já rodados internamente). Saldo nela não é sinal de
+ * falha de leitura do PDF — é sinal de fechamento intermediário.
+ */
+function pareceContaDeApuracaoDoResultado(nome: string): boolean {
+  return /RESULTADO|APURA[ÇC][ÃA]O/i.test(nome);
 }
 
 function mapearNaturezaPorRaiz(documento: BalanceteDocumento) {
@@ -405,7 +417,9 @@ export function validarBalancete(
       detail: [
         `Ativo (R$ ${formatarBR(ativo)}) + Despesas (R$ ${formatarBR(despesas)}) = R$ ${formatarBR(equacaoEsquerda)} · Passivo/PL (R$ ${formatarBR(passivoPl)}) + Receitas (R$ ${formatarBR(receitas)}) = R$ ${formatarBR(equacaoDireita)}`,
         grupoCoincidente
-          ? `A diferença coincide com o saldo do grupo "${grupoCoincidente.raiz} — ${grupoCoincidente.nome}" (R$ ${formatarBR(grupoCoincidente.saldo)}), que não entrou na equação por não ter natureza identificada. Provável falha de leitura do PDF, não necessariamente erro do cliente.`
+          ? pareceContaDeApuracaoDoResultado(grupoCoincidente.nome)
+            ? `A diferença coincide com o saldo do grupo "${grupoCoincidente.raiz} — ${grupoCoincidente.nome}" (R$ ${formatarBR(grupoCoincidente.saldo)}) — provável conta de apuração de resultado com saldo ainda não transferido para o PL (comum em balancete que cobre mais de um mês, com fechamentos parciais já rodados), não necessariamente falha de leitura do PDF.`
+            : `A diferença coincide com o saldo do grupo "${grupoCoincidente.raiz} — ${grupoCoincidente.nome}" (R$ ${formatarBR(grupoCoincidente.saldo)}), que não entrou na equação por não ter natureza identificada. Provável falha de leitura do PDF, não necessariamente erro do cliente.`
           : null,
       ]
         .filter(Boolean)
@@ -425,12 +439,15 @@ export function validarBalancete(
     });
 
     for (const grupo of gruposIgnorados) {
+      const apuracaoResultado = pareceContaDeApuracaoDoResultado(grupo.nome);
+      const coincide = grupo === grupoCoincidente;
       achados.push({
         code: "GRUPO_NAO_CLASSIFICADO",
         severity: "WARNING",
         title: `Grupo "${grupo.raiz} — ${grupo.nome || "sem nome"}" não classificado na equação patrimonial`,
-        detail:
-          grupo === grupoCoincidente
+        detail: apuracaoResultado
+          ? `Saldo de R$ ${formatarBR(grupo.saldo)} parece ser de conta de apuração de resultado (comum quando o balancete cobre mais de um mês, com fechamentos parciais já rodados) — confirmar se é resultado ainda não transferido para o PL, não necessariamente falha de leitura do PDF.${coincide ? " Esse saldo coincide com a diferença da equação patrimonial." : ""}`
+          : coincide
             ? `Saldo de R$ ${formatarBR(grupo.saldo)} não entrou no cálculo de Ativo/Passivo/Receita/Despesa e coincide com a diferença da equação patrimonial — provável falha de leitura do PDF, não erro do cliente.`
             : `Saldo de R$ ${formatarBR(grupo.saldo)} não entrou no cálculo de Ativo/Passivo/Receita/Despesa por não ter sido possível identificar a natureza do grupo pelo nome ou pela raiz.`,
         evidence: {
@@ -439,7 +456,8 @@ export function validarBalancete(
           nivelUsado: grupo.nivelUsado,
           linhas: grupo.linhas,
           saldo: grupo.saldo,
-          coincideComDiferencaEquacao: grupo === grupoCoincidente,
+          coincideComDiferencaEquacao: coincide,
+          apuracaoDeResultado: apuracaoResultado,
         },
         requiresHuman: true,
       });
