@@ -78,9 +78,14 @@ export function proximaCompetencia(competencia: string): string {
     : `${ano}-${String(mes + 1).padStart(2, "0")}`;
 }
 
-async function contexto(ctx: AppContext) {
+async function contexto(ctx: AppContext, departamentoIds?: string[] | null) {
   const typeExternalId = await resolverTipoSolicitacao(ctx, "CONTABIL");
-  const contabeis = new Set(await departamentosContabeis(ctx));
+  // Departamentos escolhidos na tela têm prioridade; sem escolha, mantém o
+  // recorte padrão da contabilidade (CONTABILIDADE LEGACY/BPO).
+  const selecionados = (departamentoIds ?? []).map(String).filter(Boolean);
+  const departamentos = new Set(
+    selecionados.length ? selecionados : await departamentosContabeis(ctx),
+  );
   const usuarios = await carregarUsuariosPier<{
     external_id: string;
     department_external_id: string | null;
@@ -88,7 +93,7 @@ async function contexto(ctx: AppContext) {
   const deptoPorUsuario = new Map(
     usuarios.map((u) => [u.external_id, u.department_external_id]),
   );
-  return { typeExternalId, contabeis, deptoPorUsuario };
+  return { typeExternalId, departamentos, deptoPorUsuario };
 }
 
 type Ambiente = Awaited<ReturnType<typeof contexto>>;
@@ -122,17 +127,19 @@ async function buscarDoMes(competencia: string, amb: Ambiente) {
     for (const s of amplas) if (!porId.has(s.externalId)) porId.set(s.externalId, s);
   }
 
-  const contabeis: Candidato[] = [];
+  const selecionadas: Candidato[] = [];
   let ignoradasNaoContabeis = 0;
   for (const s of porId.values()) {
     const depto = s.responsibleExternalId
       ? (amb.deptoPorUsuario.get(s.responsibleExternalId) ?? null)
       : null;
-    if (depto && amb.contabeis.has(depto) && responsavelHumano(s.responsibleName)) contabeis.push(s);
+    if (depto && amb.departamentos.has(depto) && responsavelHumano(s.responsibleName))
+      selecionadas.push(s);
     else ignoradasNaoContabeis += 1;
   }
-  return { contabeis, ignoradasNaoContabeis };
+  return { contabeis: selecionadas, ignoradasNaoContabeis };
 }
+
 
 async function externalIdsJaGravados(ctx: AppContext, ids: string[]) {
   const existentes = new Set<string>();
@@ -156,10 +163,15 @@ async function externalIdsJaGravados(ctx: AppContext, ids: string[]) {
 /** Pré-visualização somente leitura: nada é gravado no banco nem no PIER. */
 export async function previsualizarCarga(
   ctx: AppContext,
-  input: { inicio: string; fim: string; incluirFinalizadas?: boolean },
+  input: {
+    inicio: string;
+    fim: string;
+    incluirFinalizadas?: boolean;
+    departamentoIds?: string[] | null;
+  },
 ): Promise<PreviewCarga> {
   const meses = listarMeses(input.inicio, input.fim);
-  const amb = await contexto(ctx);
+  const amb = await contexto(ctx, input.departamentoIds);
   const resumos: ResumoCompetencia[] = [];
 
   for (const competencia of meses) {
@@ -241,6 +253,7 @@ export async function abrirCarga(
     fim: string;
     tipoCarga: "HISTORICA" | "MENSAL";
     incluirFinalizadas?: boolean;
+    departamentoIds?: string[] | null;
   },
 ) {
   assertCanWrite(ctx);
@@ -257,6 +270,7 @@ export async function abrirCarga(
         fim: input.fim,
         meses,
         incluirFinalizadas: Boolean(input.incluirFinalizadas),
+        departamentoIds: input.departamentoIds ?? null,
       } as never,
       status: "RUNNING",
       total_items: meses.length,
@@ -298,6 +312,7 @@ export async function carregarCompetencia(
     competencia: string;
     runId?: string | null;
     incluirFinalizadas?: boolean;
+    departamentoIds?: string[] | null;
   },
 ): Promise<ResumoCompetencia> {
   assertCanWrite(ctx);
@@ -307,7 +322,7 @@ export async function carregarCompetencia(
       "Informe a competência no formato AAAA-MM.",
     );
 
-  const amb = await contexto(ctx);
+  const amb = await contexto(ctx, input.departamentoIds);
   const agora = new Date().toISOString();
 
   try {
@@ -334,7 +349,9 @@ export async function carregarCompetencia(
           number: s.number,
           description: s.description,
           type_name: s.typeName,
-          type_external_id: amb.typeExternalId,
+          // Grava o tipo real do PIER: assim os filtros por tipo enxergam
+          // solicitações de outros departamentos (DAS, REINF, DCTFWEB…).
+          type_external_id: s.typeExternalId ?? amb.typeExternalId,
           purpose: s.purpose,
           // Sem competência interpretável a solicitação fica em revisão, nunca descartada.
           reference_month: s.referenceMonth,
@@ -467,13 +484,13 @@ export interface EstadoCarga {
 
 /** Situação atual da base: o que já foi carregado e qual o próximo mês sugerido. */
 export async function estadoCarga(ctx: AppContext): Promise<EstadoCarga> {
-  const typeExternalId = await resolverTipoSolicitacao(ctx, "CONTABIL");
-
+  // Sem recorte por tipo: a carga agora traz solicitações de qualquer tipo
+  // conforme o departamento escolhido, e o estado precisa refletir isso.
   const { data: linhas, error } = await ctx.db
     .from("request")
     .select("reference_month, synced_at")
-    .eq("organization_id", ctx.organizationId)
-    .eq("type_external_id", typeExternalId);
+    .eq("organization_id", ctx.organizationId);
+
 
   if (error)
     throw new AppError(

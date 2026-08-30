@@ -66,13 +66,13 @@ interface PreviewCargaLike {
 interface CargaCompetenciasApi {
   estadoCarga: () => Promise<EstadoCargaLike>;
   previsualizarCarga: (opts: {
-    data: { inicio: string; fim: string };
+    data: { inicio: string; fim: string; departamentoIds?: string[] | null };
   }) => Promise<PreviewCargaLike>;
   abrirCarga: (opts: {
-    data: { inicio: string; fim: string; tipoCarga: Modo };
+    data: { inicio: string; fim: string; tipoCarga: Modo; departamentoIds?: string[] | null };
   }) => Promise<{ runId: string }>;
   carregarCompetencia: (opts: {
-    data: { competencia: string; runId: string | null };
+    data: { competencia: string; runId: string | null; departamentoIds?: string[] | null };
   }) => Promise<ResumoMesLike>;
   encerrarCarga: (opts: {
     data: { runId: string; status: "COMPLETED" | "FAILED"; mensagem?: string };
@@ -92,6 +92,8 @@ interface CargaCompetenciasProps {
   queryKeyEstado?: unknown[];
   invalidateQueryKeys?: unknown[][];
   assunto?: string;
+  /** Departamentos do PIER a carregar. Vazio = recorte padrão da contabilidade. */
+  departamentoIds?: string[] | null;
 }
 
 function competenciaAtual() {
@@ -110,6 +112,7 @@ export function CargaCompetencias({
   queryKeyEstado = ["estado-carga"],
   invalidateQueryKeys = [["preview-gestao"]],
   assunto = "Fechamento Contábil",
+  departamentoIds = null,
 }: CargaCompetenciasProps = {}) {
   const queryClient = useQueryClient();
   const [modo, setModo] = useState<Modo | null>(null);
@@ -121,7 +124,8 @@ export function CargaCompetencias({
   const estado = useQuery({ queryKey: queryKeyEstado, queryFn: () => api.estadoCarga() });
 
   const preview = useMutation({
-    mutationFn: (dados: { inicio: string; fim: string }) => api.previsualizarCarga({ data: dados }),
+    mutationFn: (dados: { inicio: string; fim: string }) =>
+      api.previsualizarCarga({ data: { ...dados, departamentoIds } }),
     onError: (e) => toast.error(mensagemDeErro(e)),
   });
 
@@ -163,7 +167,12 @@ export function CargaCompetencias({
     let runId: string | null = null;
     try {
       const aberta = await api.abrirCarga({
-        data: { inicio, fim, tipoCarga: modo === "MENSAL" ? "MENSAL" : "HISTORICA" },
+        data: {
+          inicio,
+          fim,
+          tipoCarga: modo === "MENSAL" ? "MENSAL" : "HISTORICA",
+          departamentoIds,
+        },
       });
       runId = aberta.runId;
     } catch (e) {
@@ -179,7 +188,7 @@ export function CargaCompetencias({
       );
       try {
         const resumo = await api.carregarCompetencia({
-          data: { competencia: passo.competencia, runId },
+          data: { competencia: passo.competencia, runId, departamentoIds },
         });
         setPassos((atual) =>
           atual.map((p) =>

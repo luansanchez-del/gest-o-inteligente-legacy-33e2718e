@@ -658,7 +658,17 @@ function GestaoPage() {
         </Card>
       ) : null}
 
-      {tipo === "CONTABIL" ? <CargaCompetencias /> : null}
+      <CargaCompetencias
+        departamentoIds={
+          departamento === TODOS_DEPARTAMENTOS ? null : [departamento]
+        }
+        assunto={
+          departamentoSelecionado?.nome
+            ? `${departamentoSelecionado.nome}`
+            : "Fechamento Contábil"
+        }
+      />
+
 
       <Card className="p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
