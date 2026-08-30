@@ -116,4 +116,76 @@ describe("totais por grupo raiz", () => {
     expect(resultado.achados.some((a) => a.severity === "BLOCKER")).toBe(false);
     expect(resultado.resultado).toBe("REVISAO_HUMANA");
   });
+
+  it("expõe a composição por grupo raiz na evidência da equação patrimonial", () => {
+    const resultado = validar([
+      linha("1", "ATIVO", 100_000, false),
+      linha("2.1", "Passivo Circulante", 70_000, false),
+      linha("2.2", "Patrimônio Líquido", 30_000, false),
+      linha("4", "RECEITAS", 0, false),
+      linha("5", "DESPESAS", 0, false),
+    ]);
+
+    const equacao = resultado.achados.find((a) => a.code === "EQUACAO_PATRIMONIAL_OK");
+    const composicao = equacao?.evidence?.["composicaoPorGrupo"] as Array<
+      Record<string, unknown>
+    >;
+    expect(composicao).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ raiz: "1", natureza: "ATIVO", linhas: 1, saldo: 100_000 }),
+        expect.objectContaining({
+          raiz: "2",
+          natureza: "PASSIVO_PL",
+          nivelUsado: 2,
+          linhas: 2,
+          saldo: 100_000,
+        }),
+      ]),
+    );
+  });
+
+  it("acusa GRUPO_NAO_CLASSIFICADO para grupo 'OUTRO' com saldo material e não bloqueia sozinho", () => {
+    const resultado = validar([
+      linha("1", "ATIVO", 100_000, false),
+      linha("2", "PASSIVO E PATRIMÔNIO LÍQUIDO", 100_000, false),
+      linha("4", "RECEITAS", 0, false),
+      linha("5", "DESPESAS", 0, false),
+      linha("9", "Contas de Compensação", 5_000, false),
+    ]);
+
+    const achado = resultado.achados.find((a) => a.code === "GRUPO_NAO_CLASSIFICADO");
+    expect(achado).toMatchObject({
+      severity: "WARNING",
+      requiresHuman: true,
+      evidence: { raiz: "9", saldo: 5_000 },
+    });
+    expect(resultado.achados.some((a) => a.severity === "BLOCKER")).toBe(false);
+    expect(resultado.resultado).toBe("REVISAO_HUMANA");
+  });
+
+  it("aponta no detalhe quando a diferença da equação coincide com um grupo ignorado", () => {
+    // Passivo saiu R$ 259.969,13 a menos porque a extração jogou esse valor
+    // num grupo "OUTRO" em vez de dentro do grupo 2 -- indício de falha de
+    // leitura do PDF, não de balancete que não fecha de fato.
+    const resultado = validar([
+      linha("1", "ATIVO", 400_000, false),
+      linha("2", "PASSIVO E PATRIMÔNIO LÍQUIDO", 140_030.87, false),
+      linha("4", "RECEITAS", 0, false),
+      linha("5", "DESPESAS", 0, false),
+      linha("9", "Grupo não identificado", 259_969.13, false),
+    ]);
+
+    const equacao = resultado.achados.find((a) => a.code === "EQUACAO_PATRIMONIAL_DIVERGENTE");
+    expect(equacao?.detail).toContain("259.969,13");
+    expect(equacao?.detail).toContain("falha de leitura");
+    expect(equacao?.evidence?.["grupoCoincidenteComDiferenca"]).toMatchObject({
+      raiz: "9",
+      saldo: 259_969.13,
+    });
+
+    const achadoGrupo = resultado.achados.find((a) => a.code === "GRUPO_NAO_CLASSIFICADO");
+    expect(achadoGrupo?.evidence).toMatchObject({
+      coincideComDiferencaEquacao: true,
+    });
+  });
 });
