@@ -99,6 +99,11 @@ export function escolherBalancete(
       const mime = (a.mimeType ?? "").toLowerCase();
       return nome.endsWith(".pdf") || mime.includes("pdf");
     })
+    // Razão (livro-razão) é um documento de apoio, não o balancete: tem
+    // estrutura diferente (lançamento a lançamento, não saldo consolidado) e
+    // nunca deve ser escolhido no lugar dele, mesmo se o nome do arquivo
+    // bater com a competência.
+    .filter((a) => !/\braz[aã]o\b/.test((a.name ?? "").toLowerCase()))
     .map((a) => {
       const alvo = `${a.name ?? ""} ${a.category ?? ""}`.toLowerCase();
       let pontos = 0;

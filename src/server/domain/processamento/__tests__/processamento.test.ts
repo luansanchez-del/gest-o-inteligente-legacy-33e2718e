@@ -17,7 +17,9 @@ vi.mock("../../validacao/validacao.service", () => ({
 
 vi.mock("../../../integrations/pier/pier.adapter", () => ({ pierAdapter: {} }));
 
-const { processarEscopo, processarSolicitacao } = await import("../processamento.service");
+const { escolherBalancete, processarEscopo, processarSolicitacao } = await import(
+  "../processamento.service"
+);
 
 const SOLICITACAO = {
   id: "req-1",
@@ -207,5 +209,40 @@ describe("processamento de fechamento contábil", () => {
     expect(resumo.total).toBe(1);
     expect(resumo.pendentes).toBe(1);
     expect(resumo.itens[0]!.motivo).toContain("não solicitada");
+  });
+});
+
+describe("escolherBalancete", () => {
+  function arquivo(overrides: Partial<Parameters<typeof escolherBalancete>[0][number]>) {
+    return {
+      externalId: "f1",
+      name: "arquivo.pdf",
+      category: null,
+      mimeType: "application/pdf",
+      createdAt: "2026-08-01T00:00:00.000Z",
+      ...overrides,
+    };
+  }
+
+  it("nunca escolhe um arquivo de razão no lugar do balancete", () => {
+    const escolhido = escolherBalancete(
+      [
+        arquivo({ externalId: "razao", name: "Razão 08-2026.pdf" }),
+        arquivo({ externalId: "balancete", name: "Documento contábil 08-2026.pdf" }),
+      ],
+      { competencia: "2026-08", textoPostagens: "" },
+    );
+    expect(escolhido?.externalId).toBe("balancete");
+  });
+
+  it("ainda prioriza o nome que contém 'balancete' quando existe mais de um candidato", () => {
+    const escolhido = escolherBalancete(
+      [
+        arquivo({ externalId: "outro", name: "Outro anexo 08-2026.pdf" }),
+        arquivo({ externalId: "balancete", name: "Balancete 08-2026.pdf" }),
+      ],
+      { competencia: "2026-08", textoPostagens: "" },
+    );
+    expect(escolhido?.externalId).toBe("balancete");
   });
 });
