@@ -39,6 +39,7 @@ function validar(linhas: LinhaBalancete[]): RelatorioValidacao {
     colunasDetectadas: [],
     linhas,
     naoInterpretadas: [],
+    integridadeValores: { brutos: 0, capturados: 0, razao: 1 },
   };
   return validarBalancete(documento);
 }

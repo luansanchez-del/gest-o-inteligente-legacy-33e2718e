@@ -91,4 +91,42 @@ describe("balancete piloto", () => {
     expect(achado?.severity).toBe("WARNING");
     expect(achado?.requiresHuman).toBe(true);
   });
+
+  it("integridade de extração fica perto de 100% num balancete bem formado", () => {
+    expect(documento.integridadeValores.razao).toBeGreaterThan(0.95);
+    expect(relatorio.achados.some((a) => a.code === "EXTRACAO_PDF_INCOMPLETA")).toBe(false);
+  });
+});
+
+describe("extração de PDF com coluna de descrição separada das numéricas", () => {
+  // Caso real (3G Governança): o gerador do relatório emite, para um trecho
+  // da tabela, todas as descrições de conta como um bloco de texto contínuo
+  // -- sem código no início nem números anexados. A linha inteira falha em
+  // casar com o padrão esperado e desaparece sem virar nem `naoInterpretadas`.
+  // O único jeito de perceber é comparar quantos valores existem no texto
+  // bruto contra quantos acabaram em alguma linha reconhecida.
+  const pagina = [
+    "1 S 1 ATIVO 1.000,00 100,00 50,00 50,00 1.050,00",
+    "PASSIVO CIRCULANTE FORNECEDORES FORNECEDORES NACIONAIS",
+    "1.234,56 2.345,67 3.456,78 4.567,89 5.678,90",
+  ].join("\n");
+  const documento = parseBalancete([pagina]);
+
+  it("expõe uma razão baixa de integridade quando valores ficam órfãos", () => {
+    expect(documento.linhas).toHaveLength(1);
+    expect(documento.integridadeValores.brutos).toBe(10);
+    expect(documento.integridadeValores.capturados).toBe(5);
+    expect(documento.integridadeValores.razao).toBeCloseTo(0.5);
+  });
+
+  it("acusa EXTRACAO_PDF_INCOMPLETA e não bloqueia sozinho", () => {
+    const relatorio = validarBalancete(documento);
+    const achado = relatorio.achados.find((a) => a.code === "EXTRACAO_PDF_INCOMPLETA");
+    expect(achado).toMatchObject({
+      severity: "WARNING",
+      requiresHuman: true,
+    });
+    expect(achado?.title).toContain("50%");
+    expect(relatorio.achados.some((a) => a.severity === "BLOCKER")).toBe(false);
+  });
 });
