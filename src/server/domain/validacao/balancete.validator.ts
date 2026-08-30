@@ -17,7 +17,7 @@ import {
 } from "./balancete.parser";
 import { competenciaDaData, type Instrucao } from "./instrucao";
 
-export const VALIDATOR_VERSION = "balancete-v5";
+export const VALIDATOR_VERSION = "balancete-v6";
 
 export type Severidade = "INFO" | "WARNING" | "ERROR" | "BLOCKER";
 
@@ -74,6 +74,8 @@ export interface ContextoValidacao {
 
 const TOLERANCIA = 0.02;
 const MATERIALIDADE_PADRAO = 1000;
+/** Abaixo disso, uma fração grande demais dos valores do PDF não virou linha. */
+const RAZAO_INTEGRIDADE_MINIMA = 0.85;
 
 type Natureza = "ATIVO" | "PASSIVO_PL" | "RECEITA" | "DESPESA" | "OUTRO";
 
@@ -194,6 +196,30 @@ export function validarBalancete(
       title: `${documento.naoInterpretadas.length} linha(s) não interpretada(s)`,
       detail: "Linhas com estrutura fora do padrão foram ignoradas no cálculo.",
       evidence: { amostra: documento.naoInterpretadas.slice(0, 10) },
+      requiresHuman: true,
+    });
+  }
+
+  // Alguns geradores de balancete emitem a coluna de descrição como um bloco
+  // de texto contínuo, separado das colunas numéricas — a linha inteira
+  // falha em casar com o padrão de código e some sem entrar nem em `linhas`
+  // nem em `naoInterpretadas`. A única forma de perceber isso é comparar
+  // quantos valores monetários existem no texto bruto do PDF contra quantos
+  // acabaram capturados em alguma linha: se muitos ficaram de fora, os
+  // totais abaixo (inclusive por grupo raiz) podem estar subestimados.
+  if (
+    documento.integridadeValores.brutos > 0 &&
+    documento.integridadeValores.razao < RAZAO_INTEGRIDADE_MINIMA
+  ) {
+    const percentualPerdido = Math.round(
+      (1 - documento.integridadeValores.razao) * 100,
+    );
+    achados.push({
+      code: "EXTRACAO_PDF_INCOMPLETA",
+      severity: "WARNING",
+      title: `Extração do PDF possivelmente incompleta — ${percentualPerdido}% dos valores do arquivo não entraram em nenhuma conta`,
+      detail: `O texto do PDF traz ${documento.integridadeValores.brutos} valores monetários, mas só ${documento.integridadeValores.capturados} foram associados a alguma linha reconhecida. Isso costuma acontecer quando o gerador do relatório separa a coluna de descrição das colunas numéricas para um trecho da tabela — a linha inteira some sem aparecer nem como erro. Ativo, Passivo/PL, Receitas e Despesas abaixo podem estar subestimados; reenviar o balancete em outro formato (ex.: exportação diferente do sistema) costuma resolver.`,
+      evidence: { ...documento.integridadeValores, percentualPerdido },
       requiresHuman: true,
     });
   }

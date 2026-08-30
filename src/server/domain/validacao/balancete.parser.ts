@@ -39,6 +39,16 @@ export interface BalanceteDocumento {
   colunasDetectadas: string[];
   linhas: LinhaBalancete[];
   naoInterpretadas: LinhaNaoInterpretada[];
+  /**
+   * Sanidade da extração: quantos valores monetários existem no texto bruto
+   * do PDF vs. quantos acabaram dentro de alguma linha capturada. Alguns
+   * geradores de balancete emitem a coluna de descrição como um bloco de
+   * texto contínuo separado das colunas numéricas — nesse caso a linha
+   * inteira falha silenciosamente em casar com o padrão de código no início
+   * e some sem deixar rastro em `naoInterpretadas`. Uma razão baixa aqui é
+   * o único sinal de que isso aconteceu.
+   */
+  integridadeValores: { brutos: number; capturados: number; razao: number };
 }
 
 const VALOR = /\(?-?\d{1,3}(?:\.\d{3})*,\d{2}\)?\s?[CD]?/g;
@@ -284,6 +294,15 @@ export function parseBalancete(paginas: string[]): BalanceteDocumento {
   }
 
 
+  const valoresBrutos = paginas.reduce(
+    (soma, pagina) => soma + (pagina.match(VALOR)?.length ?? 0),
+    0,
+  );
+  const valoresCapturados = linhas.reduce(
+    (soma, l) => soma + (l.movimento === null ? 4 : 5),
+    0,
+  );
+
   return {
     empresa,
     cnpj,
@@ -294,5 +313,10 @@ export function parseBalancete(paginas: string[]): BalanceteDocumento {
     colunasDetectadas: [...colunas],
     linhas,
     naoInterpretadas,
+    integridadeValores: {
+      brutos: valoresBrutos,
+      capturados: valoresCapturados,
+      razao: valoresBrutos > 0 ? valoresCapturados / valoresBrutos : 1,
+    },
   };
 }
