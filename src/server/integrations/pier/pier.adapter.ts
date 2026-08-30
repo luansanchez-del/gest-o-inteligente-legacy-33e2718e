@@ -17,8 +17,15 @@ const POR_PAGINA = 500;
 /** A API de solicitações rejeita mais de 30 registros por página. */
 const POR_PAGINA_SOLICITACOES = 30;
 const MAX_PAGINAS = 200;
-/** Páginas buscadas em paralelo para a listagem de solicitações (limitada a 30/página). */
-const CONCORRENCIA = 5;
+/**
+ * Páginas buscadas em paralelo para a listagem de solicitações (limitada a
+ * 30/página). Reduzido de 5 para 2: mesmo com a cota interna OK, rajadas de
+ * 5 chamadas simultâneas vinham derrubando com 429 real do PIER — o
+ * limitador local não é garantia contra rajada, só contra o total por
+ * minuto (e nem isso entre instâncias concorrentes sem memória
+ * compartilhada). Menos chamadas de uma vez, mesmo total ao longo do tempo.
+ */
+const CONCORRENCIA = 2;
 
 function asArray(payload: unknown): Raw[] {
   if (Array.isArray(payload)) return payload as Raw[];
