@@ -220,7 +220,7 @@ export async function detalharSolicitacao(
     ctx.db
       .from("request_decision")
       .select(
-        "id, execution_id, decision, notes, decided_at, pier_action_status",
+        "id, execution_id, decision, notes, decided_at, pier_action_status, pier_post_id",
       )
       .eq("organization_id", ctx.organizationId)
       .eq("request_id", solicitacao.id)
@@ -284,6 +284,7 @@ export async function detalharSolicitacao(
       notas: d.notes,
       decididaEm: d.decided_at,
       statusPier: d.pier_action_status,
+      pierPostId: d.pier_post_id,
     })),
     auditoria: (auditoria ?? []).map((a) => ({
       id: a.id,
@@ -669,6 +670,12 @@ export async function listarAchados(
   );
 }
 
+const ROTULO_DECISAO: Record<string, string> = {
+  APPROVED: "Aprovado",
+  RETURNED: "Devolvido ao cliente",
+  NEEDS_REVIEW: "Enviado para revisão",
+};
+
 export async function registrarDecisao(
   ctx: AppContext,
   input: {
@@ -676,6 +683,10 @@ export async function registrarDecisao(
     execucaoId?: string | null;
     decisao: "APPROVED" | "RETURNED" | "NEEDS_REVIEW";
     notas?: string | null;
+    autorEmail?: string | null;
+  },
+  deps: { pier: Pick<import("../../integrations/pier/pier.types").PierAdapter, "createPost"> } = {
+    pier: pierAdapter,
   },
 ) {
   assertCanWrite(ctx);
@@ -722,19 +733,108 @@ export async function registrarDecisao(
       error?.message,
     );
 
+  // A decisão é publicada como comentário privado no PIER para ficar visível
+  // por lá também. Isso não finaliza nem move a solicitação — só documenta a
+  // decisão tomada aqui; a falha ao publicar não invalida a decisão registrada.
+  const rotulo = ROTULO_DECISAO[input.decisao] ?? input.decisao;
+  const mensagem = mascararTexto(
+    [
+      `Decisão registrada no sistema interno: ${rotulo}.`,
+      input.autorEmail ? `Por: ${input.autorEmail}.` : null,
+      notas ? `Observações: ${notas}` : null,
+    ]
+      .filter(Boolean)
+      .join(" "),
+  );
+
+  let pierEnviado = false;
+  let pierPostId: string | null = null;
+  try {
+    const postagem = await deps.pier.createPost({
+      requestExternalId: solicitacao.external_id,
+      mensagem,
+      privada: true,
+    });
+    pierPostId = postagem.externalId ?? null;
+    pierEnviado = Boolean(pierPostId);
+  } catch {
+    pierEnviado = false;
+  }
+
+  await ctx.db
+    .from("request_decision")
+    .update({
+      pier_action_status: pierEnviado ? "SENT" : "FAILED",
+      pier_post_id: pierPostId,
+    })
+    .eq("id", decisao.id);
+
   await audit(ctx, {
     action: "REGISTRAR_DECISAO",
     entity: "request_decision",
     entityId: decisao.id,
     correlationId: solicitacao.external_id,
-    after: { decisao: input.decisao, notas, pier: "NOT_SENT" },
+    after: {
+      decisao: input.decisao,
+      notas,
+      pier: pierEnviado ? "SENT" : "FAILED",
+      pierPostId,
+    },
   });
 
   return {
     decisaoId: decisao.id,
     decididaEm: decisao.decided_at,
-    avisoPier: AVISO_PIER_EM_REVISAO,
+    avisoPier: pierEnviado
+      ? "Decisão publicada como comentário privado no PIER."
+      : "Decisão registrada, mas não foi possível publicar no PIER agora.",
+    pierEnviado,
   };
+}
+
+export async function excluirDecisao(
+  ctx: AppContext,
+  input: { solicitacaoExternalId: string; decisaoId: string },
+) {
+  assertCanWrite(ctx);
+  const solicitacao = await carregarSolicitacao(
+    ctx,
+    input.solicitacaoExternalId,
+  );
+
+  const { data: decisao } = await ctx.db
+    .from("request_decision")
+    .select("id")
+    .eq("organization_id", ctx.organizationId)
+    .eq("request_id", solicitacao.id)
+    .eq("id", input.decisaoId)
+    .maybeSingle();
+  if (!decisao)
+    throw new AppError("REGRA_NEGOCIO", "Decisão não encontrada.");
+
+  const { error } = await ctx.db
+    .from("request_decision")
+    .delete()
+    .eq("organization_id", ctx.organizationId)
+    .eq("id", input.decisaoId);
+  if (error)
+    throw new AppError(
+      "INESPERADO",
+      "Não foi possível excluir a decisão.",
+      error.message,
+    );
+
+  // A exclusão remove só o registro interno: o PIER não expõe API para
+  // apagar a postagem, então o comentário publicado lá (se houve) permanece.
+  await audit(ctx, {
+    action: "EXCLUIR_DECISAO",
+    entity: "request_decision",
+    entityId: input.decisaoId,
+    correlationId: solicitacao.external_id,
+    after: { excluida: true },
+  });
+
+  return { excluida: true };
 }
 
 /** Resultado consolidado de uma execução (usado pela UI e pelo MCP). */

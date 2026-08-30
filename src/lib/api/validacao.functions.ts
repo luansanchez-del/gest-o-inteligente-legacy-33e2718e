@@ -105,6 +105,23 @@ export const registrarDecisao = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) =>
     comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
       const service = await import("@/server/domain/validacao/validacao.service");
-      return service.registrarDecisao(ctx, data);
+      return service.registrarDecisao(ctx, {
+        ...data,
+        autorEmail: emailDoToken(context.claims) ?? null,
+      });
+    }),
+  );
+
+export const excluirDecisao = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { solicitacaoExternalId: string; decisaoId: string }) => {
+    exigirSolicitacao(input?.solicitacaoExternalId);
+    if (!input?.decisaoId) throw new Error("VALIDACAO::Decisão não informada.");
+    return input;
+  })
+  .handler(async ({ data, context }) =>
+    comContexto(context.userId, emailDoToken(context.claims), async (ctx) => {
+      const service = await import("@/server/domain/validacao/validacao.service");
+      return service.excluirDecisao(ctx, data);
     }),
   );
