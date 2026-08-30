@@ -17,7 +17,7 @@ import {
 } from "./balancete.parser";
 import { competenciaDaData, type Instrucao } from "./instrucao";
 
-export const VALIDATOR_VERSION = "balancete-v2";
+export const VALIDATOR_VERSION = "balancete-v3";
 
 export type Severidade = "INFO" | "WARNING" | "ERROR" | "BLOCKER";
 
