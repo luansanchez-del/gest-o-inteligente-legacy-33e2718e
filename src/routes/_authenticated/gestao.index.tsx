@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   Building2,
+  Check,
+  ChevronsUpDown,
   Download,
   FilterX,
   History,
@@ -26,6 +28,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { diagnosticarConexaoPier } from "@/lib/api/carteira.functions";
 import {
   Dialog,
@@ -37,6 +47,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -68,6 +79,7 @@ import {
 import { processarEscopo } from "@/lib/api/processamento.functions";
 import { formatarCnpj, formatarCompetencia } from "@/lib/formato";
 import { mensagemDeErro } from "@/lib/erros";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/gestao/")({
   head: () => ({
@@ -308,6 +320,21 @@ function GestaoPage() {
         `Não foi possível carregar os tipos de solicitação do PIER: ${mensagemDeErro(tiposPier.error)}`,
       );
   }, [tiposPier.isError, tiposPier.error]);
+
+  const [tipoComboAberto, setTipoComboAberto] = useState(false);
+  const opcoesTipo = useMemo(() => {
+    const fixas = [
+      { id: "CONTABIL", nome: "Fechamento Contábil" },
+      { id: "MOVIMENTO_FINANCEIRO", nome: "Movimento Financeiro Mensal" },
+    ];
+    const dinamicas = (tiposPier.data ?? []).filter((t) => {
+      const nome = t.nome.trim().toUpperCase();
+      return nome !== "FECHAMENTO CONTÁBIL" && !nome.includes("MOVIMENTO FINANCEIRO");
+    });
+    return [...fixas, ...dinamicas];
+  }, [tiposPier.data]);
+  const tipoSelecionadoNome =
+    opcoesTipo.find((t) => t.id === tipo)?.nome ?? tipo;
 
   const filtro = {
     competencia,
@@ -745,36 +772,55 @@ function GestaoPage() {
                     : ""}
               </span>
             </Label>
-            <Select
-              value={tipo}
-              onValueChange={setTipo}
+            <Popover
+              open={tipoComboAberto}
               onOpenChange={(aberto) => {
+                setTipoComboAberto(aberto);
                 if (aberto) setTiposPierAbertoUmaVez(true);
               }}
             >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="max-h-80">
-                <SelectItem value="CONTABIL">Fechamento Contábil</SelectItem>
-                <SelectItem value="MOVIMENTO_FINANCEIRO">
-                  Movimento Financeiro Mensal
-                </SelectItem>
-                {(tiposPier.data ?? [])
-                  .filter((t) => {
-                    const nome = t.nome.trim().toUpperCase();
-                    return (
-                      nome !== "FECHAMENTO CONTÁBIL" &&
-                      !nome.includes("MOVIMENTO FINANCEIRO")
-                    );
-                  })
-                  .map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.nome}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={tipoComboAberto}
+                  className="w-full justify-between font-normal"
+                >
+                  <span className="truncate">{tipoSelecionadoNome}</span>
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[320px] p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Digite para buscar o tipo…" />
+                  <CommandList className="max-h-80">
+                    <CommandEmpty>
+                      {tiposPier.isLoading ? "Carregando tipos do PIER…" : "Nenhum tipo encontrado."}
+                    </CommandEmpty>
+                    <CommandGroup>
+                      {opcoesTipo.map((t) => (
+                        <CommandItem
+                          key={t.id}
+                          value={`${t.nome} ${t.id}`}
+                          onSelect={() => {
+                            setTipo(t.id);
+                            setTipoComboAberto(false);
+                          }}
+                        >
+                          <Check
+                            className={cn(
+                              "h-4 w-4",
+                              tipo === t.id ? "opacity-100" : "opacity-0",
+                            )}
+                          />
+                          {t.nome}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           </div>
           <div className="space-y-1.5 lg:min-w-[280px] lg:flex-1">
             <div className="flex items-center justify-between gap-2">
