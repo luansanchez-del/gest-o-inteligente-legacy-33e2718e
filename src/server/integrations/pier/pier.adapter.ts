@@ -129,7 +129,11 @@ export const pierAdapter: PierAdapter = {
           pierGet<unknown>("/api/v2/solicitacoes", {
             pagina,
             quantidadePorPagina: POR_PAGINA_SOLICITACOES,
-            status: options?.status ?? "Todas",
+            // Sem tipo, "status: Todas" + busca por texto é filtro amplo
+            // demais: o PIER chegou a recusar com 500 ("tente um filtro mais
+            // específico"). Só envia status quando o chamador pedir um
+            // valor específico; sem isso, deixa o padrão do PIER decidir.
+            ...(options?.status ? { status: options.status } : {}),
             ...(options?.busca?.trim() ? { busca: options.busca.trim() } : {}),
           }).then(asArray),
         ),

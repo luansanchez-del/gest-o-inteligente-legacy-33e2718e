@@ -123,7 +123,10 @@ async function buscarDoMes(competencia: string, amb: Ambiente) {
   const [ano, mes] = competencia.split("-");
   const termosBusca = [`${mes}/${ano}`, `${mes}.${ano}`];
   for (const termoBusca of termosBusca) {
-    const amplas = await pierAdapter.listRequests({ status: "Todas", maxPages: 12, busca: termoBusca });
+    // Sem "status: Todas" explícito: o PIER recusa (HTTP 500, "tente um
+    // filtro mais específico") uma busca por texto sem tipo E sem status
+    // restrito ao mesmo tempo. Deixa o status no padrão do PIER.
+    const amplas = await pierAdapter.listRequests({ maxPages: 12, busca: termoBusca });
     for (const s of amplas) if (!porId.has(s.externalId)) porId.set(s.externalId, s);
   }
 
