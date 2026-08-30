@@ -187,4 +187,29 @@
   --color-st-wait-soft: var(--st-wait-soft);
   --color-st-neutral: var(--st-neutral);
   --color-st-neutral-soft: var(--st-neutral-soft);
+
+  /*
+   * Alias para warning/success: várias telas já usam text-warning-strong,
+   * bg-warning-soft, text-success-strong etc., mas essas cores nunca tinham
+   * sido registradas aqui -- a classe existia no JSX mas não gerava CSS
+   * nenhum, então renderizava sem cor em toda a aplicação. Reaproveita os
+   * mesmos tons já calibrados de st-warn/st-ok em vez de inventar cor nova.
+   */
+  --color-warning: var(--st-warn);
+  --color-warning-soft: var(--st-warn-soft);
+  --color-warning-strong: var(--st-warn);
+  --color-success: var(--st-ok);
+  --color-success-soft: var(--st-ok-soft);
+  --color-success-strong: var(--st-ok);
+  --color-danger: var(--st-late);
+  --color-danger-soft: var(--st-late-soft);
+  --color-danger-strong: var(--st-late);
+  --color-info: var(--st-wait);
+  --color-info-soft: var(--st-wait-soft);
+  --color-info-strong: var(--st-wait);
+  --color-neutral: var(--st-neutral);
+  --color-neutral-soft: var(--st-neutral-soft);
+  --color-neutral-strong: var(--st-neutral);
+  --color-accent-soft: var(--accent);
+  --color-accent-strong: var(--accent-foreground);
 }

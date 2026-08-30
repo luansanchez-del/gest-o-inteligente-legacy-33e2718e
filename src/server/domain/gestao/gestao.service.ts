@@ -67,6 +67,7 @@ export interface EscopoLinha {
   avisoCadastral: string | null;
   competencia: string | null;
   prazo: string | null;
+  finalizadaEm: string | null;
   temAnexo: boolean;
   /** true quando o PDF já está armazenado internamente e pode ser analisado. */
   documentoDisponivel: boolean;
@@ -244,6 +245,7 @@ async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
           : null,
       competencia: s.reference_month,
       prazo: s.deadline_at,
+      finalizadaEm: s.finished_at,
       temAnexo: Boolean(s.has_attachment),
       documentoDisponivel,
       statusAnalise,
