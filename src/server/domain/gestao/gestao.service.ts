@@ -28,7 +28,12 @@ export interface EscopoFiltro {
   competencia: string;
   /** Competência final do intervalo. Vazio = apenas a competência inicial. */
   competenciaFim?: string | null;
-  tipo: TipoFechamento;
+  /**
+   * Opcional: quem decide o escopo é o departamento, não o tipo. Sem tipo
+   * informado, mostra qualquer tipo de solicitação carregado para os
+   * departamentos escolhidos (Fechamento Contábil, DAS, REINF...).
+   */
+  tipo?: TipoFechamento | null;
   /** ID externo do departamento no PIER. Vazio = todos os departamentos contábeis. */
   departamentoId?: string | null;
   /** ID externo do usuário responsável no PIER. Vazio = todos do departamento. */
@@ -74,7 +79,8 @@ export interface EscopoLinha {
 
 export interface EscopoPreview {
   competencia: string;
-  tipo: string;
+  /** null quando nenhum tipo específico foi escolhido (mostra todos os tipos do departamento). */
+  tipo: string | null;
   departamento: { id: string | null; nome: string };
   responsavel: { id: string | null; nome: string };
   totalEmpresas: number;
@@ -93,15 +99,20 @@ function normalizarDocumento(value: string | null | undefined) {
 }
 
 async function carregarEscopo(ctx: AppContext, filtro: EscopoFiltro) {
-  const typeExternalId = await resolverTipoSolicitacao(ctx, filtro.tipo);
-
   let consulta = ctx.db
     .from("request")
     .select(
       "id, external_id, number, description, status, client_external_id, client_name, client_document, responsible_external_id, responsible_name, department_external_id, has_attachment, reference_month, finished_at",
     )
-    .eq("organization_id", ctx.organizationId)
-    .eq("type_external_id", typeExternalId);
+    .eq("organization_id", ctx.organizationId);
+  // Sem tipo informado, mostra qualquer tipo carregado (Fechamento Contábil,
+  // DAS, REINF...) — quem decide o escopo agora é o departamento, não o
+  // tipo: departamentos como o Tributário não trabalham com Fechamento
+  // Contábil e ficariam sempre vazios se o tipo continuasse obrigatório.
+  if (filtro.tipo) {
+    const typeExternalId = await resolverTipoSolicitacao(ctx, filtro.tipo);
+    consulta = consulta.eq("type_external_id", typeExternalId);
+  }
 
   if (filtro.revisaoCompetencia) {
     // Sem competência interpretável: fila de revisão, nunca descarte.
@@ -353,7 +364,7 @@ export async function montarPreview(
 
   return {
     competencia: filtro.competencia,
-    tipo: filtro.tipo,
+    tipo: filtro.tipo ?? null,
     departamento: { id: filtro.departamentoId ?? null, nome: departamentoNome },
     responsavel: { id: filtro.responsavelId ?? null, nome: responsavelNome },
     totalEmpresas: linhas.length,

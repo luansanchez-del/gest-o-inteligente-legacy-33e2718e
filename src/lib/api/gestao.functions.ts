@@ -6,8 +6,12 @@ import { comContexto, emailDoToken } from "./contexto";
 type EscopoInput = {
   competencia: string;
   competenciaFim?: string | null;
-  /** Chave conhecida (CONTABIL, MOVIMENTO_FINANCEIRO, ...) ou o ID de um tipo real do PIER. */
-  tipo: string;
+  /**
+   * Opcional: chave conhecida (CONTABIL, MOVIMENTO_FINANCEIRO, ...) ou o ID
+   * de um tipo real do PIER. Sem tipo, o escopo é decidido pelo
+   * departamento e mostra qualquer tipo de solicitação carregado.
+   */
+  tipo?: string | null;
   departamentoId?: string | null;
   responsavelId?: string | null;
   statusFila?:
@@ -41,7 +45,6 @@ function validarEscopo(input: EscopoInput) {
     throw new Error("VALIDACAO::Informe a competência no formato AAAA-MM.");
   if (input.competenciaFim && !COMPETENCIA.test(input.competenciaFim))
     throw new Error("VALIDACAO::Informe a competência final no formato AAAA-MM.");
-  if (!input.tipo) throw new Error("VALIDACAO::Informe o tipo de fechamento.");
   if (input.statusPier && !["PENDENTES", "FINALIZADAS", "TODOS"].includes(input.statusPier))
     throw new Error("VALIDACAO::Status PIER inválido.");
   if (
@@ -162,7 +165,10 @@ export const sincronizarSolicitacoes = createServerFn({ method: "POST" })
       const service = await import("@/server/domain/gestao/escopo.service");
       return service.sincronizarSolicitacoes(ctx, {
         competencia: data.competencia,
-        tipo: data.tipo,
+        // Este mecanismo é específico para um tipo (diferente da Carga
+        // histórica, que já é orientada por departamento): sem tipo
+        // escolhido na tela, cai no Fechamento Contábil.
+        tipo: data.tipo || "CONTABIL",
         incluirFinalizadas:
           data.incluirFinalizadas ??
           (data.statusPier === "FINALIZADAS" || data.statusPier === "TODOS"),

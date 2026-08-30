@@ -97,6 +97,7 @@ export const Route = createFileRoute("/_authenticated/gestao/")({
 
 const TODOS_DEPARTAMENTOS = "__TODOS__";
 const TODOS_USUARIOS = "__TODOS_USUARIOS__";
+const TODOS_TIPOS = "__TODOS_TIPOS__";
 const TODAS_FILAS = "__TODAS_FILAS__";
 const TODOS_ANEXOS = "__TODOS_ANEXOS__";
 const TODOS_REGIMES = "__TODOS_REGIMES__";
@@ -175,7 +176,7 @@ function formatarDataHora(value: string | null | undefined) {
 function filtrosPadrao(): FiltrosGestaoSalvos {
   return {
     competencia: competenciaAtual(),
-    tipo: "CONTABIL",
+    tipo: TODOS_TIPOS,
     competenciaFim: "",
     busca: "",
     revisaoCompetencia: false,
@@ -204,7 +205,7 @@ function carregarFiltrosGestao(): FiltrosGestaoSalvos {
       competencia: /^\d{4}-\d{2}$/.test(salvo.competencia ?? "")
         ? salvo.competencia!
         : padrao.competencia,
-      tipo: salvo.tipo?.trim() || "CONTABIL",
+      tipo: salvo.tipo?.trim() || TODOS_TIPOS,
       statusPier: ["PENDENTES", "FINALIZADAS", "TODOS"].includes(
         salvo.statusPier ?? "",
       )
@@ -324,6 +325,7 @@ function GestaoPage() {
   const [tipoComboAberto, setTipoComboAberto] = useState(false);
   const opcoesTipo = useMemo(() => {
     const fixas = [
+      { id: TODOS_TIPOS, nome: "Todos os tipos" },
       { id: "CONTABIL", nome: "Fechamento Contábil" },
       { id: "MOVIMENTO_FINANCEIRO", nome: "Movimento Financeiro Mensal" },
     ];
@@ -341,7 +343,8 @@ function GestaoPage() {
     competenciaFim: competenciaFim || null,
     revisaoCompetencia,
     busca: busca.trim() || null,
-    tipo,
+    // Sem tipo específico, o departamento é quem decide o escopo.
+    tipo: tipo === TODOS_TIPOS ? null : tipo,
     departamentoId: departamento === TODOS_DEPARTAMENTOS ? null : departamento,
     responsavelId: responsavel === TODOS_USUARIOS ? null : responsavel,
     statusFila: fila === TODAS_FILAS ? null : (fila as never),
@@ -404,7 +407,13 @@ function GestaoPage() {
 
   const prepararSolicitacoes = useMutation({
     mutationFn: () =>
-      sincronizarSolicitacoes({ data: { competencia, tipo, statusPier } }),
+      sincronizarSolicitacoes({
+        data: {
+          competencia,
+          tipo: tipo === TODOS_TIPOS ? "CONTABIL" : tipo,
+          statusPier,
+        },
+      }),
     onSuccess: (r) => {
       const ignoradas =
         "finalizadasIgnoradas" in r && typeof r.finalizadasIgnoradas === "number"
@@ -564,7 +573,7 @@ function GestaoPage() {
   }, [usuarios, departamento]);
 
   const filtrosAtivos =
-    tipo !== "CONTABIL" ||
+    tipo !== TODOS_TIPOS ||
     departamento !== TODOS_DEPARTAMENTOS ||
     responsavel !== TODOS_USUARIOS ||
     fila !== TODAS_FILAS ||
@@ -580,7 +589,7 @@ function GestaoPage() {
 
   function limparFiltros() {
     setCompetencia(competenciaAtual());
-    setTipo("CONTABIL");
+    setTipo(TODOS_TIPOS);
     setDepartamento(TODOS_DEPARTAMENTOS);
     setResponsavel(TODOS_USUARIOS);
     setFila(TODAS_FILAS);
