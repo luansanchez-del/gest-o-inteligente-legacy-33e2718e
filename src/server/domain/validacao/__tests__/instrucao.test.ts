@@ -55,6 +55,32 @@ describe("interpretarTexto", () => {
     ).toEqual([]);
     expect(extrairCompetencias("Competência 06/2026 conforme solicitado.")).toEqual(["2026-06"]);
   });
+
+  it("ignora um par 'de X a Y' formatado como range quando não tem relação com o período do fechamento", () => {
+    // Caso real: a postagem de observações pedia extrato bancário "para
+    // 01/01/2026 a 30/04/2026" -- é um range de datas de verdade, com
+    // conector "a" entre elas, mas sobre extrato bancário, não sobre o
+    // período do balancete. Só formar um par não deveria ser suficiente.
+    const texto =
+      "Solicitar extratos consolidados do banco Itau, pois tem saldo de aplicações sem pagamentos localizados no ECAC para 01/01/2026 a 30/04/2026. Fornecedor não foi possível validar pois tem muitos sispag.";
+
+    expect(interpretarTexto(texto)).toEqual({
+      inicio: null,
+      fim: null,
+      tipo: "INDEFINIDO",
+      trecho: null,
+    });
+  });
+
+  it("reconhece 'validação' (substantivo) como palavra-gatilho, mas não 'validar'/'validarmos' (verbo)", () => {
+    expect(
+      interpretarTexto("Empresa Lançada e Conciliada 01/2026 a 04/2026 e segue demonstrativos para Validação"),
+    ).toMatchObject({ inicio: "2026-01", fim: "2026-04", tipo: "INTERVALO" });
+
+    expect(
+      interpretarTexto("Fornecedor não foi possível validar pois faltam notas de 03/2026."),
+    ).toEqual({ inicio: null, fim: null, tipo: "INDEFINIDO", trecho: null });
+  });
 });
 
 describe("instrucaoEfetiva com postagem de observação ruidosa", () => {
