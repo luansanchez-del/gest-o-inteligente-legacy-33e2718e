@@ -6,6 +6,8 @@
  * quando um PDF não fornece coordenadas utilizáveis.
  */
 
+import { parseBalancete } from "./balancete.parser";
+
 interface ItemTexto {
   str?: string;
   hasEOL?: boolean;
@@ -147,6 +149,26 @@ function textoTemColunasInvertidas(paginas: string[]): boolean {
   });
 }
 
+/** Abaixo disso, a extração "simples" perdeu valores demais — tenta a posicional. */
+const LIMIAR_INTEGRIDADE_EXTRACAO = 0.85;
+
+/**
+ * Alguns geradores de balancete emitem, no stream do PDF, os campos de cada
+ * linha fora de ordem e sem espaço entre eles (ex.: "463.480,32(16.315,86)
+ * ...ATIVO1S1" em vez de "1 S 1 ATIVO ... 463.480,32"). `extractText` segue
+ * a ordem do stream e produz esse texto colado; `textoTemColunasInvertidas`
+ * só pega esse caso quando cabeçalho e dados ficam numa única linha, o que
+ * nem sempre acontece. Reaproveita a mesma checagem de integridade do
+ * validador (valores no texto bruto vs. valores capturados em alguma linha)
+ * para decidir isso de forma mais geral: se a extração simples perdeu
+ * valores demais, tenta a extração posicional (ordena por coordenada X/Y,
+ * não pela ordem do stream) e fica com a que capturar mais.
+ */
+function razaoIntegridade(paginas: string[]): number {
+  if (!paginas.some((pagina) => pagina.trim())) return 0;
+  return parseBalancete(paginas).integridadeValores.razao;
+}
+
 export async function extrairTextoPdf(bytes: Uint8Array): Promise<PdfExtraido> {
   const { extractText, extractTextItems } = await import("unpdf");
 
@@ -156,15 +178,23 @@ export async function extrairTextoPdf(bytes: Uint8Array): Promise<PdfExtraido> {
   const paginasSimples = Array.isArray(simples.text) ? simples.text : [simples.text];
   if (
     paginasSimples.some((pagina) => pagina.trim()) &&
-    !textoTemColunasInvertidas(paginasSimples)
+    !textoTemColunasInvertidas(paginasSimples) &&
+    razaoIntegridade(paginasSimples) >= LIMIAR_INTEGRIDADE_EXTRACAO
   ) {
     return { paginas: paginasSimples, totalPaginas: simples.totalPages };
   }
 
-  // Fallback para PDFs que só disponibilizam itens posicionados.
+  // Fallback: extração posicional (ordena os itens por coordenada, não pela
+  // ordem do stream do PDF) — mais robusta a coluna colada/fora de ordem.
   const estruturado = await extractTextItems(new Uint8Array(bytes));
-  const paginas = estruturado.items.map((itens) =>
+  const paginasPosicional = estruturado.items.map((itens) =>
     montarTextoDeItensEstruturados(itens as ItemEstruturado[]),
   );
-  return { paginas, totalPaginas: estruturado.totalPages };
+
+  // Se a posicional não sair melhor que a simples (ex.: PDF sem coordenadas
+  // utilizáveis), fica com a que capturou mais — nunca troca por algo pior.
+  if (razaoIntegridade(paginasPosicional) < razaoIntegridade(paginasSimples)) {
+    return { paginas: paginasSimples, totalPaginas: simples.totalPages };
+  }
+  return { paginas: paginasPosicional, totalPaginas: estruturado.totalPages };
 }
