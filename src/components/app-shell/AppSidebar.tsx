@@ -48,18 +48,18 @@ const GRUPOS = [
   },
 ] as const;
 
-// Paleta real da marca Group Legacy (grafite quase preto + dourado/prata do
-// símbolo), extraída do site institucional — não é mais um gradiente
-// azul/violeta genérico.
+// Paleta real da Group Legacy, mas na variante CONT LEGACY (azul-marinho +
+// grafite) em vez do dourado principal — de propósito, pra não confundir
+// com o ícone do ERP na barra de tarefas quando os dois estão instalados.
 const SIDEBAR_STYLE = {
   "--sidebar": "#121418",
   "--sidebar-foreground": "oklch(0.97 0.01 255)",
-  "--sidebar-primary": "#cbb15a",
-  "--sidebar-primary-foreground": "#171512",
+  "--sidebar-primary": "#1a136d",
+  "--sidebar-primary-foreground": "#ffffff",
   "--sidebar-accent": "#1c1f24",
   "--sidebar-accent-foreground": "oklch(0.99 0.005 255)",
   "--sidebar-border": "oklch(1 0 0 / 10%)",
-  "--sidebar-ring": "#cbb15a",
+  "--sidebar-ring": "#4a3fd6",
 } as CSSProperties;
 
 export function AppSidebar() {
@@ -102,7 +102,7 @@ export function AppSidebar() {
                         asChild
                         isActive={ativo}
                         tooltip={item.title}
-                        className="h-10 rounded-xl px-3 text-white/72 hover:bg-white/10 hover:text-white data-[active=true]:bg-gradient-to-r data-[active=true]:from-[#d4bc6a] data-[active=true]:to-[#bfa04e] data-[active=true]:text-[#171512] data-[active=true]:shadow-md data-[active=true]:shadow-black/30"
+                        className="h-10 rounded-xl px-3 text-white/72 hover:bg-white/10 hover:text-white data-[active=true]:bg-gradient-to-r data-[active=true]:from-[#2e2499] data-[active=true]:to-[#1a136d] data-[active=true]:text-white data-[active=true]:shadow-md data-[active=true]:shadow-black/30"
                       >
                         <Link to={item.to}>
                           <item.icon className="opacity-90" />
