@@ -5,7 +5,6 @@ import {
   BookUser,
   BrainCircuit,
   Building2,
-  ClipboardList,
   Gauge,
   Inbox,
   LayoutGrid,
@@ -49,15 +48,18 @@ const GRUPOS = [
   },
 ] as const;
 
+// Paleta real da marca Group Legacy (grafite quase preto + dourado/prata do
+// símbolo), extraída do site institucional — não é mais um gradiente
+// azul/violeta genérico.
 const SIDEBAR_STYLE = {
-  "--sidebar": "oklch(0.19 0.055 267)",
+  "--sidebar": "#121418",
   "--sidebar-foreground": "oklch(0.97 0.01 255)",
-  "--sidebar-primary": "oklch(0.61 0.24 285)",
-  "--sidebar-primary-foreground": "oklch(0.99 0.005 255)",
-  "--sidebar-accent": "oklch(0.28 0.075 273)",
+  "--sidebar-primary": "#cbb15a",
+  "--sidebar-primary-foreground": "#171512",
+  "--sidebar-accent": "#1c1f24",
   "--sidebar-accent-foreground": "oklch(0.99 0.005 255)",
   "--sidebar-border": "oklch(1 0 0 / 10%)",
-  "--sidebar-ring": "oklch(0.7 0.19 285)",
+  "--sidebar-ring": "#cbb15a",
 } as CSSProperties;
 
 export function AppSidebar() {
@@ -67,9 +69,11 @@ export function AppSidebar() {
     <Sidebar collapsible="icon" className="border-r-0" style={SIDEBAR_STYLE}>
       <SidebarHeader className="border-b border-white/10 px-3 py-4">
         <div className="flex items-center gap-2.5">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 text-white shadow-lg shadow-violet-950/25">
-            <ClipboardList className="h-5 w-5" />
-          </span>
+          <img
+            src="/icons/icon.png"
+            alt="Group Legacy"
+            className="h-9 w-9 shrink-0"
+          />
           <div className="min-w-0 group-data-[collapsible=icon]:hidden">
             <p className="truncate text-sm font-semibold leading-tight text-white">Gestão Inteligente</p>
             <p className="mt-0.5 truncate text-[11px] text-white/50">Central de gestão do escritório</p>
@@ -98,7 +102,7 @@ export function AppSidebar() {
                         asChild
                         isActive={ativo}
                         tooltip={item.title}
-                        className="h-10 rounded-xl px-3 text-white/72 hover:bg-white/10 hover:text-white data-[active=true]:bg-gradient-to-r data-[active=true]:from-blue-600 data-[active=true]:via-indigo-600 data-[active=true]:to-violet-600 data-[active=true]:text-white data-[active=true]:shadow-md data-[active=true]:shadow-violet-950/20"
+                        className="h-10 rounded-xl px-3 text-white/72 hover:bg-white/10 hover:text-white data-[active=true]:bg-gradient-to-r data-[active=true]:from-[#d4bc6a] data-[active=true]:to-[#bfa04e] data-[active=true]:text-[#171512] data-[active=true]:shadow-md data-[active=true]:shadow-black/30"
                       >
                         <Link to={item.to}>
                           <item.icon className="opacity-90" />

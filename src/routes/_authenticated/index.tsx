@@ -245,7 +245,7 @@ function VisaoGeral() {
           titulo="Visão Geral"
           descricao="Acompanhe os principais indicadores e as ações prioritárias do escritório."
         />
-        <div className="mt-2 h-1 w-24 rounded-full bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-600" />
+        <div className="mt-2 h-1 w-24 rounded-full bg-gradient-to-r from-[#d4bc6a] to-[#bfa04e]" />
       </div>
 
       <Card className="border-indigo-100 bg-gradient-to-r from-white via-indigo-50/55 to-violet-50/60 p-4 shadow-sm">
@@ -308,7 +308,7 @@ function VisaoGeral() {
             <Button
               onClick={() => void preview.refetch()}
               disabled={preview.isFetching}
-              className="border-0 bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md shadow-violet-500/15 hover:from-indigo-700 hover:to-violet-700"
+              className="border-0 bg-gradient-to-r from-[#d4bc6a] to-[#bfa04e] text-[#171512] shadow-md shadow-black/10 hover:from-[#cbb15a] hover:to-[#b3953f]"
             >
               <RefreshCw className={`mr-2 h-4 w-4 ${preview.isFetching ? "animate-spin" : ""}`} />
               Atualizar dados
@@ -400,9 +400,9 @@ function VisaoGeral() {
           </div>
 
           {indice.data ? (
-            <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-indigo-600 via-violet-600 to-purple-700 p-0 text-white shadow-lg shadow-violet-500/15">
-              <div className="absolute -right-20 -top-24 h-56 w-56 rounded-full bg-white/10 blur-2xl" />
-              <div className="absolute -bottom-24 left-1/3 h-48 w-48 rounded-full bg-blue-400/15 blur-3xl" />
+            <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-[#1c1f24] via-[#171a1e] to-[#0e1013] p-0 text-white shadow-lg shadow-black/20">
+              <div className="absolute -right-20 -top-24 h-56 w-56 rounded-full bg-[#cbb15a]/15 blur-2xl" />
+              <div className="absolute -bottom-24 left-1/3 h-48 w-48 rounded-full bg-white/5 blur-3xl" />
               <div className="relative grid gap-3 p-5 md:grid-cols-3">
                 <div className="md:col-span-3 flex flex-wrap items-center justify-between gap-2 pb-1">
                   <div className="flex items-center gap-2">
