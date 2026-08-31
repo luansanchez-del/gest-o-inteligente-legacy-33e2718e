@@ -400,9 +400,9 @@ function VisaoGeral() {
           </div>
 
           {indice.data ? (
-            <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-[#1c1f24] via-[#171a1e] to-[#0e1013] p-0 text-white shadow-lg shadow-black/20">
-              <div className="absolute -right-20 -top-24 h-56 w-56 rounded-full bg-[#cbb15a]/15 blur-2xl" />
-              <div className="absolute -bottom-24 left-1/3 h-48 w-48 rounded-full bg-white/5 blur-3xl" />
+            <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-[#4a3a17] via-[#26210f] to-[#121418] p-0 text-white shadow-lg shadow-black/25">
+              <div className="absolute -right-20 -top-24 h-56 w-56 rounded-full bg-[#cbb15a]/30 blur-2xl" />
+              <div className="absolute -bottom-24 left-1/3 h-48 w-48 rounded-full bg-[#8a6d1f]/20 blur-3xl" />
               <div className="relative grid gap-3 p-5 md:grid-cols-3">
                 <div className="md:col-span-3 flex flex-wrap items-center justify-between gap-2 pb-1">
                   <div className="flex items-center gap-2">
