@@ -1,0 +1,16 @@
+{
+  "name": "Gestão Inteligente",
+  "short_name": "Gestão Inteligente",
+  "description": "Painel de gestão de fechamentos contábeis, integração com o PIER e carteira de clientes, em um só lugar.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#151a30",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "/icons/icon.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icons/icon-maskable.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
