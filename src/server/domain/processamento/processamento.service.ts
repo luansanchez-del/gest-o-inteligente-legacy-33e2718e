@@ -76,9 +76,13 @@ function pareceFinalizada(status: string | null, finishedAt: string | null) {
 function competenciaParaTermos(competencia: string | null) {
   if (!competencia) return [];
   const [ano, mes] = competencia.split("-");
-  return [competencia, `${mes}/${ano}`, `${mes}-${ano}`, `${mes}${ano}`].filter(
-    Boolean,
-  ) as string[];
+  return [
+    competencia,
+    `${mes}/${ano}`,
+    `${mes}-${ano}`,
+    `${mes}.${ano}`,
+    `${mes}${ano}`,
+  ].filter(Boolean) as string[];
 }
 
 /** Escolhe o PDF com maior chance de ser o balancete da competência. */
@@ -129,6 +133,53 @@ export function escolherBalancete(
   return candidatos[0]?.arquivo ?? null;
 }
 
+/**
+ * Escolhe o PDF com maior chance de ser o razão (livro-razão) da competência.
+ * Espelha `escolherBalancete`, mas com o filtro invertido: exige "razão" no
+ * nome em vez de descartá-lo. Reforço opcional para a conciliação —
+ * ausência de razão não afeta o fluxo, quem não anexa segue igual a hoje.
+ */
+export function escolherRazao(
+  arquivos: {
+    externalId: string;
+    name: string | null;
+    category: string | null;
+    mimeType: string | null;
+    createdAt: string | null;
+  }[],
+  contexto: { competencia: string | null; textoPostagens: string },
+) {
+  const termos = competenciaParaTermos(contexto.competencia);
+  const candidatos = arquivos
+    .filter((a) => {
+      const nome = (a.name ?? "").toLowerCase();
+      const mime = (a.mimeType ?? "").toLowerCase();
+      return nome.endsWith(".pdf") || mime.includes("pdf");
+    })
+    .filter((a) => /\braz[aã]o\b/.test((a.name ?? "").toLowerCase()))
+    .map((a) => {
+      const alvo = `${a.name ?? ""} ${a.category ?? ""}`.toLowerCase();
+      let pontos = 0;
+      if (termos.some((t) => alvo.includes(t.toLowerCase()))) pontos += 5;
+      if (
+        contexto.textoPostagens
+          .toLowerCase()
+          .includes((a.name ?? "###").toLowerCase())
+      )
+        pontos += 2;
+      return { arquivo: a, pontos };
+    })
+    .sort(
+      (a, b) =>
+        b.pontos - a.pontos ||
+        String(b.arquivo.createdAt ?? "").localeCompare(
+          String(a.arquivo.createdAt ?? ""),
+        ),
+    );
+
+  return candidatos[0]?.arquivo ?? null;
+}
+
 export interface ConferenciaMovimentoFinanceiro {
   situacao: "LIBERADO" | "BLOQUEADO";
   semMovimentoDeclarado: boolean;
@@ -146,7 +197,7 @@ function normalizarBusca(value: string) {
     .replace(/[^a-z0-9]+/g, " ");
 }
 
-function contemDeclaracaoSemMovimento(value: string) {
+export function contemDeclaracaoSemMovimento(value: string) {
   const texto = normalizarBusca(value);
   return (
     /\b(empresa\s+)?sem\s+moviment(?:o|acao)\b/.test(texto) ||
@@ -584,11 +635,34 @@ export async function processarSolicitacao(
     );
   }
 
+  // Razão é reforço opcional da conciliação: sem ele, ou se algo falhar ao
+  // buscá-lo, o fluxo segue exatamente como antes, só com o balancete.
+  let anexoRazaoId: string | undefined;
+  const razao = escolherRazao(arquivos, {
+    competencia: base.periodo,
+    textoPostagens,
+  });
+  if (razao) {
+    try {
+      const bytesRazao = await deps.pier.downloadFile({
+        fileExternalId: razao.externalId,
+      });
+      const anexo = await deps.salvarAnexo(ctx, solicitacao, {
+        filename: razao.name ?? `razao-${razao.externalId}.pdf`,
+        bytes: bytesRazao,
+      });
+      anexoRazaoId = anexo.anexoId;
+    } catch (error) {
+      console.error("[processamento] razão indisponível:", erroSeguro(error));
+    }
+  }
+
   let execucaoId: string;
   try {
     const execucao = await deps.validar(ctx, {
       solicitacaoExternalId: solicitacao.external_id,
       anexoId,
+      ...(anexoRazaoId ? { anexoRazaoId } : {}),
       ...(input.reprocessar ? { reprocessar: true } : {}),
     });
     execucaoId = execucao.execucaoId;

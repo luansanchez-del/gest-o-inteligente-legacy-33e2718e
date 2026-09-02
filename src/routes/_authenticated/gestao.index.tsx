@@ -19,6 +19,7 @@ import { toast } from "sonner";
 
 import { PageHeader } from "@/components/common/PageHeader";
 import { CargaCompetencias } from "@/components/gestao/CargaCompetencias";
+import { DeclararSemMovimentoLote } from "@/components/gestao/DeclararSemMovimentoLote";
 import {
   CarregandoTabela,
   ErroConsulta,
@@ -671,6 +672,7 @@ function GestaoPage() {
               <Download className="mr-2 h-4 w-4" />
               Carregar solicitações da competência
             </Button>
+            <DeclararSemMovimentoLote competenciaInicial={competencia} />
             <Button
               variant="outline"
               onClick={() => atualizarRespostas.mutate()}

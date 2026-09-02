@@ -5,6 +5,8 @@ import { erroSeguro, mascarar, mascararTexto } from "../../lib/mascara";
 import { pierAdapter } from "../../integrations/pier/pier.adapter";
 import { parseBalancete } from "./balancete.parser";
 import {
+  classificar,
+  conciliarComRazao,
   validarBalancete,
   VALIDATOR_VERSION,
   type Achado,
@@ -14,6 +16,7 @@ import {
   interpretarTexto,
   type Instrucao,
 } from "./instrucao";
+import { parseRazao } from "./razao.parser";
 
 const BUCKET = "request-attachments";
 const TAMANHO_MAXIMO = 25 * 1024 * 1024;
@@ -423,6 +426,8 @@ export async function executarValidacao(
   input: {
     solicitacaoExternalId: string;
     anexoId: string;
+    /** Reforço opcional: quando presente, concilia o saldo final por conta contra o balancete. */
+    anexoRazaoId?: string;
     reprocessar?: boolean;
   },
 ) {
@@ -446,12 +451,31 @@ export async function executarValidacao(
       "Documento não encontrado nesta solicitação.",
     );
 
+  let anexoRazao: { id: string; storage_path: string; sha256: string } | null = null;
+  if (input.anexoRazaoId) {
+    const { data } = await ctx.db
+      .from("request_attachment")
+      .select("id, storage_path, sha256")
+      .eq("organization_id", ctx.organizationId)
+      .eq("request_id", solicitacao.id)
+      .eq("id", input.anexoRazaoId)
+      .maybeSingle();
+    anexoRazao = data ?? null;
+  }
+
+  // Combina os dois hashes quando há razão, pra invalidar o cache se qualquer
+  // um dos dois arquivos mudar. Sem razão, mantém exatamente o hash de hoje —
+  // zero mudança de comportamento pro caso comum (balancete sozinho).
+  const contentHash = anexoRazao
+    ? await sha256(new TextEncoder().encode(`${anexo.sha256}|${anexoRazao.sha256}`))
+    : anexo.sha256;
+
   // Idempotência: mesmo conteúdo + mesma versão do validador reaproveita a execução.
   const { data: anterior } = await ctx.db
     .from("validation_execution")
     .select("id, status")
     .eq("organization_id", ctx.organizationId)
-    .eq("content_hash", anexo.sha256)
+    .eq("content_hash", contentHash)
     .eq("validator_version", VALIDATOR_VERSION)
     .maybeSingle();
 
@@ -469,7 +493,7 @@ export async function executarValidacao(
     attachment_id: anexo.id,
     status: "RUNNING" as const,
     validator_version: VALIDATOR_VERSION,
-    content_hash: anexo.sha256,
+    content_hash: contentHash,
     instruction_snapshot: mascarar({
       titulo: solicitacao.description,
       efetiva,
@@ -516,15 +540,45 @@ export async function executarValidacao(
       instrucao: efetiva,
     });
 
+    // Razão é reforço opcional: falha ao ler/parsear não derruba a análise
+    // do balancete, só deixa de conciliar (com um achado avisando por quê).
+    let razaoDocumento: ReturnType<typeof parseRazao> | null = null;
+    let achadosRazao: Achado[] = [];
+    if (anexoRazao) {
+      try {
+        const { data: arquivoRazao, error: downloadRazaoError } =
+          await ctx.db.storage.from(BUCKET).download(anexoRazao.storage_path);
+        if (downloadRazaoError || !arquivoRazao)
+          throw new Error("Razão indisponível no armazenamento.");
+        const bytesRazao = new Uint8Array(await arquivoRazao.arrayBuffer());
+        const { paginas: paginasRazao } = await extrairTextoPdf(bytesRazao);
+        razaoDocumento = parseRazao(paginasRazao);
+        achadosRazao = conciliarComRazao(documento, razaoDocumento);
+      } catch (error) {
+        achadosRazao = [
+          {
+            code: "RAZAO_ILEGIVEL",
+            severity: "WARNING",
+            title: "Não foi possível ler o razão anexado",
+            detail: erroSeguro(error),
+            requiresHuman: true,
+          },
+        ];
+      }
+    }
+
+    const achadosCombinados = [...relatorio.achados, ...achadosRazao];
+    const resultadoFinal = classificar(achadosCombinados);
+
     await ctx.db
       .from("validation_finding")
       .delete()
       .eq("organization_id", ctx.organizationId)
       .eq("execution_id", execucao.id);
 
-    if (relatorio.achados.length) {
+    if (achadosCombinados.length) {
       await ctx.db.from("validation_finding").insert(
-        relatorio.achados.map((a: Achado) => ({
+        achadosCombinados.map((a: Achado) => ({
           organization_id: ctx.organizationId,
           execution_id: execucao.id,
           code: a.code,
@@ -544,7 +598,7 @@ export async function executarValidacao(
       .from("validation_execution")
       .update({
         status: "COMPLETED",
-        result: relatorio.resultado,
+        result: resultadoFinal,
         summary: mascararTexto(relatorio.resumo),
         totals: mascarar({
           ...relatorio.totais,
@@ -558,6 +612,16 @@ export async function executarValidacao(
             colunas: documento.colunasDetectadas,
             contas: documento.linhas.length,
           },
+          ...(razaoDocumento
+            ? {
+                razao: {
+                  empresa: razaoDocumento.empresa,
+                  cnpj: razaoDocumento.cnpj,
+                  paginas: razaoDocumento.paginas,
+                  contas: razaoDocumento.contas.length,
+                },
+              }
+            : {}),
         }) as never,
         finished_at: new Date().toISOString(),
         error_message: null,
@@ -576,21 +640,35 @@ export async function executarValidacao(
       })
       .eq("id", anexo.id);
 
+    if (anexoRazao && razaoDocumento) {
+      await ctx.db
+        .from("request_attachment")
+        .update({
+          status: "PARSED",
+          metadata: mascarar({
+            paginas: razaoDocumento.paginas,
+            contas: razaoDocumento.contas.length,
+          }) as never,
+        })
+        .eq("id", anexoRazao.id);
+    }
+
     await audit(ctx, {
       action: "EXECUTAR_VALIDACAO",
       entity: "validation_execution",
       entityId: execucao.id,
       correlationId: solicitacao.external_id,
       after: {
-        resultado: relatorio.resultado,
-        achados: relatorio.achados.length,
+        resultado: resultadoFinal,
+        achados: achadosCombinados.length,
+        razaoConciliado: Boolean(razaoDocumento),
       },
     });
 
     return {
       execucaoId: execucao.id,
       reaproveitada: false,
-      resultado: relatorio.resultado,
+      resultado: resultadoFinal,
     };
   } catch (error) {
     await ctx.db
