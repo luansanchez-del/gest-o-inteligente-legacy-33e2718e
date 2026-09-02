@@ -16,6 +16,7 @@ import {
   type LinhaBalancete,
 } from "./balancete.parser";
 import { competenciaDaData, type Instrucao } from "./instrucao";
+import type { RazaoDocumento } from "./razao.parser";
 
 export const VALIDATOR_VERSION = "balancete-v7";
 
@@ -632,6 +633,88 @@ export function validarBalancete(
     achados,
     periodoDocumento: { inicio: inicioDoc, fim: fimDoc },
   };
+}
+
+/**
+ * Concilia o saldo final de cada conta do razão contra o saldo do balancete.
+ * Opcional: só roda quando um razão foi encontrado e lido nos anexos. Nunca
+ * bloqueia sozinho — divergência pode ser falha nossa de leitura do PDF, não
+ * erro do cliente, então sempre WARNING + revisão humana, no mesmo espírito
+ * das demais conferências deste validador. Compara só magnitude (não o lado
+ * D/C): balancete e razão usam convenções de sinal diferentes, e tentar
+ * reconciliar as duas seria o ponto mais frágil desta conferência.
+ */
+export function conciliarComRazao(
+  documento: BalanceteDocumento,
+  razao: RazaoDocumento,
+): Achado[] {
+  const achados: Achado[] = [];
+
+  if (!razao.contas.length) {
+    achados.push({
+      code: "RAZAO_ILEGIVEL",
+      severity: "WARNING",
+      title: "Razão anexado, mas nenhuma conta foi reconhecida no documento",
+      detail:
+        "O razão foi localizado nos anexos, mas o PDF não trouxe contas reconhecíveis. Pode ser um PDF digitalizado (imagem) ou um layout diferente do esperado.",
+      evidence: { paginas: razao.paginas },
+      requiresHuman: true,
+    });
+    return achados;
+  }
+
+  const razaoPorCodigo = new Map(razao.contas.map((c) => [c.codigo, c]));
+  const analiticas = documento.linhas.filter((l) => l.analitica);
+
+  let conciliadas = 0;
+  let divergentes = 0;
+
+  for (const linha of analiticas) {
+    const contaRazao = razaoPorCodigo.get(linha.codigo);
+    if (!contaRazao || contaRazao.saldoFinal === null) continue;
+
+    conciliadas += 1;
+    const saldoBalancete = Math.abs(linha.saldoAtual);
+    const saldoRazao = contaRazao.saldoFinal;
+    const diferenca = arredondar(saldoBalancete - saldoRazao);
+
+    if (Math.abs(diferenca) > TOLERANCIA) {
+      divergentes += 1;
+      achados.push({
+        code: "RECONCILIACAO_RAZAO_DIVERGENTE",
+        severity: "WARNING",
+        title: `Saldo do razão diverge do balancete — ${linha.nome}`,
+        detail: `Balancete: R$ ${formatarBR(saldoBalancete)} · Razão: R$ ${formatarBR(saldoRazao)}${contaRazao.saldoFinalSinal ? ` ${contaRazao.saldoFinalSinal}` : ""} · Diferença: R$ ${formatarBR(Math.abs(diferenca))}.`,
+        evidence: {
+          codigo: linha.codigo,
+          saldoBalancete,
+          saldoRazao,
+          saldoFinalSinal: contaRazao.saldoFinalSinal,
+          diferenca,
+        },
+        accountCode: linha.codigo,
+        accountName: linha.nome,
+        page: linha.pagina,
+        requiresHuman: true,
+      });
+    }
+  }
+
+  achados.push({
+    code: "RECONCILIACAO_RAZAO_RESUMO",
+    severity: "INFO",
+    title: `Conciliação com o razão: ${conciliadas} conta(s) comparada(s), ${divergentes} divergência(s)`,
+    detail:
+      "Contas presentes só no balancete ou só no razão não entram nesta conferência — só contas encontradas nos dois documentos são comparadas.",
+    evidence: {
+      contasNoRazao: razao.contas.length,
+      contasAnaliticasNoBalancete: analiticas.length,
+      conciliadas,
+      divergentes,
+    },
+  });
+
+  return achados;
 }
 
 export function classificar(achados: Achado[]): ResultadoValidacao {
