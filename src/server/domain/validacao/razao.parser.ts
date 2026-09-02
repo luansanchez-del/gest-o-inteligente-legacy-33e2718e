@@ -59,9 +59,15 @@ function limparNome(nome: string) {
 }
 
 export function parseRazao(paginas: string[]): RazaoDocumento {
+  // Chaveado pela conta interna (número real da conta no sistema contábil),
+  // não pela classificação: um mesmo código de classificação pode ser
+  // compartilhado por várias contas internas diferentes (comum em planos de
+  // contas reais, ex.: várias contas de "Impostos a Recolher" sob o mesmo
+  // código) — chavear pela classificação faria a segunda conta ser tratada
+  // como continuação da primeira, misturando os valores das duas.
   const contas = new Map<string, ContaRazao>();
-  const ordemCodigos: string[] = [];
-  let codigoAtual: string | null = null;
+  const ordemContasInternas: string[] = [];
+  let contaInternaAtual: string | null = null;
 
   let empresa: string | null = null;
   let cnpj: string | null = null;
@@ -102,9 +108,9 @@ export function parseRazao(paginas: string[]): RazaoDocumento {
       if (contaMatch) {
         const contaInterna = contaMatch[1]!;
         const codigo = contaMatch[2]!;
-        codigoAtual = codigo;
-        if (!contas.has(codigo)) {
-          contas.set(codigo, {
+        contaInternaAtual = contaInterna;
+        if (!contas.has(contaInterna)) {
+          contas.set(contaInterna, {
             codigo,
             contaInterna,
             nome: limparNome(contaMatch[3]!),
@@ -115,13 +121,13 @@ export function parseRazao(paginas: string[]): RazaoDocumento {
             totalCredito: null,
             temMovimento: false,
           });
-          ordemCodigos.push(codigo);
+          ordemContasInternas.push(contaInterna);
         }
         return;
       }
 
-      if (!codigoAtual) return;
-      const conta = contas.get(codigoAtual);
+      if (!contaInternaAtual) return;
+      const conta = contas.get(contaInternaAtual);
       if (!conta) return;
 
       if (/saldo anterior/i.test(texto)) {
@@ -150,8 +156,8 @@ export function parseRazao(paginas: string[]): RazaoDocumento {
     });
   });
 
-  const listaContas = ordemCodigos.map((codigo) => {
-    const conta = contas.get(codigo)!;
+  const listaContas = ordemContasInternas.map((contaInterna) => {
+    const conta = contas.get(contaInterna)!;
     if (conta.saldoFinal === null) {
       if (conta.temMovimento && conta.saldoAnterior !== null) {
         const debito = conta.totalDebito ?? 0;

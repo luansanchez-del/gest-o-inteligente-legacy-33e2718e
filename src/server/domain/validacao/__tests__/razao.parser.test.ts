@@ -112,7 +112,7 @@ describe("parseRazao — layout real do livro-razão", () => {
 describe("conciliarComRazao", () => {
   const razao = parseRazao([PAGINA_1]);
 
-  function balanceteSintetico(saldoBancoItau: string) {
+  function balanceteSintetico(debitoBancoItau: string, creditoBancoItau: string) {
     const pagina = [
       "EMPRESA TESTE LTDA",
       "CNPJ: 01.005.077/0001-17",
@@ -120,14 +120,14 @@ describe("conciliarComRazao", () => {
       "Periodo: 01/01/2026 a 31/01/2026",
       "Conta C/S Classificacao Descricao Saldo Anterior Debito Credito Movimento Saldo Atual",
       "5   1.1.01.001.001 Caixa 480,74 0,00 0,00 0,00 480,74",
-      `11   1.1.01.002.001 Banco Itau 279.186,70 88.670,88 56.578,76 32.092,12 ${saldoBancoItau}`,
+      `11   1.1.01.002.001 Banco Itau 279.186,70 ${debitoBancoItau} ${creditoBancoItau} 32.092,12 311.278,82`,
       "9999   9.9.99.999.999 Conta Sem Razao 1.000,00 0,00 0,00 0,00 1.000,00",
     ].join("\n");
     return parseBalancete([pagina]);
   }
 
-  it("concilia sem achado quando os saldos batem, e ignora conta que só existe de um lado", () => {
-    const documento = balanceteSintetico("311.278,82");
+  it("concilia sem achado quando a movimentação bate, e ignora conta que só existe de um lado", () => {
+    const documento = balanceteSintetico("88.670,88", "56.578,76");
     const achados = conciliarComRazao(documento, razao);
 
     expect(achados.some((a) => a.code === "RECONCILIACAO_RAZAO_DIVERGENTE")).toBe(false);
@@ -136,8 +136,8 @@ describe("conciliarComRazao", () => {
     expect(resumo.evidence).toMatchObject({ conciliadas: 2, divergentes: 0 });
   });
 
-  it("aponta divergência como WARNING + revisão humana, nunca bloqueia sozinho", () => {
-    const documento = balanceteSintetico("300.000,00");
+  it("aponta divergência de movimentação como WARNING + revisão humana, nunca bloqueia sozinho", () => {
+    const documento = balanceteSintetico("50.000,00", "56.578,76");
     const achados = conciliarComRazao(documento, razao);
 
     const divergencia = achados.find((a) => a.code === "RECONCILIACAO_RAZAO_DIVERGENTE");
@@ -146,14 +146,55 @@ describe("conciliarComRazao", () => {
       requiresHuman: true,
       accountCode: "1.1.01.002.001",
     });
+    expect(divergencia?.evidence).toMatchObject({
+      debitoBalancete: 50000,
+      debitoRazao: 88670.88,
+    });
     expect(achados.some((a) => a.severity === "BLOCKER" || a.severity === "ERROR")).toBe(false);
 
     const resumo = achados.find((a) => a.code === "RECONCILIACAO_RAZAO_RESUMO")!;
     expect(resumo.evidence).toMatchObject({ conciliadas: 2, divergentes: 1 });
   });
 
+  it("casa por conta interna, não por classificação — contas diferentes com o mesmo código não se confundem", () => {
+    // Caso real que motivou a correção: no plano de contas do piloto, COFINS,
+    // CSLL, IRPJ e IRRF a Recolher compartilham a classificação
+    // "2.1.05.001.001" — só a conta interna diferencia. Casar só pelo código
+    // fazia a última conta processada no razão sobrescrever as outras no
+    // mapa de casamento, gerando divergência falsa para todas as demais.
+    const razaoComCodigoCompartilhado = parseRazao([
+      [
+        "Conta: 1552 2.1.05.001.001 COFINS a Recolher",
+        "31/12/2025 Saldo anterior... 3.885,17",
+        "31/01/2026 Cofins sobre Faturamento Mês 2830 2.652,89 2.652,89C",
+        "*********** Totais da conta 3.885,17 2.652,89",
+        "Conta: 1553 2.1.05.001.001 CSLL a Recolher",
+        "31/12/2025 Saldo anterior... 9.488,57",
+        "20/01/2026 Valor Referente PAGAMENTOS TRIB COD BARRAS DARF 11 5.244,28 4.244,29C",
+        "*********** Totais da conta 5.244,28",
+      ].join("\n"),
+    ]);
+
+    const balancete = parseBalancete([
+      [
+        "EMPRESA TESTE LTDA",
+        "CNPJ: 01.005.077/0001-17",
+        "Balancete Analitico",
+        "Periodo: 01/01/2026 a 31/01/2026",
+        "Conta C/S Classificacao Descricao Saldo Anterior Debito Credito Movimento Saldo Atual",
+        "1552   2.1.05.001.001 COFINS a Recolher 3.885,17 3.885,17 2.652,89 0,00 2.652,89",
+        "1553   2.1.05.001.001 CSLL a Recolher 9.488,57 5.244,28 0,00 5.244,28 4.244,29",
+      ].join("\n"),
+    ]);
+
+    const achados = conciliarComRazao(balancete, razaoComCodigoCompartilhado);
+    expect(achados.some((a) => a.code === "RECONCILIACAO_RAZAO_DIVERGENTE")).toBe(false);
+    const resumo = achados.find((a) => a.code === "RECONCILIACAO_RAZAO_RESUMO")!;
+    expect(resumo.evidence).toMatchObject({ conciliadas: 2, divergentes: 0 });
+  });
+
   it("razão sem contas reconhecidas gera aviso, sem travar nada", () => {
-    const documento = balanceteSintetico("311.278,82");
+    const documento = balanceteSintetico("88.670,88", "56.578,76");
     const achados = conciliarComRazao(documento, {
       empresa: null,
       cnpj: null,

@@ -636,13 +636,24 @@ export function validarBalancete(
 }
 
 /**
- * Concilia o saldo final de cada conta do razão contra o saldo do balancete.
+ * Concilia a movimentação do período de cada conta do razão contra as
+ * colunas de débito/crédito do balancete — a conferência clássica: o razão
+ * é o detalhe lançamento a lançamento, o saldo que às vezes aparece nele é
+ * só um subproduto ocasional da impressão, não o dado confiável para bater
+ * contra o balancete. Débito e crédito do período são o dado que o razão
+ * sempre carrega quando há movimento (linha "Totais da conta").
+ *
+ * Casa por conta interna (número real da conta no sistema contábil), não
+ * pela classificação: um mesmo código de classificação pode ser
+ * compartilhado por várias contas internas diferentes (ex.: várias contas
+ * de "Impostos a Recolher" sob o mesmo código) — casar só pela classificação
+ * gera falso pareamento. Sem conta interna nos dois lados, não há chave
+ * confiável e a conta fica de fora da conferência.
+ *
  * Opcional: só roda quando um razão foi encontrado e lido nos anexos. Nunca
  * bloqueia sozinho — divergência pode ser falha nossa de leitura do PDF, não
  * erro do cliente, então sempre WARNING + revisão humana, no mesmo espírito
- * das demais conferências deste validador. Compara só magnitude (não o lado
- * D/C): balancete e razão usam convenções de sinal diferentes, e tentar
- * reconciliar as duas seria o ponto mais frágil desta conferência.
+ * das demais conferências deste validador.
  */
 export function conciliarComRazao(
   documento: BalanceteDocumento,
@@ -663,34 +674,43 @@ export function conciliarComRazao(
     return achados;
   }
 
-  const razaoPorCodigo = new Map(razao.contas.map((c) => [c.codigo, c]));
-  const analiticas = documento.linhas.filter((l) => l.analitica);
+  const razaoPorContaInterna = new Map<string, (typeof razao.contas)[number]>();
+  for (const conta of razao.contas) {
+    if (conta.contaInterna) razaoPorContaInterna.set(conta.contaInterna, conta);
+  }
+
+  const analiticas = documento.linhas.filter((l) => l.analitica && l.contaInterna);
 
   let conciliadas = 0;
   let divergentes = 0;
+  const semChave = documento.linhas.filter((l) => l.analitica).length - analiticas.length;
 
   for (const linha of analiticas) {
-    const contaRazao = razaoPorCodigo.get(linha.codigo);
-    if (!contaRazao || contaRazao.saldoFinal === null) continue;
+    const contaRazao = razaoPorContaInterna.get(linha.contaInterna!);
+    if (!contaRazao) continue;
 
     conciliadas += 1;
-    const saldoBalancete = Math.abs(linha.saldoAtual);
-    const saldoRazao = contaRazao.saldoFinal;
-    const diferenca = arredondar(saldoBalancete - saldoRazao);
+    const debitoRazao = contaRazao.totalDebito ?? 0;
+    const creditoRazao = contaRazao.totalCredito ?? 0;
+    const diferencaDebito = arredondar(linha.debito - debitoRazao);
+    const diferencaCredito = arredondar(linha.credito - creditoRazao);
 
-    if (Math.abs(diferenca) > TOLERANCIA) {
+    if (Math.abs(diferencaDebito) > TOLERANCIA || Math.abs(diferencaCredito) > TOLERANCIA) {
       divergentes += 1;
       achados.push({
         code: "RECONCILIACAO_RAZAO_DIVERGENTE",
         severity: "WARNING",
-        title: `Saldo do razão diverge do balancete — ${linha.nome}`,
-        detail: `Balancete: R$ ${formatarBR(saldoBalancete)} · Razão: R$ ${formatarBR(saldoRazao)}${contaRazao.saldoFinalSinal ? ` ${contaRazao.saldoFinalSinal}` : ""} · Diferença: R$ ${formatarBR(Math.abs(diferenca))}.`,
+        title: `Movimentação do razão diverge do balancete — ${linha.nome}`,
+        detail: `Débito — Balancete: R$ ${formatarBR(linha.debito)} · Razão: R$ ${formatarBR(debitoRazao)}. Crédito — Balancete: R$ ${formatarBR(linha.credito)} · Razão: R$ ${formatarBR(creditoRazao)}.`,
         evidence: {
           codigo: linha.codigo,
-          saldoBalancete,
-          saldoRazao,
-          saldoFinalSinal: contaRazao.saldoFinalSinal,
-          diferenca,
+          contaInterna: linha.contaInterna,
+          debitoBalancete: linha.debito,
+          debitoRazao,
+          creditoBalancete: linha.credito,
+          creditoRazao,
+          diferencaDebito,
+          diferencaCredito,
         },
         accountCode: linha.codigo,
         accountName: linha.nome,
@@ -705,10 +725,11 @@ export function conciliarComRazao(
     severity: "INFO",
     title: `Conciliação com o razão: ${conciliadas} conta(s) comparada(s), ${divergentes} divergência(s)`,
     detail:
-      "Contas presentes só no balancete ou só no razão não entram nesta conferência — só contas encontradas nos dois documentos são comparadas.",
+      "Compara a movimentação (débito/crédito) do período por conta interna. Contas sem conta interna reconhecida nos dois documentos, ou presentes só de um lado, ficam fora desta conferência.",
     evidence: {
       contasNoRazao: razao.contas.length,
-      contasAnaliticasNoBalancete: analiticas.length,
+      contasAnaliticasNoBalancete: documento.linhas.filter((l) => l.analitica).length,
+      semChave,
       conciliadas,
       divergentes,
     },
