@@ -90,10 +90,84 @@ export function montarTextoDaPagina(itens: ItemTexto[]): string {
     .join("\n");
 }
 
+/** Tolerância de agrupamento derivada do tamanho da fonte do próprio item. */
+export function toleranciaDeLinha(fontSize?: number): number {
+  if (typeof fontSize !== "number" || !Number.isFinite(fontSize) || fontSize <= 0)
+    return 1.5;
+  return Math.min(4, Math.max(0.75, fontSize * 0.35));
+}
+
+type ItemPosicionado = ItemEstruturado & { str: string; x: number; y: number };
+
+/**
+ * Agrupa itens em linhas por proximidade de baseline (e não por arredondamento
+ * fixo), tolerando o jitter de 0,2–0,5 pt que alguns geradores de PDF
+ * introduzem entre células da mesma linha.
+ */
+function montarTextoNaOrientacao(
+  posicionados: ItemPosicionado[],
+  eixoDaLinha: "x" | "y",
+): string {
+  const eixoDaColuna: "x" | "y" = eixoDaLinha === "x" ? "y" : "x";
+  const direcaoDasLinhas = eixoDaLinha === "x" ? 1 : -1;
+
+  const ordenados = [...posicionados].sort(
+    (a, b) => (a[eixoDaLinha] - b[eixoDaLinha]) * direcaoDasLinhas,
+  );
+
+  const linhas: ItemPosicionado[][] = [];
+  let atual: ItemPosicionado[] = [];
+  let referencia = 0;
+
+  for (const item of ordenados) {
+    const coordenada = item[eixoDaLinha];
+    if (!atual.length) {
+      atual = [item];
+      referencia = coordenada;
+      continue;
+    }
+    const anterior = atual[atual.length - 1]!;
+    const tolerancia = Math.max(
+      toleranciaDeLinha(item.fontSize),
+      toleranciaDeLinha(anterior.fontSize),
+    );
+    if (Math.abs(coordenada - referencia) <= tolerancia) {
+      atual.push(item);
+    } else {
+      linhas.push(atual);
+      atual = [item];
+      referencia = coordenada;
+    }
+  }
+  if (atual.length) linhas.push(atual);
+
+  return linhas
+    .map((linha) =>
+      [...linha]
+        .sort((a, b) => a[eixoDaColuna] - b[eixoDaColuna])
+        .map((item) => item.str)
+        .join(" ")
+        .replace(/\s{2,}/g, " ")
+        .trim(),
+    )
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** Quantos valores monetários caíram dentro de linhas de conta reconhecidas. */
+function valoresEmLinhasDeConta(texto: string): number {
+  if (!texto.trim()) return 0;
+  try {
+    return parseBalancete([texto]).integridadeValores.capturados;
+  } catch {
+    return 0;
+  }
+}
+
 /** Converte a estrutura pública do unpdf no formato do reconstrutor de linhas. */
 export function montarTextoDeItensEstruturados(itens: ItemEstruturado[]): string {
   const posicionados = itens.filter(
-    (item): item is ItemEstruturado & { str: string; x: number; y: number } =>
+    (item): item is ItemPosicionado =>
       typeof item.str === "string" &&
       item.str.length > 0 &&
       typeof item.x === "number" &&
@@ -116,32 +190,17 @@ export function montarTextoDeItensEstruturados(itens: ItemEstruturado[]): string
   };
 
   // Em PDFs rotacionados em 90 graus, o pdf.js troca o papel prático dos
-  // eixos: as células de uma mesma linha compartilham X, e não Y.
-  const eixoDaLinha: "x" | "y" =
-    contarGruposDeLinha("x") > contarGruposDeLinha("y") ? "x" : "y";
-  const eixoDaColuna: "x" | "y" = eixoDaLinha === "x" ? "y" : "x";
-  const porLinha = new Map<number, typeof posicionados>();
-
-  for (const item of posicionados) {
-    const coordenada = Math.round(item[eixoDaLinha] * 2) / 2;
-    const lista = porLinha.get(coordenada);
-    if (lista) lista.push(item);
-    else porLinha.set(coordenada, [item]);
+  // eixos: as células de uma mesma linha compartilham X, e não Y. A contagem
+  // de grupos sozinha erra em páginas de totais (poucas linhas, muitas
+  // colunas), então quando ela aponta X monta as duas orientações e fica com
+  // a que coloca mais valores dentro de linhas de conta reconhecidas.
+  if (contarGruposDeLinha("x") <= contarGruposDeLinha("y")) {
+    return montarTextoNaOrientacao(posicionados, "y");
   }
 
-  const direcaoDasLinhas = eixoDaLinha === "x" ? 1 : -1;
-  return [...porLinha.entries()]
-    .sort((a, b) => (a[0] - b[0]) * direcaoDasLinhas)
-    .map(([, linha]) =>
-      linha
-        .sort((a, b) => a[eixoDaColuna] - b[eixoDaColuna])
-        .map((item) => item.str)
-        .join(" ")
-        .replace(/\s{2,}/g, " ")
-        .trim(),
-    )
-    .filter(Boolean)
-    .join("\n");
+  const porX = montarTextoNaOrientacao(posicionados, "x");
+  const porY = montarTextoNaOrientacao(posicionados, "y");
+  return valoresEmLinhasDeConta(porY) > valoresEmLinhasDeConta(porX) ? porY : porX;
 }
 
 function textoTemColunasInvertidas(paginas: string[]): boolean {
