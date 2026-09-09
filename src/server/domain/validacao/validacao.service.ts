@@ -475,6 +475,7 @@ export async function executarValidacao(
     .from("validation_execution")
     .select("id, status")
     .eq("organization_id", ctx.organizationId)
+    .eq("request_id", solicitacao.id)
     .eq("content_hash", contentHash)
     .eq("validator_version", VALIDATOR_VERSION)
     .maybeSingle();
@@ -506,7 +507,7 @@ export async function executarValidacao(
   const { data: execucao, error: execError } = await ctx.db
     .from("validation_execution")
     .upsert(registro, {
-      onConflict: "organization_id,content_hash,validator_version",
+      onConflict: "organization_id,request_id,content_hash,validator_version",
     })
     .select("id")
     .single();
