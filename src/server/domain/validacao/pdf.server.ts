@@ -19,6 +19,18 @@ interface ItemEstruturado {
   x?: number;
   y?: number;
   hasEOL?: boolean;
+  fontSize?: number;
+  height?: number;
+  width?: number;
+  dir?: string;
+}
+
+type ItemPosicionado = ItemEstruturado & { str: string; x: number; y: number };
+
+interface GrupoLinha {
+  coordenada: number;
+  tolerancia: number;
+  itens: ItemPosicionado[];
 }
 
 export interface PdfExtraido {
@@ -85,10 +97,77 @@ export function montarTextoDaPagina(itens: ItemTexto[]): string {
     .join("\n");
 }
 
+/**
+ * O unpdf fornece o tamanho da fonte de cada item. A tolerância proporcional
+ * evita quebrar uma mesma linha quando o gerador do PDF desloca alguns itens
+ * por décimos de ponto, sem juntar linhas vizinhas de fontes maiores.
+ */
+export function toleranciaLinha(item: ItemEstruturado): number {
+  const fontSize = Number(item.fontSize);
+  if (!Number.isFinite(fontSize) || fontSize <= 0) return 1.5;
+  return Math.min(4, Math.max(0.75, Math.abs(fontSize) * 0.35));
+}
+
+function agruparPorEixo(itens: ItemPosicionado[], eixo: "x" | "y"): GrupoLinha[] {
+  const ordenados = [...itens].sort((a, b) => a[eixo] - b[eixo]);
+  const grupos: GrupoLinha[] = [];
+
+  for (const item of ordenados) {
+    const coordenada = item[eixo];
+    const tolerancia = toleranciaLinha(item);
+    let melhor: GrupoLinha | null = null;
+    let menorDistancia = Number.POSITIVE_INFINITY;
+
+    for (const grupo of grupos) {
+      const distancia = Math.abs(coordenada - grupo.coordenada);
+      if (distancia <= Math.max(tolerancia, grupo.tolerancia) && distancia < menorDistancia) {
+        melhor = grupo;
+        menorDistancia = distancia;
+      }
+    }
+
+    if (!melhor) {
+      grupos.push({ coordenada, tolerancia, itens: [item] });
+      continue;
+    }
+
+    melhor.itens.push(item);
+    melhor.tolerancia = Math.max(melhor.tolerancia, tolerancia);
+    melhor.coordenada =
+      melhor.itens.reduce((soma, atual) => soma + atual[eixo], 0) / melhor.itens.length;
+  }
+
+  return grupos;
+}
+
+function montarOrientacao(itens: ItemPosicionado[], eixoDaLinha: "x" | "y"): string {
+  const eixoDaColuna: "x" | "y" = eixoDaLinha === "x" ? "y" : "x";
+  const grupos = agruparPorEixo(itens, eixoDaLinha);
+  const direcaoDasLinhas = eixoDaLinha === "x" ? 1 : -1;
+
+  return grupos
+    .sort((a, b) => (a.coordenada - b.coordenada) * direcaoDasLinhas)
+    .map((grupo) =>
+      grupo.itens
+        .sort((a, b) => a[eixoDaColuna] - b[eixoDaColuna])
+        .map((item) => item.str)
+        .join(" ")
+        .replace(/\s{2,}/g, " ")
+        .trim(),
+    )
+    .filter(Boolean)
+    .join("\n");
+}
+
+function pontuarOrientacao(texto: string): number {
+  if (!texto.trim()) return 0;
+  return parseBalancete([texto]).integridadeValores.capturados;
+}
+
 /** Converte a estrutura pública do unpdf no formato do reconstrutor de linhas. */
 export function montarTextoDeItensEstruturados(itens: ItemEstruturado[]): string {
   const posicionados = itens.filter(
-    (item): item is ItemEstruturado & { str: string; x: number; y: number } =>
+    (item): item is ItemPosicionado =>
       typeof item.str === "string" &&
       item.str.length > 0 &&
       typeof item.x === "number" &&
@@ -101,42 +180,23 @@ export function montarTextoDeItensEstruturados(itens: ItemEstruturado[]): string
     return montarTextoDaPagina(itens.map((item) => ({ str: item.str, hasEOL: item.hasEOL })));
   }
 
-  const contarGruposDeLinha = (eixo: "x" | "y") => {
-    const grupos = new Map<number, number>();
-    for (const item of posicionados) {
-      const coordenada = Math.round(item[eixo] * 2) / 2;
-      grupos.set(coordenada, (grupos.get(coordenada) ?? 0) + 1);
-    }
-    return [...grupos.values()].filter((quantidade) => quantidade >= 3).length;
-  };
+  const contarGruposDeLinha = (eixo: "x" | "y") =>
+    agruparPorEixo(posicionados, eixo).filter((grupo) => grupo.itens.length >= 3).length;
 
-  // Em PDFs rotacionados em 90 graus, o pdf.js troca o papel prático dos
-  // eixos: as células de uma mesma linha compartilham X, e não Y.
-  const eixoDaLinha: "x" | "y" =
-    contarGruposDeLinha("x") > contarGruposDeLinha("y") ? "x" : "y";
-  const eixoDaColuna: "x" | "y" = eixoDaLinha === "x" ? "y" : "x";
-  const porLinha = new Map<number, typeof posicionados>();
+  const gruposX = contarGruposDeLinha("x");
+  const gruposY = contarGruposDeLinha("y");
 
-  for (const item of posicionados) {
-    const coordenada = Math.round(item[eixoDaLinha] * 2) / 2;
-    const lista = porLinha.get(coordenada);
-    if (lista) lista.push(item);
-    else porLinha.set(coordenada, [item]);
-  }
+  // Página normal: Y claramente representa as linhas. Sai direto sem montar
+  // uma segunda orientação, preservando o caminho barato do caso comum.
+  if (gruposX <= gruposY) return montarOrientacao(posicionados, "y");
 
-  const direcaoDasLinhas = eixoDaLinha === "x" ? 1 : -1;
-  return [...porLinha.entries()]
-    .sort((a, b) => (a[0] - b[0]) * direcaoDasLinhas)
-    .map(([, linha]) =>
-      linha
-        .sort((a, b) => a[eixoDaColuna] - b[eixoDaColuna])
-        .map((item) => item.str)
-        .join(" ")
-        .replace(/\s{2,}/g, " ")
-        .trim(),
-    )
-    .filter(Boolean)
-    .join("\n");
+  // Quando X parece ser o eixo das linhas, há dois casos: página realmente
+  // rotacionada ou layout transposto pelo gerador. Em vez de apostar na
+  // geometria, monta as duas leituras e fica com a que efetivamente entrega
+  // mais valores monetários dentro de linhas contábeis reconhecidas.
+  const porX = montarOrientacao(posicionados, "x");
+  const porY = montarOrientacao(posicionados, "y");
+  return pontuarOrientacao(porY) > pontuarOrientacao(porX) ? porY : porX;
 }
 
 function textoTemColunasInvertidas(paginas: string[]): boolean {
@@ -176,10 +236,11 @@ export async function extrairTextoPdf(bytes: Uint8Array): Promise<PdfExtraido> {
   // do relatório. Validado com o PDF real do piloto 35806843.
   const simples = await extractText(new Uint8Array(bytes), { mergePages: false });
   const paginasSimples = Array.isArray(simples.text) ? simples.text : [simples.text];
+  const integridadeSimples = razaoIntegridade(paginasSimples);
   if (
     paginasSimples.some((pagina) => pagina.trim()) &&
     !textoTemColunasInvertidas(paginasSimples) &&
-    razaoIntegridade(paginasSimples) >= LIMIAR_INTEGRIDADE_EXTRACAO
+    integridadeSimples >= LIMIAR_INTEGRIDADE_EXTRACAO
   ) {
     return { paginas: paginasSimples, totalPaginas: simples.totalPages };
   }
@@ -193,7 +254,7 @@ export async function extrairTextoPdf(bytes: Uint8Array): Promise<PdfExtraido> {
 
   // Se a posicional não sair melhor que a simples (ex.: PDF sem coordenadas
   // utilizáveis), fica com a que capturou mais — nunca troca por algo pior.
-  if (razaoIntegridade(paginasPosicional) < razaoIntegridade(paginasSimples)) {
+  if (razaoIntegridade(paginasPosicional) < integridadeSimples) {
     return { paginas: paginasSimples, totalPaginas: simples.totalPages };
   }
   return { paginas: paginasPosicional, totalPaginas: estruturado.totalPages };
