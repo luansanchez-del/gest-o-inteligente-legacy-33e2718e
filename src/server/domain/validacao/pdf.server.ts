@@ -19,6 +19,11 @@ interface ItemEstruturado {
   x?: number;
   y?: number;
   hasEOL?: boolean;
+  /** Tamanho da fonte reportado pelo unpdf; base da tolerância de linha. */
+  fontSize?: number;
+  height?: number;
+  width?: number;
+  dir?: string;
 }
 
 export interface PdfExtraido {
