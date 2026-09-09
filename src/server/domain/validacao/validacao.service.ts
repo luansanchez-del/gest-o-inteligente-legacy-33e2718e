@@ -475,6 +475,7 @@ export async function executarValidacao(
     .from("validation_execution")
     .select("id, status")
     .eq("organization_id", ctx.organizationId)
+    .eq("request_id", solicitacao.id)
     .eq("content_hash", contentHash)
     .eq("validator_version", VALIDATOR_VERSION)
     .maybeSingle();
@@ -506,7 +507,7 @@ export async function executarValidacao(
   const { data: execucao, error: execError } = await ctx.db
     .from("validation_execution")
     .upsert(registro, {
-      onConflict: "organization_id,content_hash,validator_version",
+      onConflict: "organization_id,request_id,content_hash,validator_version",
     })
     .select("id")
     .single();
@@ -914,7 +915,7 @@ export async function excluirDecisao(
 /** Resultado consolidado de uma execução (usado pela UI e pelo MCP). */
 export async function obterResultadoValidacao(
   ctx: AppContext,
-  input: { execucaoId: string },
+  input: { execucaoId: string; requestId?: string },
 ) {
   const { data: execucao, error } = await ctx.db
     .from("validation_execution")
@@ -932,6 +933,12 @@ export async function obterResultadoValidacao(
       error.message,
     );
   if (!execucao) throw new AppError("REGRA_NEGOCIO", "Análise não encontrada.");
+  // Nunca devolver a análise de outra solicitação.
+  if (input.requestId && execucao.request_id !== input.requestId)
+    throw new AppError(
+      "REGRA_NEGOCIO",
+      "Análise não pertence a esta solicitação.",
+    );
 
   const achados = await listarAchados(ctx, { execucaoId: execucao.id });
 

@@ -42,7 +42,10 @@ export async function obterDecisaoInteligente(
   let resultado: Awaited<ReturnType<typeof obterResultadoValidacao>> | null = null;
   if (execucaoId) {
     try {
-      resultado = await obterResultadoValidacao(ctx, { execucaoId });
+      resultado = await obterResultadoValidacao(ctx, {
+        execucaoId,
+        requestId: solicitacao.id,
+      });
     } catch {
       resultado = null;
     }

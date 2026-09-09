@@ -678,7 +678,10 @@ export async function processarSolicitacao(
     );
   }
 
-  const resultado = await deps.obterResultado(ctx, { execucaoId });
+  const resultado = await deps.obterResultado(ctx, {
+    execucaoId,
+    requestId: solicitacao.id,
+  });
   const achados = resultado.achados ?? [];
   const erros = achados.filter(
     (a) => a.severidade === "ERROR" || a.severidade === "BLOCKER",
