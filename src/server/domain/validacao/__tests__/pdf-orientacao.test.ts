@@ -10,8 +10,8 @@ function linhaNormal(y: number, celulas: string[]) {
 
 /** Mesma linha, porém com as células compartilhando X (página rotacionada). */
 function linhaRotacionada(x: number, celulas: string[]) {
-  // Em página rotacionada o pdf.js emite Y decrescente ao longo da linha.
-  return celulas.map((str, i) => ({ str, x, y: 800 - i * 60, fontSize: 8 }));
+  // Em página rotacionada o pdf.js emite as células ao longo do eixo Y.
+  return celulas.map((str, i) => ({ str, x, y: 100 + i * 60, fontSize: 8 }));
 }
 
 const LINHA_1 = [
