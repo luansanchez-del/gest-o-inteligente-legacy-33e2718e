@@ -475,6 +475,7 @@ export async function executarValidacao(
     .from("validation_execution")
     .select("id, status")
     .eq("organization_id", ctx.organizationId)
+    .eq("request_id", solicitacao.id)
     .eq("content_hash", contentHash)
     .eq("validator_version", VALIDATOR_VERSION)
     .maybeSingle();
@@ -506,7 +507,7 @@ export async function executarValidacao(
   const { data: execucao, error: execError } = await ctx.db
     .from("validation_execution")
     .upsert(registro, {
-      onConflict: "organization_id,content_hash,validator_version",
+      onConflict: "organization_id,request_id,content_hash,validator_version",
     })
     .select("id")
     .single();
@@ -517,7 +518,6 @@ export async function executarValidacao(
       "Não foi possível iniciar a análise.",
       execError?.message,
     );
-
   try {
     const { data: arquivo, error: downloadError } = await ctx.db.storage
       .from(BUCKET)
@@ -914,16 +914,19 @@ export async function excluirDecisao(
 /** Resultado consolidado de uma execução (usado pela UI e pelo MCP). */
 export async function obterResultadoValidacao(
   ctx: AppContext,
-  input: { execucaoId: string },
+  input: { execucaoId: string; requestId?: string },
 ) {
-  const { data: execucao, error } = await ctx.db
+  let query = ctx.db
     .from("validation_execution")
     .select(
       "id, request_id, attachment_id, status, validator_version, result, summary, totals, error_message, started_at, finished_at, instruction_snapshot",
     )
     .eq("organization_id", ctx.organizationId)
-    .eq("id", input.execucaoId)
-    .maybeSingle();
+    .eq("id", input.execucaoId);
+
+  if (input.requestId) query = query.eq("request_id", input.requestId);
+
+  const { data: execucao, error } = await query.maybeSingle();
 
   if (error)
     throw new AppError(
