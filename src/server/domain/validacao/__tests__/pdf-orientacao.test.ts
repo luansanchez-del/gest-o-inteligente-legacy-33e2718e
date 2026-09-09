@@ -5,10 +5,6 @@ import {
 } from "../pdf.server";
 
 describe("tolerância de baseline do PDF", () => {
-  it("deriva a tolerância de 35% do tamanho da fonte", () => {
-    expect(toleranciaLinha({ fontSize: 10 })).toBe(3.5);
-  });
-
   it("usa fallback de 1,5 pt quando fontSize não está disponível", () => {
     expect(toleranciaLinha({})).toBe(1.5);
   });
@@ -23,7 +19,9 @@ describe("tolerância de baseline do PDF", () => {
 });
 
 describe("orientação e agrupamento do PDF", () => {
-  it("mantém itens com pequena diferença de baseline na mesma linha", () => {
+  it("usa 35% da fonte e mantém pequena diferença de baseline na mesma linha", () => {
+    expect(toleranciaLinha({ fontSize: 10 })).toBe(3.5);
+
     const texto = montarTextoDeItensEstruturados([
       { str: "1.1.01", x: 10, y: 100, fontSize: 10 },
       { str: "CAIXA GERAL", x: 50, y: 100.3, fontSize: 10 },
