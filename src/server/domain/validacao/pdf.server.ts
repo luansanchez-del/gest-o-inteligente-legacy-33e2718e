@@ -240,10 +240,11 @@ export async function extrairTextoPdf(bytes: Uint8Array): Promise<PdfExtraido> {
   // do relatório. Validado com o PDF real do piloto 35806843.
   const simples = await extractText(new Uint8Array(bytes), { mergePages: false });
   const paginasSimples = Array.isArray(simples.text) ? simples.text : [simples.text];
+  const integridadeSimples = razaoIntegridade(paginasSimples);
   if (
     paginasSimples.some((pagina) => pagina.trim()) &&
     !textoTemColunasInvertidas(paginasSimples) &&
-    razaoIntegridade(paginasSimples) >= LIMIAR_INTEGRIDADE_EXTRACAO
+    integridadeSimples >= LIMIAR_INTEGRIDADE_EXTRACAO
   ) {
     return { paginas: paginasSimples, totalPaginas: simples.totalPages };
   }
@@ -257,7 +258,7 @@ export async function extrairTextoPdf(bytes: Uint8Array): Promise<PdfExtraido> {
 
   // Se a posicional não sair melhor que a simples (ex.: PDF sem coordenadas
   // utilizáveis), fica com a que capturou mais — nunca troca por algo pior.
-  if (razaoIntegridade(paginasPosicional) < razaoIntegridade(paginasSimples)) {
+  if (razaoIntegridade(paginasPosicional) < integridadeSimples) {
     return { paginas: paginasSimples, totalPaginas: simples.totalPages };
   }
   return { paginas: paginasPosicional, totalPaginas: estruturado.totalPages };
