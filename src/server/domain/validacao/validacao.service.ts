@@ -915,7 +915,7 @@ export async function excluirDecisao(
 /** Resultado consolidado de uma execução (usado pela UI e pelo MCP). */
 export async function obterResultadoValidacao(
   ctx: AppContext,
-  input: { execucaoId: string },
+  input: { execucaoId: string; requestId?: string },
 ) {
   const { data: execucao, error } = await ctx.db
     .from("validation_execution")
@@ -933,6 +933,12 @@ export async function obterResultadoValidacao(
       error.message,
     );
   if (!execucao) throw new AppError("REGRA_NEGOCIO", "Análise não encontrada.");
+  // Nunca devolver a análise de outra solicitação.
+  if (input.requestId && execucao.request_id !== input.requestId)
+    throw new AppError(
+      "REGRA_NEGOCIO",
+      "Análise não pertence a esta solicitação.",
+    );
 
   const achados = await listarAchados(ctx, { execucaoId: execucao.id });
 
