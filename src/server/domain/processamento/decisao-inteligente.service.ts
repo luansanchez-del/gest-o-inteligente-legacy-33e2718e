@@ -7,6 +7,40 @@ import {
   montarRecomendacaoDecisao,
   type AchadoDecisao,
 } from "./decisao-inteligente.core";
+import { listarPendenciasAbertas } from "./pendencias-fechamento.repo";
+import {
+  achadoExigeResposta,
+  categoriaDoAchado,
+  opcoesDoAchado,
+  ROTULO_CATEGORIA,
+  type AchadoParaResposta,
+} from "../../../lib/fechamento/respostas-padrao";
+
+interface AchadoComEvidencia extends AchadoDecisao {
+  id: string;
+  codigo?: string | null;
+  evidencia?: unknown;
+}
+
+/** Valor da conta vem da evidência gravada pelo validador (campo `saldo`). */
+export function paraAchadoDeResposta(achado: AchadoComEvidencia): AchadoParaResposta {
+  const evidencia =
+    achado.evidencia && typeof achado.evidencia === "object"
+      ? (achado.evidencia as Record<string, unknown>)
+      : {};
+  const saldo = evidencia["saldo"];
+  return {
+    id: achado.id,
+    codigo: achado.codigo ?? null,
+    severidade: achado.severidade,
+    titulo: achado.titulo,
+    detalhe: achado.detalhe ?? null,
+    contaCodigo: achado.contaCodigo ?? null,
+    contaNome: achado.contaNome ?? null,
+    valor: typeof saldo === "number" && Number.isFinite(saldo) ? saldo : null,
+    exigeHumano: Boolean(achado.exigeHumano),
+  };
+}
 
 function diasDeAtraso(deadlineAt: string | null, finishedAt: string | null) {
   if (!deadlineAt || finishedAt) return 0;
@@ -51,7 +85,10 @@ export async function obterDecisaoInteligente(
     }
   }
 
-  const achados = ((resultado?.achados ?? []) as AchadoDecisao[]).map((achado) => ({
+  const achadosCompletos = ((resultado?.achados ?? []) as AchadoComEvidencia[]).map(
+    paraAchadoDeResposta,
+  );
+  const achados: AchadoDecisao[] = achadosCompletos.map((achado) => ({
     severidade: achado.severidade,
     titulo: achado.titulo,
     detalhe: achado.detalhe ?? null,
@@ -71,6 +108,17 @@ export async function obterDecisaoInteligente(
 
   const atraso = diasDeAtraso(solicitacao.deadline_at, solicitacao.finished_at);
 
+  const itensParaResponder = achadosCompletos.filter(achadoExigeResposta).map((achado) => {
+    const categoria = categoriaDoAchado(achado);
+    return {
+      achado,
+      categoria,
+      rotuloCategoria: ROTULO_CATEGORIA[categoria],
+      opcoes: opcoesDoAchado(achado),
+    };
+  });
+  const pendenciasAnteriores = await listarPendenciasAbertas(ctx, solicitacao);
+
   return {
     solicitacaoExternalId: solicitacao.external_id,
     execucaoId,
@@ -84,6 +132,8 @@ export async function obterDecisaoInteligente(
     diasVencida: atraso,
     finalizadaEm: solicitacao.finished_at,
     recomendacao,
+    itensParaResponder,
+    pendenciasAnteriores,
     encaminhamento: {
       disponivel: false,
       motivo:

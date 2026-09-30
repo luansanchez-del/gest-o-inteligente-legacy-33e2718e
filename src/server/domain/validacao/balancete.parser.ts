@@ -115,12 +115,51 @@ interface InicioDeLinha {
 }
 
 /**
- * Suporta os dois layouts encontrados nos balancetes:
+ * Layout (c): "Conta S Descrição Saldo Ant. Débito Crédito Saldo" — só o
+ * número interno da conta e o marcador "S" das sintéticas, sem nenhuma
+ * classificação (ex.: "1 S ATIVO ...", "5 Caixa ..."). A hierarquia só
+ * existe pela ordem das linhas; ela é reconstruída depois, pelas somas.
+ * Sem detectar isso no documento inteiro, "1 S ATIVO" cairia no layout (a)
+ * com o número interno lido como classificação.
+ */
+export function layoutSemClassificacao(paginas: string[]): boolean {
+  let sinteticasSemClassificacao = 0;
+  for (const pagina of paginas) {
+    for (const bruta of pagina.split(/\r?\n/)) {
+      const texto = bruta.replace(/ /g, " ").trim();
+      if (
+        /^\d+(?:\.\d+)+\s/.test(texto) ||
+        /^\d+\s+(?:[SA]\s+)?\d+(?:\.\d+)+\s/.test(texto) ||
+        /^\d+\s+[SA]\s+\d+\s+\D/.test(texto)
+      )
+        return false;
+      if (/^\d+\s+S\s+\D/.test(texto)) sinteticasSemClassificacao++;
+    }
+  }
+  return sinteticasSemClassificacao > 0;
+}
+
+/**
+ * Suporta três layouts encontrados nos balancetes:
  *  a) "1.1.1.01.0001 CAIXA GERAL 1.688,24 ..."  → classificação no início
  *  b) "5   1.1.01.001.001 Caixa ..." ou "1 S 1 ATIVO ..." → conta interna,
  *     marcador sintético opcional (S/A) e então a classificação.
+ *  c) "1 S ATIVO ..." / "5 Caixa ..." → conta interna e marcador, sem
+ *     classificação (só quando `semClassificacao`; ver layoutSemClassificacao).
  */
-export function interpretarInicioDaLinha(texto: string): InicioDeLinha | null {
+export function interpretarInicioDaLinha(
+  texto: string,
+  semClassificacao = false,
+): InicioDeLinha | null {
+  if (semClassificacao) {
+    // A descrição pode começar com dígito ("13º Salário"), só não com valor.
+    const m = texto.match(/^(\d+)\s+(?:(S)\s+)?(?!\(?-?\d{1,3}(?:\.\d{3})*,\d{2})(\S.*)$/);
+    if (!m) return null;
+    // Código provisório: a classificação é montada em inferirHierarquia.
+    return { codigo: m[1]!, contaInterna: m[1]!, sintetica: m[2] === "S", resto: m[3]! };
+  }
+
+
   // (b) conta interna + marcador S/A + classificação
   const comMarcador = texto.match(/^(\d+)\s+([SA])\s+(\d+(?:\.\d+)*)\s+(\D.*)$/);
   if (comMarcador) {
@@ -151,12 +190,65 @@ export function interpretarInicioDaLinha(texto: string): InicioDeLinha | null {
   return null;
 }
 
+function emCentavos(l: LinhaBalancete): number[] {
+  return [l.saldoAnterior, l.debito, l.credito, l.saldoAtual].map((v) => Math.round(v * 100));
+}
+
+/**
+ * Reconstrói a classificação do layout (c) pela própria aritmética do
+ * balancete: cada sintética é a soma das linhas que vêm logo abaixo dela, nas
+ * quatro colunas. Uma sintética fica "aberta" recebendo filhas até a soma
+ * delas bater com os seus valores; aí fecha e a próxima linha passa a ser
+ * irmã dela. A classificação gerada (1, 1.1, 1.1.2...) é sequencial e serve só
+ * para hierarquia/nível/raiz — a identidade da conta continua em contaInterna.
+ *
+ * Sintética que não fecha é devolvida para virar "linha não interpretada":
+ * nesse caso a hierarquia abaixo dela pode estar errada e isso não pode
+ * passar em silêncio.
+ */
+export function inferirHierarquia(linhas: LinhaBalancete[]): LinhaBalancete[] {
+  interface Aberta {
+    linha: LinhaBalancete;
+    alvo: number[];
+    soma: number[];
+    filhas: number;
+  }
+  const pilha: Aberta[] = [];
+  const naoFecharam: LinhaBalancete[] = [];
+  let raizes = 0;
+
+  const fechada = (a: Aberta) =>
+    a.filhas > 0 && a.alvo.every((v, i) => Math.abs(v - a.soma[i]!) <= 1);
+
+  for (const linha of linhas) {
+    const mae = pilha[pilha.length - 1];
+    if (mae) {
+      mae.filhas += 1;
+      linha.codigo = `${mae.linha.codigo}.${mae.filhas}`;
+      emCentavos(linha).forEach((v, i) => (mae.soma[i]! += v));
+    } else {
+      raizes += 1;
+      linha.codigo = String(raizes);
+    }
+    linha.nivel = nivelDoCodigo(linha.codigo);
+    linha.raiz = linha.codigo.split(".")[0]!;
+
+    if (!linha.analitica) {
+      pilha.push({ linha, alvo: emCentavos(linha), soma: [0, 0, 0, 0], filhas: 0 });
+    }
+    while (pilha.length && fechada(pilha[pilha.length - 1]!)) pilha.pop();
+  }
+
+  for (const aberta of pilha) if (aberta.filhas > 0) naoFecharam.push(aberta.linha);
+  return naoFecharam;
+}
 
 export function parseBalancete(paginas: string[]): BalanceteDocumento {
   const linhas: LinhaBalancete[] = [];
   const naoInterpretadas: LinhaNaoInterpretada[] = [];
   const colunas = new Set<string>();
   const marcadores = new Map<string, boolean | null>();
+  const semClassificacao = layoutSemClassificacao(paginas);
 
 
   let empresa: string | null = null;
@@ -200,7 +292,7 @@ export function parseBalancete(paginas: string[]): BalanceteDocumento {
         if (datas?.length) emissaoEm = datas[datas.length - 1]!;
       }
 
-      const casamento = interpretarInicioDaLinha(texto);
+      const casamento = interpretarInicioDaLinha(texto, semClassificacao);
       if (!casamento) return;
 
       const { codigo, contaInterna, sintetica } = casamento;
@@ -282,9 +374,23 @@ export function parseBalancete(paginas: string[]): BalanceteDocumento {
     });
   });
 
+  if (semClassificacao) {
+    // No layout (c) o marcador é exaustivo: sem "S" é analítica.
+    for (const linha of linhas) linha.analitica = !marcadores.get(linha.codigo);
+    for (const linha of inferirHierarquia(linhas)) {
+      naoInterpretadas.push({
+        pagina: linha.pagina,
+        texto: linha.textoOriginal.slice(0, 200),
+        motivo:
+          "Conta sintética não bate com a soma das contas abaixo dela; a hierarquia a partir daqui pode estar incorreta.",
+      });
+    }
+  }
+
   // Marcador "S" do próprio arquivo vence; sem marcador, infere-se por filhos.
   const codigos = linhas.map((l) => l.codigo);
   for (const linha of linhas) {
+    if (semClassificacao) continue;
     const marcador = marcadores.get(linha.codigo) ?? null;
     if (marcador !== null) {
       linha.analitica = !marcador;

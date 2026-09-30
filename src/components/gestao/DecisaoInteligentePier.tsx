@@ -8,7 +8,7 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -16,6 +16,19 @@ import {
   obterDecisaoInteligente,
 } from "@/lib/api/decisao-inteligente.functions";
 import { mensagemDeErro } from "@/lib/erros";
+import {
+  conferirRespostas,
+  montarRespostaFechamento,
+} from "@/lib/fechamento/respostas-padrao";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -52,6 +65,10 @@ export function DecisaoInteligentePier() {
   const [resposta, setResposta] = useState("");
   const [justificativa, setJustificativa] = useState("");
   const [confirmarFinalizacao, setConfirmarFinalizacao] = useState(false);
+  const [escolhas, setEscolhas] = useState<
+    Record<string, { chave: string; complemento: string }>
+  >({});
+  const [pendenciasConferidas, setPendenciasConferidas] = useState(false);
 
   const decisao = useQuery({
     queryKey: ["decisao-inteligente-pier", externalId],
@@ -69,7 +86,54 @@ export function DecisaoInteligentePier() {
     if (!recomendacao) return;
     setResposta(recomendacao.respostaSugerida);
     setJustificativa("");
+    setEscolhas({});
+    setPendenciasConferidas(false);
   }, [externalId, dados?.execucaoId, recomendacao?.tipo]);
+
+  const itens = useMemo(() => dados?.itensParaResponder ?? [], [dados]);
+  const pendencias = useMemo(() => dados?.pendenciasAnteriores ?? [], [dados]);
+  const respostasEscolhidas = useMemo(
+    () =>
+      Object.entries(escolhas)
+        .filter(([, e]) => e.chave)
+        .map(([achadoId, e]) => ({
+          achadoId,
+          chave: e.chave,
+          complemento: e.complemento.trim() || null,
+        })),
+    [escolhas],
+  );
+  const conferencia = useMemo(
+    () =>
+      conferirRespostas(
+        itens.map((i) => i.achado),
+        respostasEscolhidas,
+      ),
+    [itens, respostasEscolhidas],
+  );
+  const usaRespostasPadrao = respostasEscolhidas.length > 0;
+  const todasRespondidas =
+    itens.length > 0 && conferencia.semResposta.length === 0;
+
+  // Com todos os alertas respondidos, a mensagem do PIER é montada a partir
+  // das respostas padrão (continua editável depois).
+  useEffect(() => {
+    if (!todasRespondidas || !dados) return;
+    setResposta(
+      montarRespostaFechamento({
+        clienteNome: dados.clienteNome,
+        competencia: dados.competencia,
+        itens: conferencia.itens,
+        pendenciasConferidas: pendenciasConferidas ? pendencias : [],
+      }),
+    );
+  }, [todasRespondidas, conferencia, pendenciasConferidas]);
+
+  const faltaJustificativa =
+    Boolean(recomendacao?.exigeJustificativa) &&
+    justificativa.trim().length < 10 &&
+    !todasRespondidas;
+  const faltaConferirPendencias = pendencias.length > 0 && !pendenciasConferidas;
 
   const executar = useMutation({
     mutationFn: (acao: "RESPONDER_MANTER_ABERTA" | "RESPONDER_FINALIZAR") =>
@@ -80,7 +144,10 @@ export function DecisaoInteligentePier() {
           acao,
           mensagem: resposta,
           justificativa: justificativa.trim() || null,
-          privada: true,
+          // Com respostas padrão a postagem é pública (o servidor garante).
+          privada: !usaRespostasPadrao,
+          respostas: usaRespostasPadrao ? respostasEscolhidas : null,
+          pendenciasConferidas,
         },
       }),
     onSuccess: (retorno) => {
@@ -175,6 +242,115 @@ export function DecisaoInteligentePier() {
               </p>
             </div>
 
+            {pendencias.length ? (
+              <div className="space-y-2 rounded-md border border-warning-strong/40 bg-warning-soft/40 p-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-warning-strong">
+                  Pendências do fechamento anterior ({pendencias.length})
+                </p>
+                <ul className="space-y-1.5 text-sm">
+                  {pendencias.map((p) => (
+                    <li key={p.id}>
+                      <span className="font-medium">{p.contaNome ?? p.titulo}</span>
+                      {typeof p.valor === "number" ? (
+                        <span className="text-muted-foreground">
+                          {" "}
+                          · {Math.abs(p.valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                        </span>
+                      ) : null}
+                      {p.competencia ? (
+                        <span className="text-muted-foreground"> · {p.competencia}</span>
+                      ) : null}
+                      <p className="text-xs text-muted-foreground">{p.resposta}</p>
+                    </li>
+                  ))}
+                </ul>
+                <label className="flex items-start gap-2 text-sm">
+                  <Checkbox
+                    checked={pendenciasConferidas}
+                    onCheckedChange={(v) => setPendenciasConferidas(v === true)}
+                  />
+                  <span>
+                    Conferi se houve baixa/regularização destes pontos neste fechamento.
+                  </span>
+                </label>
+              </div>
+            ) : null}
+
+            {itens.length ? (
+              <div className="space-y-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Resposta padrão por alerta ({itens.length - conferencia.semResposta.length}/
+                  {itens.length})
+                </p>
+                {itens.map(({ achado, rotuloCategoria, opcoes }) => {
+                  const escolha = escolhas[achado.id];
+                  const opcao = opcoes.find((o) => o.chave === escolha?.chave);
+                  return (
+                    <div key={achado.id} className="space-y-1.5 rounded-md border border-border p-2.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-medium leading-tight">
+                          {achado.contaNome ?? achado.titulo}
+                          {typeof achado.valor === "number" ? (
+                            <span className="font-normal text-muted-foreground">
+                              {" "}
+                              · {Math.abs(achado.valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                            </span>
+                          ) : null}
+                        </p>
+                        <Badge variant="secondary" className="shrink-0">
+                          {rotuloCategoria}
+                        </Badge>
+                      </div>
+                      {achado.contaNome ? (
+                        <p className="text-xs text-muted-foreground">{achado.titulo}</p>
+                      ) : null}
+                      <Select
+                        value={escolha?.chave ?? ""}
+                        onValueChange={(chave) =>
+                          setEscolhas((atual) => ({
+                            ...atual,
+                            [achado.id]: { chave, complemento: atual[achado.id]?.complemento ?? "" },
+                          }))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Escolha a resposta padrão" />
+                        </SelectTrigger>
+                        <SelectContent className="z-[80]">
+                          {opcoes.map((o) => (
+                            <SelectItem key={o.chave} value={o.chave}>
+                              {o.rotulo}
+                              {o.acompanhar ? " · acompanhar" : ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {opcao ? (
+                        <>
+                          <p className="text-xs text-muted-foreground">{opcao.texto}</p>
+                          <Input
+                            value={escolha?.complemento ?? ""}
+                            placeholder="Complemento opcional (ex.: previsão de baixa, documento)"
+                            onChange={(event) =>
+                              setEscolhas((atual) => ({
+                                ...atual,
+                                [achado.id]: { chave: opcao.chave, complemento: event.target.value },
+                              }))
+                            }
+                          />
+                        </>
+                      ) : null}
+                    </div>
+                  );
+                })}
+                <p className="text-xs text-muted-foreground">
+                  Respostas marcadas com "acompanhar" voltam como pendência no próximo
+                  fechamento deste cliente. Com respostas padrão, a postagem no PIER é
+                  pública (visível para o colaborador).
+                </p>
+              </div>
+            ) : null}
+
             <div className="space-y-1.5">
               <Label htmlFor="resposta-inteligente">Resposta sugerida</Label>
               <Textarea
@@ -189,7 +365,7 @@ export function DecisaoInteligentePier() {
               </p>
             </div>
 
-            {recomendacao.exigeJustificativa ? (
+            {recomendacao.exigeJustificativa && !todasRespondidas ? (
               <div className="space-y-1.5">
                 <Label htmlFor="justificativa-inteligente">
                   Justificativa da aprovação
@@ -202,7 +378,8 @@ export function DecisaoInteligentePier() {
                   placeholder="Ex.: composição apresentada e validada; saldo compatível com a natureza da conta…"
                 />
                 <p className="text-xs text-warning-strong">
-                  Obrigatória para aprovar e finalizar quando houver alerta/julgamento contábil.
+                  Obrigatória para aprovar e finalizar quando houver alerta/julgamento
+                  contábil — ou escolha uma resposta padrão para cada alerta acima.
                 </p>
               </div>
             ) : null}
@@ -229,13 +406,21 @@ export function DecisaoInteligentePier() {
                   disabled={
                     executar.isPending ||
                     resposta.trim().length < 10 ||
-                    (recomendacao.exigeJustificativa && justificativa.trim().length < 10)
+                    faltaJustificativa ||
+                    faltaConferirPendencias
+                  }
+                  title={
+                    faltaConferirPendencias
+                      ? "Confira as pendências do fechamento anterior."
+                      : undefined
                   }
                 >
                   <CheckCircle2 className="mr-2 h-4 w-4" />
-                  {recomendacao.exigeJustificativa
-                    ? "Aprovar com justificativa"
-                    : "Responder e finalizar"}
+                  {todasRespondidas
+                    ? "Aprovar e finalizar"
+                    : recomendacao.exigeJustificativa
+                      ? "Aprovar com justificativa"
+                      : "Responder e finalizar"}
                 </Button>
               ) : null}
 
@@ -262,6 +447,9 @@ export function DecisaoInteligentePier() {
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmar resposta e finalização no PIER?</AlertDialogTitle>
             <AlertDialogDescription>
+              {usaRespostasPadrao
+                ? "A resposta será publicada como postagem pública (visível para o colaborador). "
+                : ""}
               Primeiro a resposta será publicada e confirmada. Somente depois o sistema solicitará a finalização e fará uma nova leitura do PIER para confirmar o status. Se a postagem falhar, a solicitação não será finalizada.
             </AlertDialogDescription>
           </AlertDialogHeader>
