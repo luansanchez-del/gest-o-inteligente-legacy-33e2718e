@@ -35,6 +35,8 @@ export const executarDecisaoInteligente = createServerFn({ method: "POST" })
       mensagem: string;
       justificativa?: string | null;
       privada?: boolean;
+      respostas?: { achadoId: string; chave: string; complemento?: string | null }[] | null;
+      pendenciasConferidas?: boolean;
     }) => {
       exigirSolicitacao(input?.solicitacaoExternalId);
       if (!input?.acao) throw new Error("VALIDACAO::Informe a ação desejada.");

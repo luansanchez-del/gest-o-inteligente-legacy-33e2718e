@@ -5,6 +5,11 @@ import { erroSeguro, mascararTexto } from "../../lib/mascara";
 import { pierAdapter } from "../../integrations/pier/pier.adapter";
 import { carregarSolicitacao } from "../validacao/validacao.service";
 import { obterDecisaoInteligente } from "./decisao-inteligente.service";
+import {
+  marcarPendenciasConferidas,
+  registrarPendencias,
+} from "./pendencias-fechamento.repo";
+import { conferirRespostas, type RespostaEscolhida } from "../../../lib/fechamento/respostas-padrao";
 
 export type AcaoDecisaoInteligente =
   | "RESPONDER_MANTER_ABERTA"
@@ -81,6 +86,10 @@ export async function executarDecisaoInteligente(
     mensagem: string;
     justificativa?: string | null;
     privada?: boolean;
+    /** Resposta padrão escolhida para cada alerta (substitui a justificativa livre). */
+    respostas?: RespostaEscolhida[] | null;
+    /** Colaborador confirmou ter conferido as pendências do fechamento anterior. */
+    pendenciasConferidas?: boolean;
   },
 ) {
   assertCanWrite(ctx);
@@ -149,14 +158,30 @@ export async function executarDecisaoInteligente(
   const justificativa = input.justificativa
     ? mascararTexto(input.justificativa).trim().slice(0, 2000)
     : "";
+  const usaRespostasPadrao = Boolean(input.respostas?.length);
+  const conferencia = conferirRespostas(
+    decisao.itensParaResponder.map((i) => i.achado),
+    input.respostas ?? [],
+  );
+  const respostasCompletas = usaRespostasPadrao && !conferencia.semResposta.length;
+
   if (
     finalizar &&
     decisao.recomendacao.exigeJustificativa &&
-    justificativa.length < 10
+    justificativa.length < 10 &&
+    !respostasCompletas
   )
     throw new AppError(
       "VALIDACAO",
-      "Esta aprovação exige uma justificativa técnica antes da finalização.",
+      usaRespostasPadrao
+        ? `Escolha uma resposta padrão para todos os alertas (${conferencia.semResposta.length} sem resposta).`
+        : "Esta aprovação exige uma justificativa técnica antes da finalização.",
+    );
+
+  if (finalizar && decisao.pendenciasAnteriores.length && !input.pendenciasConferidas)
+    throw new AppError(
+      "VALIDACAO",
+      "Confira as pendências do fechamento anterior antes de finalizar.",
     );
 
   const mensagemFinal =
@@ -173,7 +198,9 @@ export async function executarDecisaoInteligente(
       const postagem = await pierAdapter.createPost({
         requestExternalId: solicitacao.external_id,
         mensagem: mensagemFinal,
-        privada: input.privada ?? true,
+        // Resposta de fechamento com respostas padrão é pública: o
+        // colaborador precisa ver o tratamento de cada alerta no PIER.
+        privada: usaRespostasPadrao ? false : (input.privada ?? true),
       });
       postagemId = postagem.externalId;
     } catch (error) {
@@ -289,6 +316,28 @@ export async function executarDecisaoInteligente(
     .eq("organization_id", ctx.organizationId)
     .eq("id", solicitacao.id);
 
+  // A tarefa já está finalizada no PIER: falha aqui só vira aviso, nunca
+  // desfaz nem esconde a finalização confirmada.
+  let pendenciasCriadas = 0;
+  let avisoPendencias = "";
+  try {
+    pendenciasCriadas = await registrarPendencias(
+      ctx,
+      solicitacao,
+      input.execucaoId ?? decisao.execucaoId,
+      conferencia.itens,
+    );
+    await marcarPendenciasConferidas(
+      ctx,
+      solicitacao.id,
+      decisao.pendenciasAnteriores.map((p) => p.id),
+    );
+  } catch (error) {
+    avisoPendencias =
+      " Atenção: não foi possível registrar as pendências de acompanhamento.";
+    console.error("[pendencias] gravação falhou:", erroSeguro(error));
+  }
+
   await gravarProcessamento(ctx, solicitacao.id, {
     outcome: "FINALIZADO",
     reason: decisao.recomendacao.exigeJustificativa
@@ -316,14 +365,26 @@ export async function executarDecisaoInteligente(
       statusPier: confirmacao.status,
       finalizadaEm,
       justificativaRegistrada: Boolean(justificativa),
+      respostasPadrao: conferencia.itens.map((i) => ({
+        achadoId: i.achado.id,
+        chave: i.opcao.chave,
+      })),
+      pendenciasCriadas,
+      pendenciasConferidas: decisao.pendenciasAnteriores.map((p) => p.id),
     },
   });
 
+  const acompanhamento = pendenciasCriadas
+    ? ` ${pendenciasCriadas} ponto(s) ficam em acompanhamento para o próximo fechamento.`
+    : "";
   return {
     situacao: "FINALIZADA" as const,
-    mensagem: decisao.recomendacao.exigeJustificativa
-      ? "Resposta e justificativa publicadas; solicitação finalizada e confirmada no PIER."
-      : "Resposta publicada; solicitação finalizada e confirmada no PIER.",
+    mensagem:
+      (decisao.recomendacao.exigeJustificativa
+        ? "Resposta e justificativa publicadas; solicitação finalizada e confirmada no PIER."
+        : "Resposta publicada; solicitação finalizada e confirmada no PIER.") +
+      acompanhamento +
+      avisoPendencias,
     postagemId,
     finalizadaEm,
   };

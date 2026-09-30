@@ -363,6 +363,93 @@ export type Database = {
           },
         ]
       }
+      closing_followup: {
+        Row: {
+          account_code: string | null
+          account_name: string | null
+          amount: number | null
+          category: string
+          checked_at: string | null
+          checked_by: string | null
+          checked_request_id: string | null
+          client_document: string | null
+          client_name: string | null
+          created_at: string
+          created_by: string | null
+          execution_id: string | null
+          finding_code: string
+          finding_title: string
+          id: string
+          organization_id: string
+          reference_month: string | null
+          request_id: string
+          response_key: string
+          response_text: string
+          status: string
+        }
+        Insert: {
+          account_code?: string | null
+          account_name?: string | null
+          amount?: number | null
+          category: string
+          checked_at?: string | null
+          checked_by?: string | null
+          checked_request_id?: string | null
+          client_document?: string | null
+          client_name?: string | null
+          created_at?: string
+          created_by?: string | null
+          execution_id?: string | null
+          finding_code: string
+          finding_title: string
+          id?: string
+          organization_id: string
+          reference_month?: string | null
+          request_id: string
+          response_key: string
+          response_text: string
+          status?: string
+        }
+        Update: {
+          account_code?: string | null
+          account_name?: string | null
+          amount?: number | null
+          category?: string
+          checked_at?: string | null
+          checked_by?: string | null
+          checked_request_id?: string | null
+          client_document?: string | null
+          client_name?: string | null
+          created_at?: string
+          created_by?: string | null
+          execution_id?: string | null
+          finding_code?: string
+          finding_title?: string
+          id?: string
+          organization_id?: string
+          reference_month?: string | null
+          request_id?: string
+          response_key?: string
+          response_text?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "closing_followup_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organization"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "closing_followup_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "request"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       closing_period: {
         Row: {
           company_id: string
